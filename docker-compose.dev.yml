@@ -1,0 +1,29 @@
+# Development override - only runs infrastructure services
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# This starts only PostgreSQL and Redis.
+# Run the backend and frontend locally for hot-reload development.
+
+version: "3.9"
+
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  # Disable app services in dev mode
+  backend:
+    profiles:
+      - disabled
+  
+  frontend:
+    profiles:
+      - disabled
+
+  nginx:
+    profiles:
+      - disabled

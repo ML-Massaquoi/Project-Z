@@ -1,0 +1,191 @@
+version: "3.9"
+
+services:
+  # ============================================
+  # PostgreSQL Database
+  # ============================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: projectz-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-projectz}
+      POSTGRES_USER: ${POSTGRES_USER:-projectz}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-projectz_secret}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-projectz} -d ${POSTGRES_DB:-projectz}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - projectz-network
+
+  # ============================================
+  # Redis Cache & Pub/Sub
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: projectz-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    networks:
+      - projectz-network
+
+  # ============================================
+  # FastAPI Backend
+  # ============================================
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: projectz-backend
+    restart: unless-stopped
+    environment:
+      # Database
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-projectz}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-projectz}
+      DATABASE_URL_SYNC: postgresql://${POSTGRES_USER:-projectz}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-projectz}
+      # Redis
+      REDIS_URL: redis://redis:6379/0
+      # App
+      APP_NAME: "Project Z"
+      APP_ENV: ${APP_ENV:-development}
+      DEBUG: ${DEBUG:-true}
+      # Security
+      SECRET_KEY: ${SECRET_KEY:-projectz-super-secret-key-change-in-production-2024}
+      JWT_ALGORITHM: HS256
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      JWT_REFRESH_TOKEN_EXPIRE_DAYS: ${JWT_REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      # Organization
+      ORG_NAME: "Freetown International Airport"
+      ORG_COUNTRY: "Sierra Leone"
+      TIMEZONE: "Africa/Freetown"
+      # Attendance
+      DUPLICATE_SCAN_WINDOW_SECONDS: ${DUPLICATE_SCAN_WINDOW_SECONDS:-60}
+      DEFAULT_GRACE_PERIOD_MINUTES: ${DEFAULT_GRACE_PERIOD_MINUTES:-15}
+      # Admin
+      DEFAULT_ADMIN_USERNAME: ${DEFAULT_ADMIN_USERNAME:-admin}
+      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:-@linux@kali@DYDY21}
+      DEFAULT_ADMIN_EMAIL: ${DEFAULT_ADMIN_EMAIL:-admin@projectz.local}
+    ports:
+      - "8000:8000"
+      - "8081:8081"
+    volumes:
+      - ../backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "
+        echo 'Waiting for database...' &&
+        cd /app &&
+        PYTHONPATH=/app alembic upgrade head &&
+        PYTHONPATH=/app python scripts/seed_admin.py &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --workers 1
+      "
+    networks:
+      - projectz-network
+
+  # ============================================
+  # ADMS Receiver (same backend, different port)
+  # ============================================
+  adms-receiver:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: projectz-adms
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-projectz}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-projectz}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-projectz-super-secret-key-change-in-production-2024}
+      TIMEZONE: "Africa/Freetown"
+      DUPLICATE_SCAN_WINDOW_SECONDS: ${DUPLICATE_SCAN_WINDOW_SECONDS:-60}
+      DEFAULT_GRACE_PERIOD_MINUTES: ${DEFAULT_GRACE_PERIOD_MINUTES:-15}
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      uvicorn app.main:app --host 0.0.0.0 --port 8081 --workers 2
+    networks:
+      - projectz-network
+    profiles:
+      - production
+
+  # ============================================
+  # React Frontend
+  # ============================================
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: projectz-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+    environment:
+      VITE_API_BASE_URL: http://backend:8000
+      VITE_WS_URL: ws://backend:8000
+    depends_on:
+      - backend
+    command: npm run dev -- --host 0.0.0.0 --port 3000
+    networks:
+      - projectz-network
+
+  # ============================================
+  # Nginx Reverse Proxy
+  # ============================================
+  nginx:
+    image: nginx:alpine
+    container_name: projectz-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - projectz-network
+    profiles:
+      - production
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  projectz-network:
+    driver: bridge
+    name: projectz-network
