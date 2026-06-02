@@ -1,23 +1,26 @@
 import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useQuery } from '@tanstack/react-query'
 import {
   LayoutDashboard, Users, Fingerprint, Monitor, Building2,
-  Clock, FileBarChart, Calendar, PalmtreeIcon, UserCog,
-  Settings, ScrollText, ChevronLeft, ChevronRight, LogOut,
+  Clock, FileBarChart, UserCog,
+  Settings, ScrollText, ChevronLeft, ChevronRight, LogOut, AlertCircle,
+  Activity,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
+import { devicesAPI } from '@/api/client'
 
 const mainNav = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/live-monitor', icon: Activity, label: 'Live Monitor' },
   { to: '/employees', icon: Users, label: 'Employees' },
   { to: '/attendance', icon: Fingerprint, label: 'Attendance' },
   { to: '/devices', icon: Monitor, label: 'Devices' },
+  { to: '/unrecognized', icon: AlertCircle, label: 'Unrecognized Users', badge: true },
   { to: '/departments', icon: Building2, label: 'Departments' },
   { to: '/shifts', icon: Clock, label: 'Shifts' },
   { to: '/reports', icon: FileBarChart, label: 'Reports' },
-  { to: '/calendar', icon: Calendar, label: 'Calendar' },
-  { to: '/leave', icon: PalmtreeIcon, label: 'Leave Management' },
 ]
 
 const adminNav = [
@@ -33,6 +36,14 @@ export default function Sidebar({ mobileOpen, setMobileOpen }: {
   const [collapsed, setCollapsed] = useState(false)
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
+
+  const { data: unrecognizedData } = useQuery({
+    queryKey: ['unrecognized-users'],
+    queryFn: async () => (await devicesAPI.getUnrecognizedUsers()).data,
+    refetchInterval: 60000,
+    retry: false,
+  })
+  const unrecognizedCount: number = unrecognizedData?.total ?? 0
 
   const handleLogout = () => {
     logout()
@@ -99,12 +110,17 @@ export default function Sidebar({ mobileOpen, setMobileOpen }: {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="whitespace-nowrap"
+                  className="whitespace-nowrap flex-1"
                 >
                   {item.label}
                 </motion.span>
               )}
             </AnimatePresence>
+            {!isCollapsed && item.badge && unrecognizedCount > 0 && (
+              <span className="ml-auto px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-bold min-w-[18px] text-center">
+                {unrecognizedCount}
+              </span>
+            )}
           </NavLink>
         ))}
 

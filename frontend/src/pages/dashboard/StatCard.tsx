@@ -30,29 +30,31 @@ export function StatCard({ icon: Icon, label, value, change, color, delay }: Sta
       variants={cardVariants}
       initial="hidden"
       animate="visible"
-      className="rounded-xl border border-slate-200 bg-white p-5 shadow-card"
+      className="card p-4 flex flex-col justify-between"
     >
-      <div className="flex items-start justify-between mb-3">
-        <div className="p-2.5 rounded-xl" style={{ backgroundColor: `${color}18` }}>
-          <Icon size={22} style={{ color }} />
+      <div className="flex items-start justify-between mb-2">
+        <div className="p-2 rounded-lg" style={{ backgroundColor: `${color}15` }}>
+          <Icon size={18} style={{ color }} />
         </div>
         {showTrend && (
           <span
-            className={`flex items-center gap-0.5 text-xs font-medium px-2 py-0.5 rounded-full ${
+            className={`flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${
               isPositive
-                ? 'bg-emerald-50 text-emerald-600'
+                ? 'bg-emerald-950/20 text-emerald-400 border-emerald-500/30'
                 : isNegative
-                ? 'bg-red-50 text-red-500'
-                : ''
+                ? 'bg-red-950/20 text-red-400 border-red-500/30'
+                : 'bg-gray-800 text-gray-400 border-gray-700'
             }`}
           >
-            {isPositive ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
+            {isPositive ? <ArrowUpRight size={10} /> : <ArrowDownRight size={10} />}
             {Math.abs(change!)}%
           </span>
         )}
       </div>
-      <p className="text-2xl font-bold text-slate-800">{value.toLocaleString()}</p>
-      <p className="text-sm text-slate-400 mt-0.5">{label}</p>
+      <div>
+        <p className="text-xl font-bold text-gray-100 font-mono tracking-tight">{value.toLocaleString()}</p>
+        <p className="text-[11px] text-gray-400 font-medium mt-0.5 uppercase tracking-wider">{label}</p>
+      </div>
     </motion.div>
   )
 }

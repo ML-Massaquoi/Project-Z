@@ -1,0 +1,16 @@
+import { create } from 'zustand'
+import type { ConnectionStatus } from '@/types'
+
+interface ConnectionState {
+  status: ConnectionStatus
+  setStatus: (status: ConnectionStatus) => void
+  lastHeartbeat: string | null
+  setLastHeartbeat: (time: string) => void
+}
+
+export const useConnectionStore = create<ConnectionState>((set) => ({
+  status: 'disconnected',
+  lastHeartbeat: null,
+  setStatus: (status) => set({ status }),
+  setLastHeartbeat: (lastHeartbeat) => set({ lastHeartbeat }),
+}))

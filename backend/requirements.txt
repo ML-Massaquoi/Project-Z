@@ -8,8 +8,8 @@ python-multipart==0.0.18
 websockets==14.1
 
 # Database
-sqlalchemy[asyncio]==2.0.36
-asyncpg==0.30.0
+sqlalchemy[asyncio]==2.0.50
+asyncpg==0.31.0
 psycopg2-binary==2.9.10
 alembic==1.14.0
 
@@ -22,7 +22,7 @@ passlib[bcrypt]==1.7.4
 bcrypt==4.2.1
 
 # Validation
-pydantic==2.10.3
+pydantic==2.13.4
 pydantic-settings==2.7.0
 email-validator==2.2.0
 
@@ -31,14 +31,16 @@ python-dateutil==2.9.0
 
 # Reports
 openpyxl==3.1.5
-reportlab==4.2.5
+# reportlab==4.2.5  # requires pillow — no Python 3.14 wheel yet; PDF export disabled
 
 # HTTP Client (for device SDK)
 httpx==0.28.1
 
+# ZKTeco SDK (optional — install separately if direct TCP device access is needed)
+# pyzk==0.9
+
 # Utilities
 python-dotenv==1.0.1
-orjson==3.10.12
 
 # Development
 pytest==8.3.4

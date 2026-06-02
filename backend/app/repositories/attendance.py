@@ -1,9 +1,13 @@
 """
 Project Z - Attendance Repository
 Data access for attendance logs, sessions, and raw payloads.
+
+Scan model: every scan is real — no duplicate suppression.
+  - get_session_for_date: returns the ONE session per employee per day
+  - count_scans_today: how many times an employee has scanned today
 """
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional, Sequence
 from uuid import UUID
 
@@ -28,14 +32,16 @@ class AttendanceLogRepository(BaseRepository[AttendanceLog]):
     async def get_live_feed(
         self, limit: int = 50, department_id: Optional[UUID] = None
     ) -> Sequence[AttendanceLog]:
-        """Get latest attendance logs with employee and device info."""
+        """
+        Get latest attendance logs with employee and device info.
+        Shows ALL scans (no duplicate filter) — every scan is real.
+        """
         query = (
             select(AttendanceLog)
             .options(
-                joinedload(AttendanceLog.employee),
+                joinedload(AttendanceLog.employee).joinedload(Employee.department),
                 joinedload(AttendanceLog.device),
             )
-            .where(AttendanceLog.is_duplicate == False)
             .order_by(AttendanceLog.timestamp.desc())
             .limit(limit)
         )
@@ -46,36 +52,35 @@ class AttendanceLogRepository(BaseRepository[AttendanceLog]):
         result = await self.session.execute(query)
         return result.unique().scalars().all()
 
-    async def get_last_log_for_employee(
-        self, employee_id: UUID, within_seconds: int = 60
-    ) -> Optional[AttendanceLog]:
-        """Check for duplicate scans within the configured window."""
-        cutoff = datetime.utcnow() - timedelta(seconds=within_seconds)
+    async def count_scans_today(
+        self, employee_id: UUID, target_date: date
+    ) -> int:
+        """
+        Count how many times an employee has scanned today.
+        Used for logging (scan #1, #2, #3...).
+        """
         result = await self.session.execute(
-            select(AttendanceLog)
+            select(func.count())
+            .select_from(AttendanceLog)
             .where(
                 and_(
                     AttendanceLog.employee_id == employee_id,
-                    AttendanceLog.timestamp >= cutoff,
-                    AttendanceLog.is_duplicate == False,
+                    func.date(AttendanceLog.timestamp) == target_date,
                 )
             )
-            .order_by(AttendanceLog.timestamp.desc())
-            .limit(1)
         )
-        return result.scalar_one_or_none()
+        return result.scalar_one()
 
     async def get_today_count_by_direction(
         self, target_date: date, direction: str
     ) -> int:
-        """Count today's attendance by punch direction."""
+        """Count today's attendance logs by punch direction."""
         result = await self.session.execute(
             select(func.count(func.distinct(AttendanceLog.employee_id)))
             .where(
                 and_(
                     func.date(AttendanceLog.timestamp) == target_date,
                     AttendanceLog.punch_direction == direction,
-                    AttendanceLog.is_duplicate == False,
                 )
             )
         )
@@ -86,23 +91,34 @@ class AttendanceSessionRepository(BaseRepository[AttendanceSession]):
     def __init__(self, session: AsyncSession):
         super().__init__(AttendanceSession, session)
 
-    async def get_open_session(
+    async def get_session_for_date(
         self, employee_id: UUID, target_date: date
     ) -> Optional[AttendanceSession]:
-        """Get an open (incomplete) session for an employee on a given date."""
+        """
+        Get the attendance session for an employee on a specific date.
+
+        There is exactly ONE session per employee per day.
+        Returns None if the employee hasn't scanned yet today.
+        """
         result = await self.session.execute(
             select(AttendanceSession)
             .where(
                 and_(
                     AttendanceSession.employee_id == employee_id,
                     AttendanceSession.date == target_date,
-                    AttendanceSession.is_complete == False,
                 )
             )
-            .order_by(AttendanceSession.created_at.desc())
+            .order_by(AttendanceSession.created_at.asc())
             .limit(1)
         )
         return result.scalar_one_or_none()
+
+    # Keep for backward compatibility (midnight rollover uses this)
+    async def get_open_session(
+        self, employee_id: UUID, target_date: date
+    ) -> Optional[AttendanceSession]:
+        """Alias for get_session_for_date — kept for compatibility."""
+        return await self.get_session_for_date(employee_id, target_date)
 
     async def get_sessions_for_date(
         self,
@@ -111,12 +127,14 @@ class AttendanceSessionRepository(BaseRepository[AttendanceSession]):
         skip: int = 0,
         limit: int = 50,
     ) -> Sequence[AttendanceSession]:
-        """Get all attendance sessions for a date."""
+        """Get all attendance sessions for a date with employee info."""
         query = (
             select(AttendanceSession)
-            .options(joinedload(AttendanceSession.employee))
+            .options(
+                joinedload(AttendanceSession.employee).joinedload(Employee.department)
+            )
             .where(AttendanceSession.date == target_date)
-            .order_by(AttendanceSession.check_in.desc())
+            .order_by(AttendanceSession.check_in.asc())
             .offset(skip)
             .limit(limit)
         )
@@ -142,7 +160,7 @@ class AttendanceSessionRepository(BaseRepository[AttendanceSession]):
         return result.scalar_one()
 
     async def get_present_employee_ids(self, target_date: date) -> set[UUID]:
-        """Get set of employee IDs who have checked in today."""
+        """Get set of employee IDs who have at least one scan today."""
         result = await self.session.execute(
             select(AttendanceSession.employee_id)
             .where(AttendanceSession.date == target_date)

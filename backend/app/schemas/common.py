@@ -97,7 +97,7 @@ class OfficeCreate(BaseModel):
     address: Optional[str] = None
     city: Optional[str] = None
     phone: Optional[str] = None
-    organization_id: UUID
+    organization_id: Optional[UUID] = None
 
 
 class OfficeUpdate(BaseModel):

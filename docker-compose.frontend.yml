@@ -1,0 +1,28 @@
+# Frontend-only compose file.
+# Use when backend runs on the HOST (not in Docker).
+#
+# Usage:
+#   docker compose -f docker-compose.frontend.yml up --build
+#
+# VITE_ vars must be passed as build args so Vite bakes them into the bundle.
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: http://localhost:8000
+        VITE_WS_URL: ws://localhost:8000/ws
+    container_name: projectz-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+      VITE_WS_URL: ws://localhost:8000/ws
+      RUNNING_IN_DOCKER: "true"
+      DOCKER_HOST_GATEWAY: "172.19.0.1"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: npm run dev -- --host 0.0.0.0 --port 3000

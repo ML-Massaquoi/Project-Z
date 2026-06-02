@@ -10,6 +10,9 @@ import Departments from '@/pages/Departments'
 import Shifts from '@/pages/Shifts'
 import Reports from '@/pages/Reports'
 import Settings from '@/pages/Settings'
+import UsersRoles from '@/pages/UsersRoles'
+import UnrecognizedUsers from '@/pages/UnrecognizedUsers'
+import LiveMonitor from '@/pages/LiveMonitor'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -24,7 +27,12 @@ const queryClient = new QueryClient({
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <BrowserRouter
+        future={{
+          v7_startTransition: true,
+          v7_relativeSplatPath: true,
+        }}
+      >
         <Routes>
           {/* Public */}
           <Route path="/login" element={<Login />} />
@@ -32,6 +40,7 @@ export default function App() {
           {/* Protected — wrapped in AppLayout (handles auth redirect) */}
           <Route element={<AppLayout />}>
             <Route path="/" element={<Dashboard />} />
+            <Route path="/live-monitor" element={<LiveMonitor />} />
             <Route path="/employees" element={<Employees />} />
             <Route path="/attendance" element={<Attendance />} />
             <Route path="/devices" element={<Devices />} />
@@ -39,6 +48,11 @@ export default function App() {
             <Route path="/shifts" element={<Shifts />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/users" element={<UsersRoles />} />
+            <Route path="/unrecognized" element={<UnrecognizedUsers />} />
+            <Route path="/audit" element={<Navigate to="/settings" replace />} />
+            <Route path="/calendar" element={<Navigate to="/attendance" replace />} />
+            <Route path="/leave" element={<Navigate to="/attendance" replace />} />
           </Route>
 
           {/* Fallback */}

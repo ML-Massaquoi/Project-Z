@@ -46,20 +46,20 @@ export default function Topbar({ title, subtitle, onMenuToggle }: TopbarProps) {
   }
 
   return (
-    <header className="h-16 border-b border-[var(--color-border)] bg-white flex items-center justify-between px-6 sticky top-0 z-40">
+    <header className="h-16 border-b border-[var(--color-border)] bg-[#111827] flex items-center justify-between px-6 sticky top-0 z-40">
       {/* Left - Hamburger (mobile) + Title */}
       <div className="flex items-center">
         <button
           onClick={onMenuToggle}
-          className="flex md:hidden p-2 rounded-lg hover:bg-[var(--color-slate-100)] text-[var(--color-slate-500)] mr-2"
+          className="flex md:hidden p-2 rounded-lg hover:bg-[#1F2937] text-gray-400 mr-2 animate-pulse"
           aria-label="Open menu"
         >
           <Menu size={20} />
         </button>
         <div>
-          <h1 className="text-xl font-semibold text-[var(--color-slate-800)]">{title}</h1>
+          <h1 className="text-lg font-bold text-gray-100 tracking-tight">{title}</h1>
           {subtitle && (
-            <p className="text-sm text-[var(--color-slate-400)] -mt-0.5">{subtitle}</p>
+            <p className="text-xs text-gray-400 -mt-0.5">{subtitle}</p>
           )}
         </div>
       </div>
@@ -67,31 +67,32 @@ export default function Topbar({ title, subtitle, onMenuToggle }: TopbarProps) {
       {/* Right - Actions */}
       <div className="flex items-center gap-3">
         {/* Search */}
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--color-slate-50)] border border-[var(--color-border)] focus-within:border-[var(--color-primary)] transition-colors">
-          <Search size={15} className="text-[var(--color-slate-400)] flex-shrink-0" />
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1F2937]/50 border border-[var(--color-border)] focus-within:border-[var(--color-primary)] transition-all">
+          <Search size={14} className="text-gray-400 flex-shrink-0" />
           <input
             type="text"
             value={searchValue}
             onChange={(e) => setSearchValue(e.target.value.slice(0, 200))}
             placeholder="Search anything..."
-            className="bg-transparent text-sm text-[var(--color-slate-700)] placeholder:text-[var(--color-slate-400)] outline-none w-40 md:w-56"
+            className="bg-transparent text-xs text-gray-200 placeholder:text-gray-500 outline-none w-32 md:w-48"
             maxLength={200}
           />
         </div>
 
         {/* Clock */}
-        <div className="hidden lg:flex items-center gap-1.5 text-sm text-[var(--color-slate-500)] font-medium tabular-nums">
+        <div className="hidden lg:flex items-center gap-1 text-xs text-gray-300 font-semibold font-mono bg-[#1F2937] px-2.5 py-1.5 rounded-lg border border-[var(--color-border)] tabular-nums">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse mr-1" />
           {time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
         </div>
 
         {/* Notifications */}
         <button
-          className="relative p-2 rounded-lg hover:bg-[var(--color-slate-50)] text-[var(--color-slate-500)] transition-colors"
+          className="relative p-2 rounded-lg hover:bg-[#1F2937] text-gray-400 transition-all"
           id="notifications-btn"
         >
-          <Bell size={20} />
+          <Bell size={18} />
           {badgeDisplay(notifCount) && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] rounded-full bg-[var(--color-danger)] text-white text-[10px] font-bold flex items-center justify-center px-1">
+            <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] rounded-full bg-[var(--color-danger)] text-white text-[9px] font-bold flex items-center justify-center px-1">
               {badgeDisplay(notifCount)}
             </span>
           )}
@@ -100,9 +101,9 @@ export default function Topbar({ title, subtitle, onMenuToggle }: TopbarProps) {
         {/* Fullscreen toggle */}
         <button
           onClick={toggleFullscreen}
-          className="p-2 rounded-lg hover:bg-[var(--color-slate-50)] text-[var(--color-slate-500)] transition-colors hidden md:flex"
+          className="p-2 rounded-lg hover:bg-[#1F2937] text-gray-400 transition-all hidden md:flex"
         >
-          {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+          {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
         </button>
 
         {/* User */}
@@ -110,15 +111,15 @@ export default function Topbar({ title, subtitle, onMenuToggle }: TopbarProps) {
           <DropdownMenu.Trigger asChild>
             <div className="flex items-center gap-3 pl-3 border-l border-[var(--color-border)] cursor-pointer select-none">
               <div className="text-right hidden md:block">
-                <p className="text-sm font-medium text-[var(--color-slate-800)]">
+                <p className="text-xs font-semibold text-gray-200">
                   {user?.full_name || user?.username}
                 </p>
-                <p className="text-xs text-[var(--color-slate-400)]">
-                  {user?.role_type === 'super_admin' ? 'Super Admin' : user?.role}
+                <p className="text-[10px] text-gray-400">
+                  {user?.role_type === 'super_admin' ? 'Super Admin' : user?.role || 'Operator'}
                 </p>
               </div>
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-secondary)] flex items-center justify-center">
-                <span className="text-white text-sm font-semibold">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-secondary)] flex items-center justify-center flex-shrink-0">
+                <span className="text-white text-xs font-bold">
                   {user?.full_name?.[0] || user?.username?.[0] || 'A'}
                 </span>
               </div>
@@ -128,28 +129,28 @@ export default function Topbar({ title, subtitle, onMenuToggle }: TopbarProps) {
             <DropdownMenu.Content
               align="end"
               sideOffset={8}
-              className="z-50 min-w-[180px] rounded-lg border border-[var(--color-border)] bg-white p-1 shadow-lg"
+              className="z-50 min-w-[160px] rounded-lg border border-[var(--color-border)] bg-[#111827] p-1 shadow-xl animate-fade-in"
             >
               <DropdownMenu.Item
-                className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-[var(--color-slate-700)] hover:bg-[var(--color-slate-50)] cursor-pointer outline-none"
+                className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs text-gray-300 hover:bg-[#1F2937] cursor-pointer outline-none transition-colors"
                 onSelect={() => navigate('/profile')}
               >
-                <User size={15} />
+                <User size={14} />
                 Profile
               </DropdownMenu.Item>
               <DropdownMenu.Item
-                className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-[var(--color-slate-700)] hover:bg-[var(--color-slate-50)] cursor-pointer outline-none"
+                className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs text-gray-300 hover:bg-[#1F2937] cursor-pointer outline-none transition-colors"
                 onSelect={() => navigate('/settings')}
               >
-                <SettingsIcon size={15} />
+                <SettingsIcon size={14} />
                 Settings
               </DropdownMenu.Item>
               <DropdownMenu.Separator className="my-1 h-px bg-[var(--color-border)]" />
               <DropdownMenu.Item
-                className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-red-600 hover:bg-red-50 cursor-pointer outline-none"
+                className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs text-red-400 hover:bg-red-950/20 cursor-pointer outline-none transition-colors"
                 onSelect={handleLogout}
               >
-                <LogOut size={15} />
+                <LogOut size={14} />
                 Logout
               </DropdownMenu.Item>
             </DropdownMenu.Content>

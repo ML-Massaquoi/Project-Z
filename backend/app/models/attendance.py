@@ -69,11 +69,11 @@ class AttendanceLog(BaseModel):
     )
     device_user_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     verify_type: Mapped[VerifyType] = mapped_column(
-        SAEnum(VerifyType, name="verify_type"),
+        SAEnum(VerifyType, name="verify_type", values_callable=lambda x: [e.value for e in x]),
         default=VerifyType.FINGERPRINT,
     )
     punch_direction: Mapped[PunchDirection] = mapped_column(
-        SAEnum(PunchDirection, name="punch_direction"),
+        SAEnum(PunchDirection, name="punch_direction", values_callable=lambda x: [e.value for e in x]),
         default=PunchDirection.UNKNOWN,
     )
     work_code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
@@ -124,7 +124,7 @@ class AttendanceSession(BaseModel):
     late_minutes: Mapped[Optional[float]] = mapped_column(Float, default=0)
     overtime_minutes: Mapped[Optional[float]] = mapped_column(Float, default=0)
     status: Mapped[AttendanceStatus] = mapped_column(
-        SAEnum(AttendanceStatus, name="attendance_status"),
+        SAEnum(AttendanceStatus, name="attendance_status", values_callable=lambda x: [e.value for e in x]),
         default=AttendanceStatus.ON_TIME,
     )
 

@@ -56,17 +56,17 @@ export default function Reports() {
     <div className="animate-fade-in max-w-3xl mx-auto">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="card p-8">
         <div className="flex items-center gap-3 mb-6">
-          <div className="p-3 rounded-xl bg-blue-50"><FileBarChart size={24} className="text-[var(--color-primary)]" /></div>
+          <div className="p-3 rounded-xl bg-blue-950/40 border border-blue-900/50 text-blue-400"><FileBarChart size={24} /></div>
           <div>
-            <h2 className="text-xl font-bold text-[var(--color-slate-800)]">Attendance Report</h2>
-            <p className="text-sm text-[var(--color-slate-400)]">Generate and export attendance data</p>
+            <h2 className="text-xl font-bold text-slate-100">Attendance Report</h2>
+            <p className="text-sm text-slate-400">Generate and export attendance data</p>
           </div>
         </div>
 
         {/* Date Presets */}
         <div className="flex flex-wrap gap-2 mb-6">
           {presets.map((p) => (
-            <button key={p.label} onClick={p.fn} className="px-3 py-1.5 rounded-lg bg-[var(--color-slate-50)] text-sm text-[var(--color-slate-600)] hover:bg-[var(--color-primary-light)] hover:text-[var(--color-primary)] transition-colors font-medium">
+            <button key={p.label} onClick={p.fn} className="px-3 py-1.5 rounded-lg bg-slate-900/60 border border-slate-800 text-sm text-slate-300 hover:bg-blue-950/40 hover:text-blue-400 hover:border-blue-900/50 transition-all font-medium">
               {p.label}
             </button>
           ))}
@@ -76,23 +76,23 @@ export default function Reports() {
           {/* Date Range */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-[var(--color-slate-600)] mb-1.5">
+              <label className="block text-sm font-medium text-slate-400 mb-1.5">
                 <Calendar size={14} className="inline mr-1" />Start Date
               </label>
-              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-[var(--color-border)] text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)]" />
+              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-slate-800 text-sm bg-slate-950 text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-[var(--color-slate-600)] mb-1.5">
+              <label className="block text-sm font-medium text-slate-400 mb-1.5">
                 <Calendar size={14} className="inline mr-1" />End Date
               </label>
-              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-[var(--color-border)] text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)]" />
+              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-slate-800 text-sm bg-slate-950 text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" />
             </div>
           </div>
 
           {/* Department */}
           <div>
-            <label className="block text-sm font-medium text-[var(--color-slate-600)] mb-1.5">Department (Optional)</label>
-            <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-[var(--color-border)] text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20">
+            <label className="block text-sm font-medium text-slate-400 mb-1.5">Department (Optional)</label>
+            <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-slate-800 text-sm bg-slate-950 text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20">
               <option value="">All Departments</option>
               {(departments as Department[] || []).map((d: Department) => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
@@ -100,14 +100,14 @@ export default function Reports() {
 
           {/* Format */}
           <div>
-            <label className="block text-sm font-medium text-[var(--color-slate-600)] mb-2">Export Format</label>
+            <label className="block text-sm font-medium text-slate-400 mb-2">Export Format</label>
             <div className="flex gap-3">
               {[
                 { value: 'excel', label: 'Excel (.xlsx)', icon: '📊' },
                 { value: 'csv', label: 'CSV (.csv)', icon: '📄' },
                 { value: 'pdf', label: 'PDF (.pdf)', icon: '📕' },
               ].map((f) => (
-                <button key={f.value} type="button" onClick={() => setExportFormat(f.value)} className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 text-sm font-medium transition-all ${exportFormat === f.value ? 'border-[var(--color-primary)] bg-[var(--color-primary-50)] text-[var(--color-primary)]' : 'border-[var(--color-border)] text-[var(--color-slate-500)] hover:border-[var(--color-slate-300)]'}`}>
+                <button key={f.value} type="button" onClick={() => setExportFormat(f.value)} className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-2 text-sm font-medium transition-all ${exportFormat === f.value ? 'border-blue-500 bg-blue-950/40 text-blue-400' : 'border-slate-800 bg-slate-900/20 text-slate-400 hover:border-slate-700 hover:text-slate-200'}`}>
                   <span>{f.icon}</span>{f.label}
                 </button>
               ))}
@@ -119,7 +119,7 @@ export default function Reports() {
             id="generate-report-btn"
             onClick={handleGenerate}
             disabled={generating}
-            className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-secondary)] text-white font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-blue-200 mt-4"
+            className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-secondary)] text-white font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-blue-950/20 mt-4"
           >
             {generating ? (
               <><Loader2 size={18} className="animate-spin" /> Generating Report...</>

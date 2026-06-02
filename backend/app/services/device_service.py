@@ -61,6 +61,7 @@ class DeviceService:
         serials = result.scalars().all()
 
         for sn in serials:
+            logger.info(f"Device disconnected: {sn}")
             logger.info(f"Device {sn} marked offline (no heartbeat for {OFFLINE_THRESHOLD_MINUTES}m)")
             await ws_manager.broadcast("device.status", {
                 "serial_number": sn,

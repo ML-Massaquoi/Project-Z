@@ -20,11 +20,20 @@ export default function Login() {
     setLoading(true)
 
     try {
+      console.log('[Login] Sending login request to /api/v1/auth/login ...')
       const { data } = await authAPI.login(username, password)
+      console.log('[Login] Login successful, navigating to dashboard...')
       login(data.user, data.access_token, data.refresh_token)
       navigate('/')
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Invalid credentials')
+      console.error('[Login] Login failed:', err)
+      if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+        setError('Request timed out — is the backend running on port 8000?')
+      } else if (!err.response) {
+        setError('Cannot reach the server — check that the backend is running')
+      } else {
+        setError(err.response?.data?.message || 'Invalid credentials')
+      }
     } finally {
       setLoading(false)
     }

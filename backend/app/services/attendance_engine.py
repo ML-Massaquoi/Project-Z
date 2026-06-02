@@ -2,19 +2,38 @@
 Project Z - Attendance Engine Service
 Core business logic for attendance processing.
 
-Handles:
-- Duplicate scan prevention
-- IN/OUT detection
-- Lateness calculation
-- Overtime detection
-- Missing checkout handling
+Business Rules (enforced biometric model):
+─────────────────────────────────────────
+  • EVERY fingerprint scan is REAL — no scan is ever silently dropped.
+  • First scan of the day  → check_in  (creates the session)
+  • Every subsequent scan  → updates check_out (rolling "last seen")
+  • The LAST scan of the day is the departure time — period.
+  • There is NO duplicate suppression window. If someone scans 10 times,
+    all 10 are stored as logs and the last one becomes check_out.
+  • This makes the biometric record the single source of truth.
+    No employee can claim "I scanned" without a DB record to prove it.
+
+Session model:
+─────────────
+  attendance_sessions  — one row per employee per day
+    check_in   = timestamp of the FIRST scan
+    check_out  = timestamp of the MOST RECENT scan (updated on every scan)
+    is_complete = True once check_out is set (i.e. after the 2nd+ scan)
+    duration_minutes = check_out - check_in (live, updated every scan)
+    late_minutes     = calculated once at check_in, never changes
+    overtime_minutes = recalculated on every check_out update
+
+  attendance_logs — one row per scan (full audit trail)
+    punch_direction = 'in' for first scan, 'out' for all subsequent scans
+    is_duplicate    = always False (every scan is real)
 """
 
 import logging
-from datetime import date, datetime, timedelta, timezone, time as dt_time
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 from uuid import UUID
 
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -22,11 +41,9 @@ from app.models.attendance import (
     AttendanceLog,
     AttendanceSession,
     AttendanceStatus,
-    PunchDirection,
-    VerifyType,
 )
-from app.models.shift import Shift
 from app.models.employee import Employee
+from app.models.shift import Shift
 from app.repositories.attendance import (
     AttendanceLogRepository,
     AttendanceSessionRepository,
@@ -37,7 +54,11 @@ settings = get_settings()
 
 
 class AttendanceEngine:
-    """Core attendance processing engine."""
+    """
+    Enforced biometric attendance engine.
+
+    Every scan is recorded. First scan = check-in. Last scan = check-out.
+    """
 
     def __init__(self, session: AsyncSession):
         self.session = session
@@ -53,288 +74,228 @@ class AttendanceEngine:
         punch_status: int = 0,
         device_user_id: Optional[str] = None,
         work_code: Optional[str] = None,
-    ) -> Optional[dict]:
-        """
-        Process a single attendance event from a biometric device.
-
-        Returns dict with event details for WebSocket broadcast, or None if duplicate.
-        """
-        # ── 1. Duplicate Prevention ──────────────────────────
-        is_duplicate = await self._check_duplicate(
-            employee_id, timestamp
-        )
-        if is_duplicate:
-            logger.info(
-                f"Duplicate scan detected for employee {employee_id} "
-                f"within {settings.DUPLICATE_SCAN_WINDOW_SECONDS}s window"
-            )
-            # Still store the log, but mark as duplicate
-            await self._create_log(
-                employee_id=employee_id,
-                device_id=device_id,
-                timestamp=timestamp,
-                verify_type=verify_type,
-                punch_direction="unknown",
-                device_user_id=device_user_id,
-                work_code=work_code,
-                is_duplicate=True,
-            )
-            return None
-
-        # ── 2. Determine Punch Direction ─────────────────────
-        event_date = timestamp.date()
-        direction = await self._determine_direction(
-            employee_id, event_date, punch_status
-        )
-
-        # ── 3. Create Attendance Log ─────────────────────────
-        log = await self._create_log(
-            employee_id=employee_id,
-            device_id=device_id,
-            timestamp=timestamp,
-            verify_type=verify_type,
-            punch_direction=direction,
-            device_user_id=device_user_id,
-            work_code=work_code,
-            is_duplicate=False,
-        )
-
-        # ── 4. Update Attendance Session ─────────────────────
-        session_data = await self._update_session(
-            employee_id=employee_id,
-            device_id=device_id,
-            timestamp=timestamp,
-            direction=direction,
-            event_date=event_date,
-            log_id=log.id,
-        )
-
-        # ── 5. Build Event for WebSocket ─────────────────────
-        event = {
-            "log_id": str(log.id),
-            "employee_id": str(employee_id),
-            "device_id": str(device_id) if device_id else None,
-            "timestamp": timestamp.isoformat(),
-            "direction": direction,
-            "verify_type": verify_type,
-            "device_user_id": device_user_id,
-            "session_id": str(session_data["session_id"]) if session_data else None,
-            "status": session_data.get("status") if session_data else None,
-            "late_minutes": session_data.get("late_minutes", 0) if session_data else 0,
-        }
-
-        return event
-
-    async def _check_duplicate(
-        self, employee_id: UUID, timestamp: datetime
-    ) -> bool:
-        """Check if this scan is a duplicate within the configured window."""
-        last_log = await self.log_repo.get_last_log_for_employee(
-            employee_id, settings.DUPLICATE_SCAN_WINDOW_SECONDS
-        )
-        return last_log is not None
-
-    async def _determine_direction(
-        self, employee_id: UUID, event_date: date, punch_status: int
-    ) -> str:
-        """
-        Determine IN/OUT direction.
-
-        ZKTeco punch_status values:
-          0 = check-in, 1 = check-out, 2 = break-out, 3 = break-in, 4 = OT-in, 5 = OT-out
-
-        Some devices always send 0 (no explicit direction). In that case we
-        fall back to toggle logic: if there is an open session → OUT, else → IN.
-        """
-        # Explicit OUT signals from device
-        if punch_status in (1, 2, 5):
-            return "out"
-
-        # Explicit IN signals from device (4 = OT-in, 3 = break-in)
-        if punch_status in (3, 4):
-            return "in"
-
-        # punch_status == 0: device either means "check-in" OR sends 0 for everything.
-        # Use toggle logic to be safe: check for an open session.
-        open_session = await self.session_repo.get_open_session(
-            employee_id, event_date
-        )
-        if open_session and open_session.check_in and not open_session.check_out:
-            return "out"
-        return "in"
-
-    async def _create_log(
-        self,
-        employee_id: UUID,
-        device_id: Optional[UUID],
-        timestamp: datetime,
-        verify_type: str,
-        punch_direction: str,
-        device_user_id: Optional[str],
-        work_code: Optional[str],
-        is_duplicate: bool,
-    ) -> AttendanceLog:
-        """Create an attendance log entry."""
-        log = await self.log_repo.create({
-            "employee_id": employee_id,
-            "device_id": device_id,
-            "timestamp": timestamp,
-            "verify_type": verify_type,
-            "punch_direction": punch_direction,
-            "device_user_id": device_user_id,
-            "work_code": work_code,
-            "is_duplicate": is_duplicate,
-        })
-        return log
-
-    async def _update_session(
-        self,
-        employee_id: UUID,
-        device_id: Optional[UUID],
-        timestamp: datetime,
-        direction: str,
-        event_date: date,
-        log_id: UUID,
     ) -> dict:
-        """Create or update attendance session based on punch direction."""
-        from sqlalchemy import select, update
-        from app.models.employee import Employee
-        from app.models.shift import Shift
+        """
+        Process a single biometric scan event.
 
-        # Fetch employee + shift once — used in both check-in and check-out branches
+        Always returns an event dict — never returns None.
+        Every scan is stored and reflected in the session.
+
+        Returns:
+            dict with keys: direction, action, session_id, status,
+                            late_minutes, duration_minutes, scan_count
+        """
+        event_date = timestamp.date()
+
+        # ── 1. Load employee + shift ──────────────────────────
         emp_result = await self.session.execute(
             select(Employee).where(Employee.id == employee_id)
         )
         employee = emp_result.scalar_one_or_none()
 
-        shift = None
+        shift: Optional[Shift] = None
         if employee and employee.shift_id:
             shift_result = await self.session.execute(
                 select(Shift).where(Shift.id == employee.shift_id)
             )
             shift = shift_result.scalar_one_or_none()
 
-        if direction == "in":
-            # ── CHECK-IN: Create new session ─────────────────
-            late_minutes = 0.0
-            status = AttendanceStatus.ON_TIME
+        # ── 2. Get or create today's session ──────────────────
+        existing_session = await self.session_repo.get_session_for_date(
+            employee_id, event_date
+        )
 
-            if shift:
-                late_minutes, status = self._calculate_lateness(timestamp, shift)
+        if existing_session is None:
+            # ── FIRST SCAN OF THE DAY → Check-In ─────────────
+            late_minutes, att_status = self._calculate_lateness(timestamp, shift)
 
-            session_obj = await self.session_repo.create({
+            new_session = await self.session_repo.create({
                 "employee_id": employee_id,
                 "date": event_date,
                 "check_in": timestamp,
                 "check_in_device_id": device_id,
                 "late_minutes": late_minutes,
-                "status": status,
+                "status": att_status,
                 "is_complete": False,
             })
 
-            # Link log to session
-            await self.session.execute(
-                update(AttendanceLog)
-                .where(AttendanceLog.id == log_id)
-                .values(session_id=session_obj.id)
+            direction = "in"
+            action = "check_in"
+
+            log = await self._store_log(
+                employee_id=employee_id,
+                device_id=device_id,
+                session_id=new_session.id,
+                timestamp=timestamp,
+                verify_type=verify_type,
+                punch_direction=direction,
+                device_user_id=device_user_id,
+                work_code=work_code,
+            )
+
+            logger.info(
+                f"[ENGINE] CHECK-IN  | {employee.full_name if employee else employee_id} "
+                f"| {timestamp.strftime('%H:%M:%S')} "
+                f"| late={late_minutes}min | status={att_status.value}"
             )
 
             return {
-                "session_id": session_obj.id,
-                "status": status.value,
+                "log_id": str(log.id),
+                "employee_id": str(employee_id),
+                "device_id": str(device_id) if device_id else None,
+                "timestamp": timestamp.isoformat(),
+                "direction": direction,
+                "action": action,
+                "verify_type": verify_type,
+                "device_user_id": device_user_id,
+                "session_id": str(new_session.id),
+                "status": att_status.value,
                 "late_minutes": late_minutes,
-                "action": "check_in",
+                "duration_minutes": 0,
+                "scan_count": 1,
             }
 
         else:
-            # ── CHECK-OUT: Close existing session ────────────
-            open_session = await self.session_repo.get_open_session(
-                employee_id, event_date
-            )
-            if open_session:
-                duration = None
-                overtime = 0.0
+            # ── SUBSEQUENT SCAN → Rolling Check-Out ──────────
+            # Every scan after the first updates check_out.
+            # This means the LAST scan of the day is always the departure time.
 
-                if open_session.check_in:
-                    delta = timestamp - open_session.check_in
-                    duration = delta.total_seconds() / 60  # minutes
+            duration_minutes = 0.0
+            overtime_minutes = 0.0
 
-                    if shift:
-                        overtime = self._calculate_overtime(timestamp, shift, duration)
-
-                await self.session_repo.update(open_session.id, {
-                    "check_out": timestamp,
-                    "check_out_device_id": device_id,
-                    "duration_minutes": duration,
-                    "overtime_minutes": overtime,
-                    "is_complete": True,
-                })
-
-                # Link log to session
-                await self.session.execute(
-                    update(AttendanceLog)
-                    .where(AttendanceLog.id == log_id)
-                    .values(session_id=open_session.id)
+            if existing_session.check_in:
+                delta = timestamp - existing_session.check_in
+                duration_minutes = round(delta.total_seconds() / 60, 1)
+                overtime_minutes = self._calculate_overtime(
+                    duration_minutes, shift
                 )
 
-                return {
-                    "session_id": open_session.id,
-                    "status": open_session.status.value if hasattr(open_session.status, "value") else str(open_session.status),
-                    "late_minutes": open_session.late_minutes or 0,
-                    "duration_minutes": duration,
-                    "overtime_minutes": overtime,
-                    "action": "check_out",
-                }
-
-            # No open session found — orphan check-out
-            logger.warning(
-                f"Check-out without open session for employee {employee_id} on {event_date}"
+            # Count how many scans this employee has today (for logging)
+            scan_count = await self.log_repo.count_scans_today(
+                employee_id, event_date
             )
+
+            await self.session_repo.update(existing_session.id, {
+                "check_out": timestamp,
+                "check_out_device_id": device_id,
+                "duration_minutes": duration_minutes,
+                "overtime_minutes": overtime_minutes,
+                "is_complete": True,
+            })
+
+            direction = "out"
+            action = "check_out_updated"
+
+            log = await self._store_log(
+                employee_id=employee_id,
+                device_id=device_id,
+                session_id=existing_session.id,
+                timestamp=timestamp,
+                verify_type=verify_type,
+                punch_direction=direction,
+                device_user_id=device_user_id,
+                work_code=work_code,
+            )
+
+            logger.info(
+                f"[ENGINE] SCAN #{scan_count + 1:<3} | "
+                f"{employee.full_name if employee else employee_id} "
+                f"| {timestamp.strftime('%H:%M:%S')} "
+                f"| duration={duration_minutes}min "
+                f"| overtime={overtime_minutes}min"
+            )
+
             return {
-                "session_id": None,
-                "status": "unknown",
-                "late_minutes": 0,
-                "action": "orphan_check_out",
+                "log_id": str(log.id),
+                "employee_id": str(employee_id),
+                "device_id": str(device_id) if device_id else None,
+                "timestamp": timestamp.isoformat(),
+                "direction": direction,
+                "action": action,
+                "verify_type": verify_type,
+                "device_user_id": device_user_id,
+                "session_id": str(existing_session.id),
+                "status": (
+                    existing_session.status.value
+                    if hasattr(existing_session.status, "value")
+                    else str(existing_session.status)
+                ),
+                "late_minutes": existing_session.late_minutes or 0,
+                "duration_minutes": duration_minutes,
+                "overtime_minutes": overtime_minutes,
+                "scan_count": scan_count + 1,
             }
 
+    # ── Private helpers ───────────────────────────────────────
+
+    async def _store_log(
+        self,
+        employee_id: UUID,
+        device_id: Optional[UUID],
+        session_id: UUID,
+        timestamp: datetime,
+        verify_type: str,
+        punch_direction: str,
+        device_user_id: Optional[str],
+        work_code: Optional[str],
+    ) -> AttendanceLog:
+        """Store a scan log. is_duplicate is always False — every scan is real."""
+        return await self.log_repo.create({
+            "employee_id": employee_id,
+            "device_id": device_id,
+            "session_id": session_id,
+            "timestamp": timestamp,
+            "verify_type": verify_type,
+            "punch_direction": punch_direction,
+            "device_user_id": device_user_id,
+            "work_code": work_code,
+            "is_duplicate": False,  # Every scan is real — no suppression
+        })
+
     def _calculate_lateness(
-        self, check_in: datetime, shift: "Shift"
+        self,
+        check_in: datetime,
+        shift: Optional[Shift],
     ) -> tuple[float, AttendanceStatus]:
         """
-        Calculate late minutes and attendance status.
-
-        Returns (late_minutes, status).
+        Calculate late minutes against shift start time.
+        Returns (late_minutes, AttendanceStatus).
+        If no shift assigned, employee is always ON_TIME.
         """
-        check_in_time = check_in.time()
-        shift_start = shift.start_time
-
-        # Calculate grace period cutoff
-        grace_minutes = shift.grace_period_minutes or settings.DEFAULT_GRACE_PERIOD_MINUTES
-
-        # Convert shift start to datetime for comparison
-        shift_start_dt = datetime.combine(check_in.date(), shift_start)
-        grace_cutoff = shift_start_dt + timedelta(minutes=grace_minutes)
-        check_in_dt = datetime.combine(check_in.date(), check_in_time)
-
-        if check_in_dt <= shift_start_dt:
-            # Early or on time
+        if not shift:
             return 0.0, AttendanceStatus.ON_TIME
-        elif check_in_dt <= grace_cutoff:
-            # Within grace period - still on time
+
+        grace = shift.grace_period_minutes or settings.DEFAULT_GRACE_PERIOD_MINUTES
+        shift_start_dt = datetime.combine(check_in.date(), shift.start_time)
+
+        # Make timezone-aware if check_in is aware
+        if check_in.tzinfo is not None:
+            shift_start_dt = shift_start_dt.replace(tzinfo=check_in.tzinfo)
+
+        grace_cutoff = shift_start_dt + timedelta(minutes=grace)
+        check_in_naive = check_in.replace(tzinfo=None) if check_in.tzinfo else check_in
+        shift_start_naive = shift_start_dt.replace(tzinfo=None)
+        grace_cutoff_naive = grace_cutoff.replace(tzinfo=None)
+
+        if check_in_naive <= grace_cutoff_naive:
             return 0.0, AttendanceStatus.ON_TIME
-        else:
-            # Late
-            late_delta = check_in_dt - shift_start_dt
-            late_minutes = late_delta.total_seconds() / 60
-            return round(late_minutes, 1), AttendanceStatus.LATE
+
+        late_delta = check_in_naive - shift_start_naive
+        late_minutes = round(late_delta.total_seconds() / 60, 1)
+        return late_minutes, AttendanceStatus.LATE
 
     def _calculate_overtime(
-        self, check_out: datetime, shift: "Shift", duration_minutes: float
+        self,
+        duration_minutes: float,
+        shift: Optional[Shift],
     ) -> float:
-        """Calculate overtime minutes."""
-        working_hours = shift.working_hours or 8.0
-        expected_minutes = working_hours * 60
-
-        if duration_minutes > expected_minutes:
-            return round(duration_minutes - expected_minutes, 1)
+        """
+        Calculate overtime minutes beyond expected working hours.
+        If no shift, no overtime tracked.
+        """
+        if not shift:
+            return 0.0
+        expected = (shift.working_hours or 8.0) * 60
+        if duration_minutes > expected:
+            return round(duration_minutes - expected, 1)
         return 0.0

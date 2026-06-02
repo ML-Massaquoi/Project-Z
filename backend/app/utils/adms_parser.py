@@ -27,8 +27,14 @@ def parse_adms_attlog(body: str) -> list[ADMSAttendanceRecord]:
     """
     Parse ADMS ATTLOG payload body.
 
-    Format: Each line is tab-separated:
+    Standard ZKTeco format — each line is tab-separated:
     {user_id}\t{timestamp}\t{status}\t{verify_type}\t{work_code}\t{reserved1}\t{reserved2}
+
+    Rodasoft variants handled:
+    - Header lines beginning with "ATTLOG:", "USERPIC:", "USER:", etc. are skipped
+    - Lines beginning with "#" or "//" are skipped (comment lines)
+    - Single-space delimiter fallback when tab count < 2
+    - Trailing \r stripped from every field
 
     Example:
     1\t2024-01-15 08:30:45\t0\t1\t0\t0\t0
@@ -38,31 +44,56 @@ def parse_adms_attlog(body: str) -> list[ADMSAttendanceRecord]:
     if not body or not body.strip():
         return records
 
-    for line in body.strip().split("\n"):
+    for line in body.strip().splitlines():
         line = line.strip()
         if not line:
             continue
 
+        # Skip known header/directive lines sent by some Rodasoft/ZKTeco firmware
+        upper = line.upper()
+        if (
+            upper.startswith("ATTLOG:")
+            or upper.startswith("USERPIC:")
+            or upper.startswith("USER:")
+            or upper.startswith("OPERLOG:")
+            or upper.startswith("#")
+            or upper.startswith("//")
+        ):
+            logger.debug(f"ADMS parser: skipping header/directive line: {line!r}")
+            continue
+
         try:
-            parts = line.split("\t")
+            # Primary delimiter: tab. Fallback: multiple spaces or single space.
+            if "\t" in line:
+                parts = [p.strip() for p in line.split("\t")]
+            else:
+                # Some firmware versions use space as delimiter
+                parts = line.split()
+
             if len(parts) < 2:
-                logger.warning(f"ADMS: Skipping malformed line (too few fields): {line}")
+                logger.warning(
+                    f"ADMS parser: skipping malformed line "
+                    f"(expected ≥2 fields, got {len(parts)}): {line!r}"
+                )
                 continue
 
-            user_id = parts[0].strip()
-            timestamp_str = parts[1].strip()
+            user_id = parts[0]
+            timestamp_str = parts[1]
 
-            # Parse timestamp - handle various formats
+            # Parse timestamp — handle various formats
             timestamp = _parse_timestamp(timestamp_str)
             if not timestamp:
-                logger.warning(f"ADMS: Could not parse timestamp: {timestamp_str}")
+                logger.warning(
+                    f"ADMS parser: unparseable timestamp {timestamp_str!r} "
+                    f"in line: {line!r}"
+                )
                 continue
 
-            status = int(parts[2].strip()) if len(parts) > 2 else 0
-            verify_type = int(parts[3].strip()) if len(parts) > 3 else 1
-            work_code = parts[4].strip() if len(parts) > 4 else ""
-            reserved1 = parts[5].strip() if len(parts) > 5 else ""
-            reserved2 = parts[6].strip() if len(parts) > 6 else ""
+            status = int(parts[2]) if len(parts) > 2 else 0
+            verify_type = int(parts[3]) if len(parts) > 3 else 1
+            work_code = parts[4] if len(parts) > 4 else ""
+            reserved1 = parts[5] if len(parts) > 5 else ""
+            reserved2 = parts[6] if len(parts) > 6 else ""
 
             records.append(
                 ADMSAttendanceRecord(
@@ -75,9 +106,15 @@ def parse_adms_attlog(body: str) -> list[ADMSAttendanceRecord]:
                     reserved2=reserved2,
                 )
             )
-        except Exception as e:
-            logger.error(f"ADMS: Error parsing line '{line}': {e}")
+        except (ValueError, IndexError) as e:
+            logger.error(f"ADMS parser: error on line {line!r}: {e}")
             continue
+
+    if not records:
+        logger.warning(
+            f"ADMS parser: produced 0 records from body "
+            f"({len(body)} bytes). First 300 chars: {body[:300]!r}"
+        )
 
     return records
 
@@ -120,17 +157,28 @@ def map_punch_status(status: int) -> str:
 
 
 def generate_adms_options_response(serial_number: str) -> str:
-    """Generate ADMS GET options response for device handshake."""
+    """
+    Generate ADMS GET options response for device handshake.
+
+    Critical settings:
+    - Realtime=1: push each scan immediately (not batched)
+    - TransInterval=1: minimum interval between pushes (seconds)
+    - Delay=1: polling interval in seconds
+    - TransFlag: which data types to transmit
+    """
     return (
         f"GET OPTION FROM: {serial_number}\r\n"
-        "ATTLOGStamp=0\r\n"
-        "OPERLOGStamp=0\r\n"
-        "ATTPHOTOStamp=0\r\n"
+        "ATTLOGStamp=None\r\n"
+        "OPERLOGStamp=None\r\n"
+        "ATTPHOTOStamp=None\r\n"
         "ErrorDelay=30\r\n"
-        "Delay=10\r\n"
-        "TransTimes=00:00;14:05\r\n"
+        "Delay=1\r\n"
+        "TransTimes=00:00;23:59\r\n"
         "TransInterval=1\r\n"
-        "TransFlag=TransData AttLog\tOpLog\r\n"
+        "TransFlag=TransData AttLog\r\n"
         "Realtime=1\r\n"
         "Encrypt=0\r\n"
+        "ServerVer=2.4.1\r\n"
+        "PushProtVer=2.4.1\r\n"
+        "PushOptionsFlag=1\r\n"
     )

@@ -8,17 +8,19 @@ import { Toaster } from 'sonner'
 
 const pageTitles: Record<string, { title: string; subtitle: string }> = {
   '/': { title: 'Dashboard', subtitle: "Welcome back! Here's what's happening today." },
+  '/live-monitor': { title: 'Live Operations Monitor', subtitle: 'Real-time biometric scan feed — every scan, instantly.' },
   '/employees': { title: 'Employees', subtitle: 'Manage your workforce.' },
   '/attendance': { title: 'Attendance', subtitle: 'Real-time attendance tracking.' },
   '/devices': { title: 'Devices', subtitle: 'Biometric terminal management.' },
   '/departments': { title: 'Departments', subtitle: 'Organizational structure.' },
   '/shifts': { title: 'Shifts', subtitle: 'Work schedule management.' },
   '/reports': { title: 'Reports', subtitle: 'Generate and export reports.' },
-  '/settings': { title: 'Settings', subtitle: 'System configuration.' },
-  '/calendar': { title: 'Calendar', subtitle: 'View attendance calendar.' },
-  '/leave': { title: 'Leave Management', subtitle: 'Manage employee leave requests.' },
+  '/settings': { title: 'Settings', subtitle: 'System configuration and offices.' },
+  '/calendar': { title: 'Attendance', subtitle: 'Real-time attendance tracking.' },
+  '/leave': { title: 'Attendance', subtitle: 'Real-time attendance tracking.' },
+  '/unrecognized': { title: 'Unrecognized Users', subtitle: 'Map unknown device fingerprints to employees.' },
   '/users': { title: 'Users & Roles', subtitle: 'Manage system users and permissions.' },
-  '/audit': { title: 'Audit Logs', subtitle: 'System activity and audit trail.' },
+  '/audit': { title: 'Settings', subtitle: 'System configuration and offices.' },
 }
 
 export default function AppLayout() {
@@ -36,7 +38,7 @@ export default function AppLayout() {
   const pageInfo = pageTitles[location.pathname] || { title: 'Project Z', subtitle: '' }
 
   return (
-    <div className="flex min-h-screen bg-[var(--color-slate-50)]">
+    <div className="flex min-h-screen bg-[#090D16]">
       <Sidebar mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar title={pageInfo.title} subtitle={pageInfo.subtitle} onMenuToggle={() => setMobileOpen(true)} />
@@ -48,8 +50,9 @@ export default function AppLayout() {
         position="top-right"
         toastOptions={{
           style: {
-            background: 'white',
+            background: '#111827',
             border: '1px solid var(--color-border)',
+            color: '#F9FAFB',
             boxShadow: 'var(--shadow-lg)',
           },
         }}
@@ -59,3 +62,4 @@ export default function AppLayout() {
     </div>
   )
 }
+

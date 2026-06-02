@@ -76,21 +76,21 @@ export default function Departments() {
             <motion.div key={dept.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} className="card p-5 hover:shadow-lg transition-all">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-xl bg-indigo-50"><Building2 size={20} className="text-indigo-500" /></div>
+                  <div className="p-2.5 rounded-xl bg-indigo-950/40 border border-indigo-900/50 text-indigo-400"><Building2 size={20} className="text-indigo-400" /></div>
                   <div>
-                    <h3 className="font-semibold text-[var(--color-slate-700)]">{dept.name}</h3>
-                    <p className="text-xs text-[var(--color-slate-400)] font-mono">{dept.code}</p>
+                    <h3 className="font-semibold text-slate-200">{dept.name}</h3>
+                    <p className="text-xs text-slate-400 font-mono">{dept.code}</p>
                   </div>
                 </div>
                 <div className="flex gap-1">
-                  <button onClick={() => openEdit(dept)} className="p-1.5 rounded-lg hover:bg-blue-50 text-[var(--color-slate-400)] hover:text-[var(--color-primary)]"><Edit size={14} /></button>
-                  <button onClick={() => { if (confirm('Delete?')) deleteMutation.mutate(dept.id) }} className="p-1.5 rounded-lg hover:bg-red-50 text-[var(--color-slate-400)] hover:text-red-500"><Trash2 size={14} /></button>
+                  <button onClick={() => openEdit(dept)} className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-blue-400"><Edit size={14} /></button>
+                  <button onClick={() => { if (confirm('Delete?')) deleteMutation.mutate(dept.id) }} className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-red-400"><Trash2 size={14} /></button>
                 </div>
               </div>
-              {dept.description && <p className="text-sm text-[var(--color-slate-500)] mb-3 line-clamp-2">{dept.description}</p>}
-              <div className="flex items-center justify-between pt-3 border-t border-[var(--color-border)]">
-                <div className="flex items-center gap-1.5 text-sm text-[var(--color-slate-500)]"><Users size={14} />{dept.employee_count} employees</div>
-                {dept.office_name && <span className="text-xs text-[var(--color-primary)] bg-blue-50 px-2 py-0.5 rounded-full">{dept.office_name}</span>}
+              {dept.description && <p className="text-sm text-slate-400 mb-3 line-clamp-2">{dept.description}</p>}
+              <div className="flex items-center justify-between pt-3 border-t border-slate-800">
+                <div className="flex items-center gap-1.5 text-sm text-slate-400"><Users size={14} />{dept.employee_count} employees</div>
+                {dept.office_name && <span className="text-xs bg-blue-950/40 border border-blue-900/50 text-blue-400 px-2 py-0.5 rounded-full">{dept.office_name}</span>}
               </div>
             </motion.div>
           ))
@@ -104,27 +104,27 @@ export default function Departments() {
 
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowModal(false)} />
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 z-10">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowModal(false)} />
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="relative bg-[#0B0F19] border border-slate-800 rounded-2xl shadow-2xl w-full max-w-md p-6 z-10 text-slate-200">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-semibold">{editDept ? 'Edit Department' : 'Add Department'}</h2>
-              <button onClick={() => setShowModal(false)} className="p-1 hover:bg-[var(--color-slate-50)] rounded-lg"><X size={18} /></button>
+              <h2 className="text-lg font-semibold text-slate-100">{editDept ? 'Edit Department' : 'Add Department'}</h2>
+              <button onClick={() => setShowModal(false)} className="p-1 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"><X size={18} /></button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium text-[var(--color-slate-600)] mb-1">Name *</label><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="w-full px-3 py-2.5 rounded-xl border border-[var(--color-border)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20" /></div>
-                <div><label className="block text-sm font-medium text-[var(--color-slate-600)] mb-1">Code *</label><input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} required className="w-full px-3 py-2.5 rounded-xl border border-[var(--color-border)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20" /></div>
+                <div><label className="block text-sm font-medium text-slate-400 mb-1">Name *</label><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="w-full px-3 py-2.5 rounded-xl border border-slate-800 bg-slate-950 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" /></div>
+                <div><label className="block text-sm font-medium text-slate-400 mb-1">Code *</label><input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} required className="w-full px-3 py-2.5 rounded-xl border border-slate-800 bg-slate-950 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" /></div>
               </div>
-              <div><label className="block text-sm font-medium text-[var(--color-slate-600)] mb-1">Office *</label>
-                <select value={form.office_id} onChange={(e) => setForm({ ...form, office_id: e.target.value })} required className="w-full px-3 py-2.5 rounded-xl border border-[var(--color-border)] text-sm bg-white">
+              <div><label className="block text-sm font-medium text-slate-400 mb-1">Office *</label>
+                <select value={form.office_id} onChange={(e) => setForm({ ...form, office_id: e.target.value })} required className="w-full px-3 py-2.5 rounded-xl border border-slate-800 bg-slate-950 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
                   <option value="">Select Office</option>
                   {(offices as Office[] || []).map((o: Office) => <option key={o.id} value={o.id}>{o.name}</option>)}
                 </select>
               </div>
-              <div><label className="block text-sm font-medium text-[var(--color-slate-600)] mb-1">Head Name</label><input value={form.head_name} onChange={(e) => setForm({ ...form, head_name: e.target.value })} className="w-full px-3 py-2.5 rounded-xl border border-[var(--color-border)] text-sm" /></div>
-              <div><label className="block text-sm font-medium text-[var(--color-slate-600)] mb-1">Description</label><textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} className="w-full px-3 py-2.5 rounded-xl border border-[var(--color-border)] text-sm resize-none" /></div>
+              <div><label className="block text-sm font-medium text-slate-400 mb-1">Head Name</label><input value={form.head_name} onChange={(e) => setForm({ ...form, head_name: e.target.value })} className="w-full px-3 py-2.5 rounded-xl border border-slate-800 bg-slate-950 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" /></div>
+              <div><label className="block text-sm font-medium text-slate-400 mb-1">Description</label><textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} className="w-full px-3 py-2.5 rounded-xl border border-slate-800 bg-slate-950 text-slate-200 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" /></div>
               <div className="flex justify-end gap-3 mt-6">
-                <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2.5 rounded-xl border border-[var(--color-border)] text-sm font-medium">Cancel</button>
+                <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2.5 rounded-xl border border-slate-800 text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white bg-transparent transition-colors">Cancel</button>
                 <button type="submit" disabled={createMutation.isPending || updateMutation.isPending} className="px-5 py-2.5 rounded-xl bg-[var(--color-primary)] text-white text-sm font-medium hover:bg-[var(--color-primary-hover)] disabled:opacity-50 flex items-center gap-2">
                   {(createMutation.isPending || updateMutation.isPending) && <Loader2 size={14} className="animate-spin" />}
                   {editDept ? 'Save' : 'Create'}

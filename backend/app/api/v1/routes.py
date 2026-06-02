@@ -18,6 +18,7 @@ from app.models.department import Department
 from app.models.device import Device
 from app.models.employee import Employee
 from app.models.office import Office
+from app.models.organization import Organization
 from app.models.shift import Shift
 from app.repositories.base import BaseRepository
 from app.schemas.common import (
@@ -172,8 +173,18 @@ async def create_office(
     data: OfficeCreate, db: AsyncSession = Depends(get_db),
     _user=Depends(get_current_user),
 ):
+    # Auto-assign to the first organization if not provided
+    from sqlalchemy import select as sa_select
+    org_result = await db.execute(sa_select(Organization).limit(1))
+    org = org_result.scalar_one_or_none()
+    if not org:
+        raise HTTPException(status_code=400, detail="No organization found")
+
+    payload = data.model_dump()
+    payload['organization_id'] = org.id
+
     repo = BaseRepository(Office, db)
-    office = await repo.create(data.model_dump())
+    office = await repo.create(payload)
     return OfficeResponse(
         id=office.id, name=office.name, code=office.code,
         address=office.address, city=office.city, phone=office.phone,

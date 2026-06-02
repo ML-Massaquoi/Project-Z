@@ -41,7 +41,7 @@ class Employee(BaseModel):
     avatar_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     status: Mapped[EmployeeStatus] = mapped_column(
-        SAEnum(EmployeeStatus, name="employee_status"),
+        SAEnum(EmployeeStatus, name="employee_status", values_callable=lambda x: [e.value for e in x]),
         default=EmployeeStatus.ACTIVE,
         nullable=False,
     )

@@ -44,12 +44,22 @@ class EmployeeService:
         existing = await self.repo.get_by_field("employee_code", data["employee_code"])
         if existing:
             raise DuplicateException("Employee", "employee_code")
+        from app.models.employee import EmployeeStatus
+        if "status" in data:
+            status_val = data["status"]
+            if isinstance(status_val, str):
+                data["status"] = EmployeeStatus(status_val.lower())
         return await self.repo.create(data)
 
     async def update_employee(self, employee_id: UUID, data: dict) -> Employee:
         emp = await self.repo.get_by_id(employee_id)
         if not emp:
             raise NotFoundException("Employee", employee_id)
+        from app.models.employee import EmployeeStatus
+        if "status" in data:
+            status_val = data["status"]
+            if isinstance(status_val, str):
+                data["status"] = EmployeeStatus(status_val.lower())
         return await self.repo.update(employee_id, data)
 
     async def delete_employee(self, employee_id: UUID) -> bool:
