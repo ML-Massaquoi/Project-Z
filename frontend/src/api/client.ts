@@ -20,7 +20,7 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response?.status === 401) {
+    if (error.response?.status === 401 && error.config?.responseType !== 'blob') {
       const refreshToken = localStorage.getItem('refresh_token')
       if (refreshToken && !error.config._retry) {
         error.config._retry = true
@@ -60,7 +60,8 @@ export const authAPI = {
 
 /* ── Dashboard API ─────────────────────────────────────── */
 export const dashboardAPI = {
-  getStats: () => api.get('/dashboard/stats'),
+  getStats: (params?: { target_date?: string }) =>
+    api.get('/dashboard/stats', { params }),
   getCharts: () => api.get('/dashboard/charts'),
 }
 
@@ -86,8 +87,10 @@ export const devicesAPI = {
   list: () => api.get('/devices'),
   get: (id: string) => api.get(`/devices/${id}`),
   update: (id: string, data: Record<string, unknown>) => api.put(`/devices/${id}`, data),
-  getSDKUsers: (id: string) => api.get(`/devices/${id}/sdk/users`),
-  importSDKUsers: (id: string) => api.post(`/devices/${id}/sdk/import-users`),
+  getDeviceUsers: () => api.get('/device-users'),
+  getSDKUsers: (id: string) => api.get(`/devices/${id}/sdk/users`, { timeout: 30000 }),
+  importSDKUsers: (id: string) => api.post(`/devices/${id}/sdk/import-users`, null, { timeout: 60000 }),
+  testConnection: (id: string) => api.get(`/devices/${id}/sdk/test-connection`, { timeout: 30000 }),
   getUnrecognizedUsers: () => api.get('/devices/unrecognized-users/all'),
   mapToExisting: (device_id: string, device_user_id: string, employee_id: string) =>
     api.post('/devices/unrecognized-users/map-existing', null, {
@@ -97,6 +100,48 @@ export const devicesAPI = {
     api.post('/devices/unrecognized-users/map-new', null, {
       params: { device_id, device_user_id, full_name, employee_code, ...(department_id ? { department_id } : {}) },
     }),
+  dismissUnrecognized: (userId: string) =>
+    api.post(`/devices/unrecognized-users/${userId}/dismiss`),
+  bulkCreateEmployees: () => api.post('/device-users/bulk-create-employees'),
+  getImportPreview: () => api.get('/device-users/import-preview'),
+  getEmployeeDevices: (employeeId: string) =>
+    api.get(`/device-groups/employee/${employeeId}/devices`),
+  assignEmployeeDevices: (employeeId: string, deviceIds: string[]) =>
+    api.post('/device-groups/employee/assign-devices', { employee_id: employeeId, device_ids: deviceIds }),
+  assignEmployeeGroups: (employeeId: string, groupIds: string[]) =>
+    api.post('/device-groups/employee/assign-groups', { employee_id: employeeId, group_ids: groupIds }),
+}
+
+/* ── Device Health API ─────────────────────────────────── */
+export const deviceHealthAPI = {
+  overview: () => api.get('/devices/health/summary'),
+  fleetHealth: () => api.get('/devices/health/overview'),
+  getDeviceHealth: (id: string) => api.get(`/devices/${id}/health`),
+  getHealthHistory: (id: string, hours: number = 24) =>
+    api.get(`/devices/${id}/health/history`, { params: { hours } }),
+  getBiometricCounts: (id: string) => api.get(`/devices/${id}/biometric-counts`),
+  probeDevice: (id: string) => api.post(`/devices/${id}/health/probe`),
+  probeAll: () => api.post('/devices/health/probe-all'),
+}
+
+/* ── Device Discovery API ──────────────────────────────── */
+export const deviceDiscoveryAPI = {
+  fullScan: (cidr: string = '172.16.40.0/24', port: number = 4370) =>
+    api.post('/devices/discovery/scan', { cidr, port }, { timeout: 120000 }),
+  quickScan: (cidr: string = '172.16.40.0/24', port: number = 4370) =>
+    api.post('/devices/discovery/quick-scan', { cidr, port }, { timeout: 60000 }),
+  register: (data: Record<string, unknown>) =>
+    api.post('/devices/discovery/register', data),
+  updateDevice: (id: string, data: Record<string, unknown>) =>
+    api.put(`/devices/discovery/${id}`, data),
+  deleteDevice: (id: string) =>
+    api.delete(`/devices/discovery/${id}`),
+}
+
+/* ── Device Events API ─────────────────────────────────── */
+export const deviceEventsAPI = {
+  recent: (params?: Record<string, unknown>) =>
+    api.get('/scan-events', { params: { per_page: 50, ...params } }),
 }
 
 /* ── Attendance API ────────────────────────────────────── */
@@ -132,6 +177,22 @@ export const officesAPI = {
 export const reportsAPI = {
   attendance: (params: Record<string, unknown>) =>
     api.get('/reports/attendance', { params, responseType: 'blob' }),
+
+  // v2 endpoints
+  daily: (params: { date: string; department_id?: string; format?: string }) =>
+    api.get('/reports/attendance/daily', { params, responseType: 'blob' }),
+  lateness: (params: { start: string; end: string; department_id?: string; format?: string }) =>
+    api.get('/reports/attendance/lateness', { params, responseType: 'blob' }),
+  absences: (params: { start: string; end: string; department_id?: string; format?: string }) =>
+    api.get('/reports/attendance/absences', { params, responseType: 'blob' }),
+  overtime: (params: { start: string; end: string; department_id?: string; format?: string }) =>
+    api.get('/reports/attendance/overtime', { params, responseType: 'blob' }),
+  movement: (params: { start: string; end: string; device_id?: string; format?: string }) =>
+    api.get('/reports/attendance/movement', { params, responseType: 'blob' }),
+  shiftCompliance: (params: { start: string; end: string; department_id?: string; format?: string }) =>
+    api.get('/reports/attendance/shift-compliance', { params, responseType: 'blob' }),
+  unknownScans: (params: { start: string; end: string; device_id?: string; format?: string }) =>
+    api.get('/reports/attendance/unknown-scans', { params, responseType: 'blob' }),
 }
 
 /* ── Users API ─────────────────────────────────────────── */
@@ -147,6 +208,7 @@ export const usersAPI = {
 /* ── Roles API ─────────────────────────────────────────── */
 export const rolesAPI = {
   list: () => api.get('/roles'),
+  createRole: (data: Record<string, unknown>) => api.post('/roles', data),
 }
 
 /* ── Scan Events API ───────────────────────────────────── */
@@ -230,9 +292,213 @@ export const shiftAssignmentsAPI = {
   deleteOverride: (id: string) => api.delete(`/employee-shift-overrides/${id}`),
 }
 
+/* ── Audit API ────────────────────────────────────────── */
+export const auditAPI = {
+  list: (params: Record<string, unknown>) => api.get('/audit-logs', { params }),
+  getById: (id: string) => api.get(`/audit-logs/${id}`),
+  getActions: () => api.get('/audit-logs/actions'),
+  getEntityTypes: () => api.get('/audit-logs/entity-types'),
+  getMethods: () => api.get('/audit-logs/methods'),
+  getStats: (params?: Record<string, unknown>) => api.get('/audit-logs/stats', { params }),
+  export: (params: Record<string, unknown>) =>
+    api.get('/audit-logs/export', { params, responseType: params.format === 'json' ? 'json' : 'text' }),
+}
+
+/* ── Workforce Planning API ──────────────────────────── */
+export const workforceAPI = {
+  departmentSummaries: () => api.get('/workforce/departments/summary'),
+  departmentDetail: (deptId: string, params?: Record<string, unknown>) =>
+    api.get(`/workforce/departments/${deptId}/detail`, { params }),
+  departmentRoster: (deptId: string, year: number, month: number) =>
+    api.get(`/workforce/departments/${deptId}/roster`, { params: { year, month } }),
+  employeeProfile: (empId: string) => api.get(`/workforce/employees/${empId}/profile`),
+  employeeCalendar: (empId: string, year: number, month: number) =>
+    api.get(`/workforce/employees/${empId}/calendar`, { params: { year, month } }),
+  shiftChange: (data: { employee_id: string; shift_template_id: string; start_date: string; end_date: string; reason?: string }) =>
+    api.post('/workforce/shift-change', data),
+  shiftSwap: (data: { employee_a_id: string; employee_b_id: string; swap_date: string; reason?: string }) =>
+    api.post('/workforce/shift-swap', data),
+  coverage: (params?: Record<string, unknown>) => api.get('/workforce/coverage', { params }),
+  upcomingChanges: (daysAhead?: number) =>
+    api.get('/workforce/upcoming-changes', { params: { days_ahead: daysAhead || 7 } }),
+  exportRoster: (data: { department_id: string; year: number; month: number; format: string }) =>
+    api.post('/workforce/roster/export', data, { responseType: 'blob', timeout: 60000 }),
+}
+
+/* ── Settings API ─────────────────────────────────────── */
+export const settingsAPI = {
+  list: () => api.get('/settings'),
+  get: (key: string) => api.get(`/settings/${key}`),
+  update: (data: Record<string, string>) => api.put('/settings', data),
+}
+
+/* ── Shift Protocols API ─────────────────────────────── */
+export const shiftProtocolsAPI = {
+  list: () => api.get('/shift-protocols'),
+  get: (id: string) => api.get(`/shift-protocols/${id}`),
+  create: (data: Record<string, unknown>) => api.post('/shift-protocols', data),
+  update: (id: string, data: Record<string, unknown>) => api.put(`/shift-protocols/${id}`, data),
+  delete: (id: string) => api.delete(`/shift-protocols/${id}`),
+  seedPresets: () => api.post('/shift-protocols/seed'),
+}
+
+/* ── Daily Reports API ───────────────────────────────── */
+export const dailyReportsAPI = {
+  generate: (data: { report_date: string; department_id?: string }) =>
+    api.post('/daily-reports/generate', data),
+  list: (params?: Record<string, unknown>) =>
+    api.get('/daily-reports/list', { params }),
+  getById: (id: string) => api.get(`/daily-reports/${id}`),
+  getByDate: (reportDate: string, departmentId?: string) =>
+    api.get(`/daily-reports/by-date/${reportDate}`, { params: departmentId ? { department_id: departmentId } : {} }),
+  export: (id: string, format: string = 'csv') =>
+    api.get(`/daily-reports/${id}/export`, { params: { format }, responseType: 'blob' }),
+  delete: (id: string) => api.delete(`/daily-reports/${id}`),
+}
+
 /* ── Events API ────────────────────────────────────────── */
 export const eventsAPI = {
   replay: (after_event_id: string) =>
     api.get<{ items: WSEvent[] }>('/events/replay', { params: { after_event_id } }),
+}
+
+/* ── System Alerts API ─────────────────────────────────── */
+export const alertsAPI = {
+  list: (params?: {
+    skip?: number
+    limit?: number
+    severity?: string
+    category?: string
+    acknowledged?: boolean
+  }) => api.get('/alerts', { params }),
+
+  getStats: () => api.get('/alerts/stats'),
+
+  getById: (id: string) => api.get(`/alerts/${id}`),
+
+  acknowledge: (id: string, resolutionNote?: string) =>
+    api.put(`/alerts/${id}/acknowledge`, { resolution_note: resolutionNote }),
+
+  acknowledgeAll: () => api.post('/alerts/acknowledge-all'),
+
+  purge: () => api.delete('/alerts/purge'),
+}
+
+/* ── Data Integrity API ────────────────────────────────── */
+export const integrityAPI = {
+  findings: (params?: {
+    category?: string
+    severity?: string
+    resolved?: boolean
+    limit?: number
+  }) => api.get('/integrity/findings', { params }),
+
+  stats: () => api.get('/integrity/stats'),
+
+  run: () => api.post('/integrity/run'),
+
+  resolve: (id: string, note?: string) =>
+    api.put(`/integrity/findings/${id}/resolve`, { resolution_note: note }),
+}
+
+/* ── Backup API ──────────────────────────────────────── */
+export const backupAPI = {
+  list: (params?: { page?: number; page_size?: number; status?: string; backup_type?: string }) =>
+    api.get('/backups', { params }),
+  stats: () => api.get('/backups/stats'),
+  trigger: (data: { backup_type?: string; retention_days?: number }) =>
+    api.post('/backups/trigger', data),
+  get: (id: string) => api.get(`/backups/${id}`),
+  delete: (id: string) => api.delete(`/backups/${id}`),
+}
+
+/* ── Device Activity API ─────────────────────────────── */
+export const deviceActivityAPI = {
+  getStatusHistory: (deviceId: string, params?: { hours?: number; limit?: number }) =>
+    api.get(`/device-activity/${deviceId}/status-history`, { params }),
+
+  getActivityLogs: (deviceId: string, params?: { activity_type?: string; hours?: number; limit?: number }) =>
+    api.get(`/device-activity/${deviceId}/activity-logs`, { params }),
+
+  getFleetSummary: (params?: { hours?: number }) =>
+    api.get('/device-activity/fleet/summary', { params }),
+
+  getEmployeeEnrollment: (employeeId: string, params?: { limit?: number }) =>
+    api.get(`/device-activity/enrollment/employee/${employeeId}`, { params }),
+
+  getDeviceEnrollment: (deviceId: string, params?: { limit?: number }) =>
+    api.get(`/device-activity/enrollment/device/${deviceId}`, { params }),
+
+  getRecentEnrollments: (params?: { limit?: number }) =>
+    api.get('/device-activity/enrollment/recent', { params }),
+}
+
+/* ── Sync Center API ────────────────────────────────── */
+export const syncAPI = {
+  overview: () => api.get('/sync/overview'),
+  logs: (params?: { device_id?: string; sync_type?: string; status?: string; date_from?: string; date_to?: string; page?: number; per_page?: number }) =>
+    api.get('/sync/logs', { params }),
+  pending: () => api.get('/sync/pending'),
+  matrix: () => api.get('/sync/matrix'),
+  deviceSync: (id: string) => api.get(`/sync/${id}`),
+  pullUsers: (id: string) => api.post(`/sync/${id}/pull-users`, null, { timeout: 60000 }),
+  pullTemplates: (id: string) => api.post(`/sync/${id}/pull-templates`, null, { timeout: 120000 }),
+  pushUsers: (id: string, employeeIds?: string[]) => api.post(`/sync/${id}/push-users`, employeeIds, { timeout: 60000 }),
+  pushTemplates: (id: string, employeeIds?: string[]) => api.post(`/sync/${id}/push-templates`, employeeIds, { timeout: 120000 }),
+  fullSync: (id: string) => api.post(`/sync/${id}/full`, null, { timeout: 180000 }),
+  provision: (id: string) => api.post(`/sync/${id}/provision`, null, { timeout: 60000 }),
+  reProvision: (id: string) => api.post(`/sync/${id}/re-provision`, null, { timeout: 60000 }),
+  initialSync: (id: string) => api.post(`/sync/${id}/initial-sync`, null, { timeout: 180000 }),
+  employeeStatus: (id: string) => api.get(`/sync/employee/${id}`),
+  pushEmployeeAll: (id: string) => api.post(`/sync/employee/${id}/push-all`, null, { timeout: 60000 }),
+  pushEmployeeDevice: (empId: string, devId: string) => api.post(`/sync/employee/${empId}/push/${devId}`),
+  employeeRetry: (id: string) => api.post(`/sync/employee/${id}/retry`),
+  bulkSyncAll: () => api.post('/sync/bulk/all'),
+  bulkSyncDepartment: (deptId: string) => api.post(`/sync/bulk/department/${deptId}`),
+  bulkSyncEmployees: (employeeIds: string[]) => api.post('/sync/bulk/employees', employeeIds),
+  retryAll: () => api.post('/sync/retry-all'),
+}
+
+/* ── Enrollment API ─────────────────────────────────────── */
+export const enrollmentAPI = {
+  createSession: (data: { employee_id: string; device_id: string }) =>
+    api.post('/enrollment/sessions', data),
+  beginSession: (sessionId: string) =>
+    api.post(`/enrollment/sessions/${sessionId}/begin`),
+  sendFingerprint: (data: { session_id: string; template_data: string; finger_index?: number; quality?: number }) =>
+    api.post('/enrollment/sessions/fingerprint', data),
+  completeSession: (sessionId: string) =>
+    api.post('/enrollment/sessions/complete', { session_id: sessionId }),
+  cancelSession: (sessionId: string, reason?: string) =>
+    api.post('/enrollment/sessions/cancel', { session_id: sessionId, reason }),
+  getActiveSessions: (deviceId?: string) =>
+    api.get('/enrollment/sessions/active', { params: deviceId ? { device_id: deviceId } : {} }),
+  getTemplates: (employeeId: string) =>
+    api.get(`/enrollment/templates/${employeeId}`),
+  getOnlineDevices: () =>
+    api.get('/enrollment/devices/online'),
+  wizardCreateAndEnroll: (data: {
+    employee_code: string; full_name: string; first_name?: string; last_name?: string;
+    middle_name?: string; gender?: string; email?: string; phone?: string;
+    position?: string; department_id?: string; employment_type?: string; shift_id?: string; device_id: string;
+  }) => api.post('/enrollment/wizard/create-and-enroll', data),
+  wizardPollFingerprint: (sessionId: string, timeout?: number) => {
+    const seconds = timeout || 45
+    return api.post(
+      `/enrollment/wizard/poll-fingerprint/${sessionId}?timeout=${seconds}`,
+      null,
+      { timeout: (seconds + 120) * 1000 }, // axios timeout must exceed backend timeout (lock 30s + enroll timeout+60 + verify ~15s)
+    )
+  },
+}
+
+/* ── Employee Status API ────────────────────────────────── */
+export const employeeStatusAPI = {
+  transition: (employeeId: string, data: { new_status: string; reason?: string }) =>
+    api.patch(`/employees/${employeeId}/status`, data),
+  getTransitions: (employeeId: string) =>
+    api.get(`/employees/${employeeId}/status/transitions`),
+  getAllowedTransitions: (currentStatus: string) =>
+    api.get(`/employees/status/transitions/${currentStatus}`),
 }
 

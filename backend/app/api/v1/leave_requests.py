@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from sqlalchemy import and_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, PermissionChecker
 from app.database.session import get_db
 from app.models.leave_request import LeaveRequest, LeaveStatus, LeaveType
 
@@ -45,7 +45,7 @@ def _serialize(r: LeaveRequest) -> dict:
     }
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, dependencies=[Depends(PermissionChecker("attendance:view"))])
 async def create_leave_request(
     data: LeaveRequestCreate,
     db: AsyncSession = Depends(get_db),
@@ -75,7 +75,7 @@ async def create_leave_request(
     return _serialize(req)
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(PermissionChecker("attendance:view"))])
 async def list_leave_requests(
     employee_id: Optional[UUID] = None,
     status: Optional[str] = None,
@@ -106,7 +106,7 @@ async def list_leave_requests(
     return [_serialize(r) for r in result.scalars().all()]
 
 
-@router.get("/{request_id}")
+@router.get("/{request_id}", dependencies=[Depends(PermissionChecker("attendance:view"))])
 async def get_leave_request(
     request_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -119,7 +119,7 @@ async def get_leave_request(
     return _serialize(req)
 
 
-@router.put("/{request_id}/approve")
+@router.put("/{request_id}/approve", dependencies=[Depends(PermissionChecker("attendance:modify"))])
 async def approve_leave_request(
     request_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -150,7 +150,7 @@ async def approve_leave_request(
     return _serialize(result.scalar_one())
 
 
-@router.put("/{request_id}/reject")
+@router.put("/{request_id}/reject", dependencies=[Depends(PermissionChecker("attendance:modify"))])
 async def reject_leave_request(
     request_id: UUID,
     db: AsyncSession = Depends(get_db),

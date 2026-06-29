@@ -26,17 +26,15 @@ def _partition_bounds(year: int, month: int) -> tuple[str, str]:
     return start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
 
 
-async def ensure_next_month_partition(session) -> None:
+async def ensure_partition(session, year: int, month: int) -> None:
     """
-    Create next month's scan_events partition if it doesn't already exist.
+    Create a specific month's scan_events partition if it doesn't already exist.
     Safe to call multiple times (uses CREATE TABLE IF NOT EXISTS).
     """
     from sqlalchemy import text
 
-    today = date.today()
-    next_m = _next_month(today)
-    partition_name = f"scan_events_{next_m.year}_{next_m.month:02d}"
-    start_str, end_str = _partition_bounds(next_m.year, next_m.month)
+    partition_name = f"scan_events_{year}_{month:02d}"
+    start_str, end_str = _partition_bounds(year, month)
 
     await session.execute(text(f"""
         CREATE TABLE IF NOT EXISTS {partition_name}
@@ -50,6 +48,19 @@ async def ensure_next_month_partition(session) -> None:
     )
 
 
+async def ensure_next_month_partition(session) -> None:
+    """Create next month's partition (called on the 25th of each month)."""
+    today = date.today()
+    next_m = _next_month(today)
+    await ensure_partition(session, next_m.year, next_m.month)
+
+
+async def ensure_current_month_partition(session) -> None:
+    """Create current month's partition if missing."""
+    today = date.today()
+    await ensure_partition(session, today.year, today.month)
+
+
 async def run_partition_manager(db_session_factory) -> None:
     """
     Background loop: runs ensure_next_month_partition on the 25th of each month.
@@ -57,9 +68,10 @@ async def run_partition_manager(db_session_factory) -> None:
     """
     logger.info("[PartitionManager] Starting partition manager task")
 
-    # Run once at startup
+    # Run once at startup — ensure current + next month partitions exist
     try:
         async with db_session_factory() as session:
+            await ensure_current_month_partition(session)
             await ensure_next_month_partition(session)
     except Exception as e:
         logger.error(f"[PartitionManager] Startup partition check failed: {e}", exc_info=True)

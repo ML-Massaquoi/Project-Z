@@ -1,0 +1,169 @@
+/* ═══════════════════════════════════════════════════════════
+   PROJECT-Z ANIMATION SYSTEM
+   Motion design for enterprise operations UI
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Fade ────────────────────────────────────────────────── */
+@keyframes pz-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes pz-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+.pz-fade-in {
+  animation: pz-fade-in var(--pz-duration-normal) var(--pz-ease-out) forwards;
+}
+
+/* ── Slide Up ────────────────────────────────────────────── */
+@keyframes pz-slide-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.pz-slide-up {
+  animation: pz-slide-up var(--pz-duration-slow) var(--pz-ease-spring) forwards;
+}
+
+/* ── Slide Down ──────────────────────────────────────────── */
+@keyframes pz-slide-down {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.pz-slide-down {
+  animation: pz-slide-down var(--pz-duration-slow) var(--pz-ease-spring) forwards;
+}
+
+/* ── Slide In Right ──────────────────────────────────────── */
+@keyframes pz-slide-in-right {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.pz-slide-in-right {
+  animation: pz-slide-in-right var(--pz-duration-slow) var(--pz-ease-spring) forwards;
+}
+
+/* ── Slide In Left ───────────────────────────────────────── */
+@keyframes pz-slide-in-left {
+  from { opacity: 0; transform: translateX(-16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.pz-slide-in-left {
+  animation: pz-slide-in-left var(--pz-duration-slow) var(--pz-ease-spring) forwards;
+}
+
+/* ── Scale In ────────────────────────────────────────────── */
+@keyframes pz-scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.pz-scale-in {
+  animation: pz-scale-in var(--pz-duration-slow) var(--pz-ease-spring) forwards;
+}
+
+/* ── Count Up (for KPI values) ───────────────────────────── */
+@keyframes pz-count-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.pz-count-up {
+  animation: pz-count-up 0.4s var(--pz-ease-spring) forwards;
+}
+
+/* ── Shimmer (Skeleton Loader) ───────────────────────────── */
+@keyframes pz-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.pz-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--pz-surface-2) 25%,
+    var(--pz-surface-3) 50%,
+    var(--pz-surface-2) 75%
+  );
+  background-size: 200% 100%;
+  animation: pz-shimmer 1.5s ease-in-out infinite;
+  border-radius: var(--pz-radius-md);
+}
+
+/* ── Pulse Glow (Live Indicators) ────────────────────────── */
+@keyframes pz-pulse-glow {
+  0%, 100% { transform: scale(1); opacity: 0.9; box-shadow: var(--pz-glow-green); }
+  50%      { transform: scale(1.15); opacity: 1; box-shadow: 0 0 20px rgba(16, 185, 129, 0.7); }
+}
+.pz-pulse-glow {
+  animation: pz-pulse-glow 2s ease-in-out infinite;
+}
+
+/* ── Pulse Dot ───────────────────────────────────────────── */
+@keyframes pz-pulse-dot {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.3; }
+}
+.pz-pulse-dot {
+  animation: pz-pulse-dot 2s ease-in-out infinite;
+}
+
+/* ── Ping (Notification Dot) ─────────────────────────────── */
+@keyframes pz-ping {
+  75%, 100% { transform: scale(2); opacity: 0; }
+}
+.pz-ping {
+  animation: pz-ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+/* ── Spin ────────────────────────────────────────────────── */
+@keyframes pz-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.pz-spin {
+  animation: pz-spin 1s linear infinite;
+}
+
+/* ── Drawer Enter / Exit ─────────────────────────────────── */
+@keyframes pz-drawer-enter {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+@keyframes pz-drawer-exit {
+  from { transform: translateX(0); opacity: 1; }
+  to   { transform: translateX(100%); opacity: 0; }
+}
+
+/* ── Modal Enter ─────────────────────────────────────────── */
+@keyframes pz-modal-enter {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes pz-backdrop-enter {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Stagger Utility ─────────────────────────────────────── */
+.pz-stagger-1 { animation-delay: 0.05s; }
+.pz-stagger-2 { animation-delay: 0.10s; }
+.pz-stagger-3 { animation-delay: 0.15s; }
+.pz-stagger-4 { animation-delay: 0.20s; }
+.pz-stagger-5 { animation-delay: 0.25s; }
+.pz-stagger-6 { animation-delay: 0.30s; }
+.pz-stagger-7 { animation-delay: 0.35s; }
+.pz-stagger-8 { animation-delay: 0.40s; }
+
+/* ── Row Enter (for table rows appearing) ────────────────── */
+@keyframes pz-row-enter {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.pz-row-enter {
+  animation: pz-row-enter var(--pz-duration-slow) var(--pz-ease-spring) forwards;
+}
+
+/* ── Ring Pulse (for MetricRing) ─────────────────────────── */
+@keyframes pz-ring-fill {
+  from { stroke-dashoffset: var(--ring-circumference, 283); }
+  to   { stroke-dashoffset: var(--ring-offset, 0); }
+}

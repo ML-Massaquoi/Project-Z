@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy import and_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, PermissionChecker
 from app.database.session import get_db
 from app.models.dept_shift_rule import DepartmentShiftRule
 
@@ -38,11 +38,13 @@ class DeptShiftRuleUpdate(BaseModel):
     notes: Optional[str] = None
 
 
-def _serialize(r: DepartmentShiftRule) -> dict:
+def _serialize(r: DepartmentShiftRule, department_name: str = None, template_name: str = None) -> dict:
     return {
         "id": str(r.id),
         "department_id": str(r.department_id),
+        "department_name": department_name,
         "shift_template_id": str(r.shift_template_id),
+        "shift_template_name": template_name,
         "effective_from": str(r.effective_from),
         "effective_to": str(r.effective_to) if r.effective_to else None,
         "weekend_days": r.weekend_days or [],
@@ -53,20 +55,50 @@ def _serialize(r: DepartmentShiftRule) -> dict:
     }
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(PermissionChecker("shift:view"))])
 async def list_dept_shift_rules(
     department_id: Optional[UUID] = None,
     db: AsyncSession = Depends(get_db),
     _user=Depends(get_current_user),
 ):
+    from app.models.department import Department
+    from app.models.shift_template import ShiftTemplate
+
     query = select(DepartmentShiftRule).order_by(DepartmentShiftRule.effective_from.desc())
     if department_id:
         query = query.where(DepartmentShiftRule.department_id == department_id)
     result = await db.execute(query)
-    return [_serialize(r) for r in result.scalars().all()]
+    rules = result.scalars().all()
+
+    # Batch load names
+    dept_ids = list(set(r.department_id for r in rules))
+    template_ids = list(set(r.shift_template_id for r in rules))
+
+    dept_names = {}
+    if dept_ids:
+        dept_result = await db.execute(
+            select(Department.id, Department.name).where(Department.id.in_(dept_ids))
+        )
+        dept_names = {row[0]: row[1] for row in dept_result}
+
+    template_names = {}
+    if template_ids:
+        tpl_result = await db.execute(
+            select(ShiftTemplate.id, ShiftTemplate.name).where(ShiftTemplate.id.in_(template_ids))
+        )
+        template_names = {row[0]: row[1] for row in tpl_result}
+
+    return [
+        _serialize(
+            r,
+            department_name=dept_names.get(r.department_id),
+            template_name=template_names.get(r.shift_template_id),
+        )
+        for r in rules
+    ]
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, dependencies=[Depends(PermissionChecker("shift:update"))])
 async def create_dept_shift_rule(
     data: DeptShiftRuleCreate,
     db: AsyncSession = Depends(get_db),
@@ -101,7 +133,7 @@ async def create_dept_shift_rule(
         raise
 
 
-@router.get("/{rule_id}")
+@router.get("/{rule_id}", dependencies=[Depends(PermissionChecker("shift:view"))])
 async def get_dept_shift_rule(
     rule_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -114,7 +146,7 @@ async def get_dept_shift_rule(
     return _serialize(r)
 
 
-@router.put("/{rule_id}")
+@router.put("/{rule_id}", dependencies=[Depends(PermissionChecker("shift:update"))])
 async def update_dept_shift_rule(
     rule_id: UUID,
     data: DeptShiftRuleUpdate,
@@ -144,7 +176,7 @@ async def update_dept_shift_rule(
     return _serialize(result.scalar_one())
 
 
-@router.delete("/{rule_id}")
+@router.delete("/{rule_id}", dependencies=[Depends(PermissionChecker("shift:delete"))])
 async def delete_dept_shift_rule(
     rule_id: UUID,
     db: AsyncSession = Depends(get_db),

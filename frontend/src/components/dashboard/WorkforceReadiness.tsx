@@ -1,203 +1,160 @@
 import { useEffect } from 'react'
-import { AlertCircle, Clock, ShieldAlert, UserX, Users, Activity } from 'lucide-react'
+import { AlertCircle, Clock, ShieldAlert, UserX, Users, Activity, CheckCircle2 } from 'lucide-react'
 import { useWorkforceStore } from '@/stores/workforceStore'
 
 export function WorkforceReadiness() {
   const { metrics, initializeBusSubscription } = useWorkforceStore()
 
-  // Initialize Event Bus subscriptions
   useEffect(() => {
     const unsubscribe = initializeBusSubscription()
     return () => unsubscribe()
   }, [initializeBusSubscription])
 
-  // Calculate understaffed state warnings
   const understaffedCount = metrics.understaffed_departments.length
   const criticalCount = metrics.missing_critical_staff.length
 
   return (
-    <div className="space-y-4">
-      {/* Expected Workforce Header */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-[#1F2937]/30 border border-slate-800 p-3 rounded-lg flex items-center gap-3">
-          <div className="p-2 rounded bg-blue-950/30 text-blue-400">
-            <Users size={16} />
+    <div className="space-y-6">
+      {/* Quick Stats Grid */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="p-4 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] hover:border-[var(--pz-border-strong)] transition-colors">
+          <div className="flex items-center gap-2 mb-1.5">
+            <Users size={14} className="text-blue-400" />
+            <span className="text-xs text-[var(--pz-text-muted)] font-medium">Scheduled</span>
           </div>
-          <div>
-            <p className="text-[10px] uppercase text-gray-400 font-semibold tracking-wider">Scheduled Today</p>
-            <p className="text-lg font-bold text-gray-100 font-mono tracking-tight">{metrics.expected_count || 120}</p>
-          </div>
+          <p className="text-2xl font-bold font-mono text-[var(--pz-text)] tabular-nums">
+            {metrics.expected_count ?? 0}
+          </p>
         </div>
 
-        <div className="bg-[#1F2937]/30 border border-slate-800 p-3 rounded-lg flex items-center gap-3">
-          <div className="p-2 rounded bg-emerald-950/30 text-emerald-400">
-            <Activity size={16} />
+        <div className="p-4 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] hover:border-[var(--pz-border-strong)] transition-colors">
+          <div className="flex items-center gap-2 mb-1.5">
+            <Activity size={14} className="text-emerald-400" />
+            <span className="text-xs text-[var(--pz-text-muted)] font-medium">Active</span>
           </div>
-          <div>
-            <p className="text-[10px] uppercase text-gray-400 font-semibold tracking-wider">Active Staff</p>
-            <p className="text-lg font-bold text-gray-100 font-mono tracking-tight">{metrics.present_count || 94}</p>
-          </div>
+          <p className="text-2xl font-bold font-mono text-[var(--pz-text)] tabular-nums">
+            {metrics.present_count ?? 0}
+          </p>
         </div>
 
-        <div className="bg-[#1F2937]/30 border border-slate-800 p-3 rounded-lg flex items-center gap-3">
-          <div className="p-2 rounded bg-amber-950/30 text-amber-400">
-            <AlertCircle size={16} />
+        <div className="p-4 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] hover:border-[var(--pz-border-strong)] transition-colors">
+          <div className="flex items-center gap-2 mb-1.5">
+            <AlertCircle size={14} className="text-amber-400" />
+            <span className="text-xs text-[var(--pz-text-muted)] font-medium">Understaffed</span>
           </div>
-          <div>
-            <p className="text-[10px] uppercase text-gray-400 font-semibold tracking-wider">Understaffed Depts</p>
-            <p className="text-lg font-bold text-amber-400 font-mono tracking-tight">{understaffedCount}</p>
-          </div>
+          <p className="text-2xl font-bold font-mono text-amber-400 tabular-nums">
+            {understaffedCount}
+          </p>
         </div>
 
-        <div className="bg-[#1F2937]/30 border border-slate-800 p-3 rounded-lg flex items-center gap-3">
-          <div className="p-2 rounded bg-red-950/30 text-red-400">
-            <ShieldAlert size={16} />
+        <div className="p-4 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] hover:border-[var(--pz-border-strong)] transition-colors">
+          <div className="flex items-center gap-2 mb-1.5">
+            <ShieldAlert size={14} className="text-red-400" />
+            <span className="text-xs text-[var(--pz-text-muted)] font-medium">Critical</span>
           </div>
-          <div>
-            <p className="text-[10px] uppercase text-gray-400 font-semibold tracking-wider">Critical Absences</p>
-            <p className="text-lg font-bold text-red-400 font-mono tracking-tight">{criticalCount}</p>
-          </div>
+          <p className="text-2xl font-bold font-mono text-red-400 tabular-nums">
+            {criticalCount}
+          </p>
         </div>
       </div>
 
-      {/* Main Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Left Col: Understaffed & Shift Transitions */}
-        <div className="space-y-4 lg:col-span-2">
-          {/* Understaffed Warning Panel */}
-          <div className="bg-[#1F2937]/20 border border-slate-800 rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <ShieldAlert size={16} className="text-amber-500" />
-              <h3 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Department Readiness Check</h3>
-            </div>
-
-            {understaffedCount === 0 ? (
-              <p className="text-xs text-emerald-400 font-semibold bg-emerald-950/20 px-3 py-2 rounded border border-emerald-500/20">
-                ✓ All departments staffing meets nominal levels (&gt;85% readiness).
-              </p>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {metrics.understaffed_departments.map((dept) => (
-                  <div key={dept.department_id} className="p-2.5 rounded bg-amber-950/10 border border-amber-500/25 flex items-center justify-between">
-                    <span className="text-xs font-semibold text-gray-200">{dept.name}</span>
-                    <span className="text-xs font-mono font-bold text-amber-400 bg-amber-950/40 px-2 py-0.5 rounded">
-                      {Math.round(dept.percent)}% Staffed
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+      {/* Observability Feed Sections (Divider Separated) */}
+      <div className="space-y-5">
+        {/* Department Readiness */}
+        <div className="space-y-2.5">
+          <div className="flex items-center gap-2">
+            <ShieldAlert size={16} className="text-amber-400" />
+            <h4 className="text-sm font-semibold text-[var(--pz-text)]">Department Readiness</h4>
           </div>
-
-          {/* Missing Critical Staff List */}
-          <div className="bg-[#1F2937]/20 border border-slate-800 rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <UserX size={16} className="text-red-500" />
-              <h3 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Missing Critical Personnel</h3>
+          {understaffedCount === 0 ? (
+            <div className="flex items-center gap-2 text-xs text-emerald-400 font-medium bg-emerald-500/5 border border-emerald-500/10 rounded-lg px-3 py-2">
+              <CheckCircle2 size={14} className="flex-shrink-0" />
+              <span>All departments staffing meets nominal levels (&gt;85% readiness)</span>
             </div>
-
-            {criticalCount === 0 ? (
-              <p className="text-xs text-gray-500 font-medium">No critical staffing alerts reported.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs text-left">
-                  <thead>
-                    <tr className="border-b border-slate-800 text-[10px] text-gray-400 uppercase tracking-wider">
-                      <th className="py-2">Staff Code</th>
-                      <th className="py-2">Name</th>
-                      <th className="py-2">Position</th>
-                      <th className="py-2">Department</th>
-                      <th className="py-2 text-right">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {metrics.missing_critical_staff.map((staff) => (
-                      <tr key={staff.id} className="border-b border-slate-800/30">
-                        <td className="py-2 font-mono text-gray-300 font-semibold">{staff.employee_code}</td>
-                        <td className="py-2 text-gray-200 font-semibold">{staff.full_name}</td>
-                        <td className="py-2 text-gray-400">{staff.position}</td>
-                        <td className="py-2 text-gray-400">{staff.department_name}</td>
-                        <td className="py-2 text-right">
-                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded border uppercase ${
-                            staff.status === 'absent'
-                              ? 'bg-red-950/20 text-red-400 border-red-500/20'
-                              : 'bg-amber-950/20 text-amber-400 border-amber-500/20'
-                          }`}>
-                            {staff.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-2">
+              {metrics.understaffed_departments.map((dept) => (
+                <div key={dept.department_id} className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)]">
+                  <span className="text-xs font-medium text-[var(--pz-text-secondary)]">{dept.name}</span>
+                  <span className="text-xs font-bold font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded">
+                    {Math.round(dept.percent)}% Staffed
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Right Col: Overtime & Shift Transitions */}
-        <div className="space-y-4">
-          {/* Overtime Escalations */}
-          <div className="bg-[#1F2937]/20 border border-slate-800 rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Clock size={16} className="text-blue-400" />
-              <h3 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Overtime Warnings</h3>
-            </div>
-
-            {metrics.overtime_escalations.length === 0 ? (
-              <p className="text-xs text-gray-500">No shift overrides or overtime violations detected.</p>
-            ) : (
-              <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
-                {metrics.overtime_escalations.map((item, idx) => (
-                  <div key={idx} className="p-2 rounded bg-slate-800/30 border border-slate-800 flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-semibold text-gray-200">{item.employee_name}</p>
-                      <p className="text-[9px] text-gray-500">{item.shift_name}</p>
-                    </div>
-                    <span className="text-[10px] font-bold font-mono text-red-400 bg-red-950/30 border border-red-500/20 px-2 py-0.5 rounded">
-                      +{item.overtime_minutes}m OT
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+        {/* Critical Absences */}
+        <div className="border-t border-[var(--pz-border)] pt-4 space-y-2.5">
+          <div className="flex items-center gap-2">
+            <UserX size={16} className="text-red-400" />
+            <h4 className="text-sm font-semibold text-[var(--pz-text)]">Missing Critical Personnel</h4>
           </div>
-
-          {/* Shift Transitions */}
-          <div className="bg-[#1F2937]/20 border border-slate-800 rounded-lg p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Users size={16} className="text-indigo-400" />
-              <h3 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Roster Transitions</h3>
-            </div>
-
-            {metrics.shift_transitions.length === 0 ? (
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between items-center text-gray-400 border-b border-slate-800/30 py-1.5">
-                  <span>Morning Ramp Duty (06:00)</span>
-                  <span className="text-emerald-400 font-mono">14 Active</span>
-                </div>
-                <div className="flex justify-between items-center text-gray-400 border-b border-slate-800/30 py-1.5">
-                  <span>Cargo Shift A (08:00)</span>
-                  <span className="text-emerald-400 font-mono">22 Active</span>
-                </div>
-                <div className="flex justify-between items-center text-gray-400 py-1.5">
-                  <span>Aviation Security B (14:00)</span>
-                  <span className="text-gray-500 font-mono">Scheduled</span>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {metrics.shift_transitions.map((item, idx) => (
-                  <div key={idx} className="flex justify-between items-center text-xs text-gray-300 py-1.5 border-b border-slate-800/30">
-                    <span>{item.shift_name} ({item.time})</span>
-                    <span className={item.status === 'starting' ? 'text-emerald-400 font-semibold' : 'text-amber-400 font-semibold'}>
-                      {item.count} {item.status}
-                    </span>
+          {criticalCount === 0 ? (
+            <p className="text-xs text-[var(--pz-text-muted)] pl-6">No critical staffing alerts reported.</p>
+          ) : (
+            <div className="space-y-2">
+              {metrics.missing_critical_staff.slice(0, 5).map((staff) => (
+                <div key={staff.id} className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)]">
+                  <div>
+                    <p className="text-xs font-semibold text-[var(--pz-text-secondary)]">{staff.full_name}</p>
+                    <p className="text-[10px] text-[var(--pz-text-muted)]">{staff.position} &middot; {staff.department_name}</p>
                   </div>
-                ))}
-              </div>
-            )}
+                  <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20 uppercase">
+                    {staff.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Overtime */}
+        <div className="border-t border-[var(--pz-border)] pt-4 space-y-2.5">
+          <div className="flex items-center gap-2">
+            <Clock size={16} className="text-blue-400" />
+            <h4 className="text-sm font-semibold text-[var(--pz-text)]">Overtime Warnings</h4>
           </div>
+          {metrics.overtime_escalations.length === 0 ? (
+            <p className="text-xs text-[var(--pz-text-muted)] pl-6">No overtime violations detected.</p>
+          ) : (
+            <div className="space-y-2 max-h-[140px] overflow-y-auto">
+              {metrics.overtime_escalations.map((item, idx) => (
+                <div key={idx} className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)]">
+                  <div>
+                    <p className="text-xs font-semibold text-[var(--pz-text-secondary)]">{item.employee_name}</p>
+                    <p className="text-[10px] text-[var(--pz-text-muted)]">{item.shift_name}</p>
+                  </div>
+                  <span className="text-[10px] font-bold font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/15">
+                    +{item.overtime_minutes}m
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Roster Transitions */}
+        <div className="border-t border-[var(--pz-border)] pt-4 space-y-2.5">
+          <div className="flex items-center gap-2">
+            <Users size={16} className="text-indigo-400" />
+            <h4 className="text-sm font-semibold text-[var(--pz-text)]">Roster Transitions</h4>
+          </div>
+          {metrics.shift_transitions.length === 0 ? (
+            <p className="text-xs text-[var(--pz-text-muted)] pl-6">No shift transitions pending.</p>
+          ) : (
+            <div className="space-y-2">
+              {metrics.shift_transitions.map((item, idx) => (
+                <div key={idx} className="flex justify-between items-center text-xs text-[var(--pz-text-secondary)] pb-2 border-b border-[var(--pz-border)]/30 last:border-0 last:pb-0">
+                  <span className="text-[var(--pz-text-secondary)]">{item.shift_name} ({item.time})</span>
+                  <span className={item.status === 'starting' ? 'text-emerald-400 font-semibold font-mono' : 'text-amber-400 font-semibold font-mono'}>
+                    {item.count} {item.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

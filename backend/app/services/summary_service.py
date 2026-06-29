@@ -74,7 +74,7 @@ class SummaryService:
 
         for s in sessions:
             status = s.status if isinstance(s.status, str) else s.status.value
-            if status in ("present", "late", "early_arrival"):
+            if status in ("present", "late", "early_arrival", "unscheduled_attendance", "on_duty", "in_progress"):
                 present_count += 1
             if status == "late":
                 late_count += 1

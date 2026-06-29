@@ -27,13 +27,26 @@ class DeviceRepository(BaseRepository[Device]):
     async def update_last_seen(
         self, serial_number: str, ip_address: Optional[str] = None
     ) -> Optional[Device]:
-        """Update device last_seen timestamp and set online."""
+        """Update device last_seen timestamp and set online.
+
+        Never overwrite a real device IP (e.g. 172.16.x.x) with a proxy
+        address (127.0.0.1). Only update IP when the source is a real
+        network address or the device currently has no IP set.
+        """
         values = {
             "last_seen": datetime.now(timezone.utc),
             "is_online": True,
         }
         if ip_address:
-            values["ip_address"] = ip_address
+            # Only update IP if it's not a loopback/proxy address
+            # and the device doesn't already have a real IP
+            if ip_address not in ("127.0.0.1", "::1", "localhost"):
+                values["ip_address"] = ip_address
+            else:
+                # Check if device needs an IP at all (first connection)
+                existing = await self.get_by_serial(serial_number)
+                if existing and not existing.ip_address:
+                    values["ip_address"] = ip_address
 
         await self.session.execute(
             update(Device)

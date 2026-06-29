@@ -11,6 +11,7 @@ from sqlalchemy.orm import joinedload
 
 from app.models.employee import Employee
 from app.models.employee_device_mapping import EmployeeDeviceMapping
+from app.models.enrollment_session import EnrollmentSession
 from app.repositories.base import BaseRepository
 
 
@@ -34,6 +35,7 @@ class EmployeeRepository(BaseRepository[Employee]):
         search: Optional[str] = None,
         department_id: Optional[UUID] = None,
         status: Optional[str] = None,
+        only_enrolled: bool = False,
         skip: int = 0,
         limit: int = 20,
     ) -> tuple[Sequence[Employee], int]:
@@ -51,6 +53,12 @@ class EmployeeRepository(BaseRepository[Employee]):
             filters.append(Employee.department_id == department_id)
         if status:
             filters.append(Employee.status == status)
+        if only_enrolled:
+            filters.append(
+                Employee.id.in_(
+                    select(EnrollmentSession.employee_id).distinct()
+                )
+            )
 
         # Count
         count_query = select(func.count()).select_from(Employee)
@@ -95,3 +103,23 @@ class EmployeeRepository(BaseRepository[Employee]):
             .where(Employee.status == "active")
         )
         return result.scalar_one()
+
+    async def count_enrolled(self) -> int:
+        """Count active employees that have at least one enrollment session (wizard-created)."""
+        result = await self.session.execute(
+            select(func.count(func.distinct(Employee.id)))
+            .select_from(Employee)
+            .join(EnrollmentSession, EnrollmentSession.employee_id == Employee.id)
+            .where(Employee.status == "active")
+        )
+        return result.scalar_one()
+
+    async def get_enrolled_employee_ids(self) -> list:
+        """Return IDs of all active employees that have enrollment sessions."""
+        result = await self.session.execute(
+            select(Employee.id)
+            .join(EnrollmentSession, EnrollmentSession.employee_id == Employee.id)
+            .where(Employee.status == "active")
+            .distinct()
+        )
+        return [row[0] for row in result.all()]

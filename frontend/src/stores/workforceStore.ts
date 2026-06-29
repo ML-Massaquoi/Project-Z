@@ -33,15 +33,19 @@ export const useWorkforceStore = create<WorkforceState>((set, get) => ({
       get().updateMetrics(data)
     })
 
-    // 2. Subscribe to employee absent alerts
+    // 2. Subscribe to employee absent alerts (only real employees)
     const unsubscribeAbsent = eventBus.subscribe('employee_absent', (event) => {
       const data = event.data as Record<string, unknown>
+      const employee_id = data.employee_id as string | undefined
+      const employee_name = data.employee_name as string | undefined
+      if (!employee_id || !employee_name) return
+
       const staff: CriticalStaffMember = {
-        id: (data.employee_id as string) || String(Math.random()),
+        id: employee_id,
         employee_code: (data.employee_code as string) || 'N/A',
-        full_name: (data.employee_name as string) || 'Unknown Critical Member',
-        position: (data.position as string) || 'Security Guard',
-        department_name: (data.department_name as string) || 'Aviation Security',
+        full_name: employee_name,
+        position: (data.position as string) || 'Unknown',
+        department_name: (data.department_name as string) || 'Unknown',
         status: 'absent',
       }
       
@@ -54,15 +58,19 @@ export const useWorkforceStore = create<WorkforceState>((set, get) => ({
       }
     })
 
-    // 3. Subscribe to employee late alerts
+    // 3. Subscribe to employee late alerts (only real employees)
     const unsubscribeLate = eventBus.subscribe('employee_late', (event) => {
       const data = event.data as Record<string, unknown>
+      const employee_id = data.employee_id as string | undefined
+      const employee_name = data.employee_name as string | undefined
+      if (!employee_id || !employee_name) return
+
       const staff: CriticalStaffMember = {
-        id: (data.employee_id as string) || String(Math.random()),
+        id: employee_id,
         employee_code: (data.employee_code as string) || 'N/A',
-        full_name: (data.employee_name as string) || 'Unknown Critical Member',
-        position: (data.position as string) || 'Aviation Safety Officer',
-        department_name: (data.department_name as string) || 'Ground Operations',
+        full_name: employee_name,
+        position: (data.position as string) || 'Unknown',
+        department_name: (data.department_name as string) || 'Unknown',
         status: 'late',
       }
 
@@ -103,21 +111,22 @@ export const useWorkforceStore = create<WorkforceState>((set, get) => ({
       })
     })
 
-    // 5. Subscribe to overtime escalations
+    // 5. Subscribe to overtime escalations (only real employees)
     const unsubscribeOvertime = eventBus.subscribe('attendance_update', (event) => {
-      const d = event.data as any
-      if (d.overtime_minutes && d.overtime_minutes > 0) {
-        const item = {
-          employee_name: d.employee_name || 'Employee',
-          shift_name: d.shift_name || 'Active Shift',
-          overtime_minutes: d.overtime_minutes,
-        }
-        const currentOvertime = get().metrics.overtime_escalations
-        if (!currentOvertime.some((o) => o.employee_name === item.employee_name)) {
-          get().updateMetrics({
-            overtime_escalations: [item, ...currentOvertime].slice(0, 50),
-          })
-        }
+      const d = event.data as Record<string, unknown>
+      const employee_name = d.employee_name as string | undefined
+      if (!employee_name || !d.overtime_minutes || (d.overtime_minutes as number) <= 0) return
+
+      const item = {
+        employee_name,
+        shift_name: (d.shift_name as string) || 'Unknown',
+        overtime_minutes: d.overtime_minutes as number,
+      }
+      const currentOvertime = get().metrics.overtime_escalations
+      if (!currentOvertime.some((o) => o.employee_name === item.employee_name)) {
+        get().updateMetrics({
+          overtime_escalations: [item, ...currentOvertime].slice(0, 50),
+        })
       }
     })
 

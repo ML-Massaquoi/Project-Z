@@ -4,19 +4,29 @@ Connection management and event broadcasting via Redis pub/sub.
 
 Uses Redis as the message bus so broadcasts work correctly even when
 uvicorn --reload restarts the worker process.
+
+Events are also stored in Redis Streams for replay on reconnection.
 """
 
 import asyncio
 import json
 import logging
+import time
 from typing import Any
 
 from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
 
-# Renamed from projectz:events to projectz:ws_events (enterprise platform v2)
+# Redis pub/sub channel for real-time broadcasts
 REDIS_CHANNEL = "projectz:ws_events"
+
+# Redis Stream for event replay (stores last 1000 events)
+REDIS_STREAM = "projectz:ws_events_stream"
+REDIS_STREAM_MAX_LEN = 1000
+
+# Event ID counter key
+EVENT_COUNTER_KEY = "projectz:ws_event_counter"
 
 
 class WebSocketManager:
@@ -60,12 +70,30 @@ class WebSocketManager:
         """
         Publish event to Redis channel — all workers receive it and
         forward to their local WebSocket connections.
+        Also stores event in Redis Stream for replay on reconnection.
         Falls back to direct broadcast if Redis is unavailable.
         """
-        message = json.dumps({"event": event, "data": data})
         redis = await self._get_redis()
+        event_payload = {"event": event, "data": data}
+        message = json.dumps(event_payload)
+
         if redis:
             try:
+                # Store in Redis Stream for replay
+                event_id = await redis.incr(EVENT_COUNTER_KEY)
+                stream_entry = {
+                    "event_id": str(event_id),
+                    "event": event,
+                    "data": json.dumps(data),
+                    "timestamp": str(time.time()),
+                }
+                await redis.xadd(
+                    REDIS_STREAM,
+                    stream_entry,
+                    maxlen=REDIS_STREAM_MAX_LEN,
+                )
+
+                # Publish for real-time delivery
                 await redis.publish(REDIS_CHANNEL, message)
                 return
             except Exception as e:
@@ -73,6 +101,46 @@ class WebSocketManager:
 
         # Fallback: direct broadcast to local connections
         await self._broadcast_local(message)
+
+    async def replay_events(self, after_event_id: str | None = None, limit: int = 100) -> list[dict]:
+        """
+        Replay events from Redis Stream after a given event ID.
+        Used for WebSocket reconnection recovery.
+        """
+        redis = await self._get_redis()
+        if not redis:
+            return []
+
+        try:
+            if after_event_id:
+                # Read events after the given ID
+                entries = await redis.xrange(
+                    REDIS_STREAM,
+                    min=f"({after_event_id}",
+                    max="+",
+                    count=limit,
+                )
+            else:
+                # Read last N events
+                entries = await redis.xrevrange(
+                    REDIS_STREAM,
+                    max="+",
+                    min="-",
+                    count=limit,
+                )
+
+            events = []
+            for entry_id, fields in entries:
+                events.append({
+                    "event_id": fields.get("event_id", entry_id),
+                    "event": fields.get("event"),
+                    "data": json.loads(fields.get("data", "{}")),
+                    "timestamp": fields.get("timestamp"),
+                })
+            return list(reversed(events))  # Return in chronological order
+        except Exception as e:
+            logger.error(f"Event replay failed: {e}")
+            return []
 
     async def _broadcast_local(self, message: str):
         """Send message directly to all local WebSocket connections."""

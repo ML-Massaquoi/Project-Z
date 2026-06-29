@@ -24,6 +24,7 @@ from app.models.dept_shift_rule import DepartmentShiftRule
 from app.models.employee import Employee
 from app.models.shift_assignment import EmployeeShiftAssignment
 from app.models.shift_override import EmployeeShiftOverride
+from app.models.shift_protocol import ShiftProtocol
 from app.models.shift_template import ShiftTemplate
 
 logger = logging.getLogger(__name__)
@@ -98,6 +99,12 @@ class ShiftResolver:
         # ── Level 2: Employee_Shift_Assignment ────────────────
         assignment = await self._get_assignment(employee_id)
         if assignment is not None:
+            # Protocol-based assignment — resolve in resolver (async-safe)
+            if assignment.shift_protocol_id:
+                return await self._resolve_protocol_assignment(
+                    assignment, target_date
+                )
+
             template_id = assignment.resolve_template_id_for_date(target_date)
             if template_id is None:
                 return None
@@ -122,8 +129,12 @@ class ShiftResolver:
                 source="assignment",
             )
 
-        # ── Level 3: Department_Shift_Rule ────────────────────
+        # ── Level 2b: Employee.shift_protocol_id (direct) ─────
         employee = await self._get_employee(employee_id)
+        if employee is not None and employee.shift_protocol_id is not None:
+            return await self._resolve_employee_protocol(employee, target_date)
+
+        # ── Level 3: Department_Shift_Rule ────────────────────
         if employee is None or employee.department_id is None:
             return None
 
@@ -222,6 +233,165 @@ class ShiftResolver:
     async def _get_employee(self, employee_id: UUID) -> Optional[Employee]:
         result = await self.session.execute(
             select(Employee).where(Employee.id == employee_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def _resolve_employee_protocol(
+        self, employee: Employee, target_date: date
+    ) -> Optional[ResolvedShift]:
+        """
+        Resolve shift from Employee.shift_protocol_id (direct assignment).
+        This handles bulk protocol assignments that bypass EmployeeShiftAssignment.
+        """
+        result = await self.session.execute(
+            select(ShiftProtocol).where(ShiftProtocol.id == employee.shift_protocol_id)
+        )
+        protocol = result.scalar_one_or_none()
+        if protocol is None:
+            logger.warning(
+                f"[ShiftResolver] Employee {employee.id} references missing "
+                f"protocol {employee.shift_protocol_id}"
+            )
+            return None
+
+        # Check working days
+        if protocol.working_days:
+            iso_wd = target_date.isoweekday()
+            if iso_wd not in protocol.working_days:
+                return None
+
+        if protocol.protocol_type.value == "fixed":
+            tpl = await self._find_template(protocol.working_hours_start, protocol.working_hours_end)
+            if tpl is None:
+                return None
+            grace = self._resolve_grace_period(tpl, None, None)
+            return ResolvedShift(
+                template=tpl,
+                grace_period_minutes=grace,
+                source="employee_protocol",
+            )
+
+        if protocol.protocol_type.value == "rotating":
+            # For rotating, compute day index from protocol start
+            if protocol.rotation_start_date:
+                day_index = (target_date - protocol.rotation_start_date).days
+            else:
+                day_index = (target_date - date(2024, 1, 1)).days
+
+            shifts = protocol.rotation_shifts or []
+            if not shifts:
+                return None
+
+            idx = day_index % len(shifts)
+            shift_entry = shifts[idx]
+
+            start_time = shift_entry.get("start", protocol.working_hours_start)
+            end_time = shift_entry.get("end", protocol.working_hours_end)
+
+            tpl = await self._find_template(start_time, end_time)
+            if tpl is None:
+                return None
+
+            grace = self._resolve_grace_period(tpl, None, None)
+            return ResolvedShift(
+                template=tpl,
+                grace_period_minutes=grace,
+                source="employee_protocol",
+            )
+
+        return None
+
+    async def _resolve_protocol_assignment(
+        self, assignment: EmployeeShiftAssignment, target_date: date
+    ) -> Optional[ResolvedShift]:
+        """Resolve a protocol-based assignment."""
+        result = await self.session.execute(
+            select(ShiftProtocol).where(ShiftProtocol.id == assignment.shift_protocol_id)
+        )
+        protocol = result.scalar_one_or_none()
+        if protocol is None:
+            logger.warning(
+                f"[ShiftResolver] Assignment {assignment.id} references missing "
+                f"protocol {assignment.shift_protocol_id}"
+            )
+            return None
+
+        # Check working days if not a working day
+        if not assignment.is_working_day(target_date):
+            return None
+
+        if protocol.protocol_type.value == "fixed":
+            return await self._resolve_fixed_protocol(protocol, assignment, target_date)
+
+        if protocol.protocol_type.value == "rotating":
+            return await self._resolve_rotating_protocol(protocol, assignment, target_date)
+
+        return None
+
+    async def _resolve_fixed_protocol(
+        self, protocol: ShiftProtocol, assignment: EmployeeShiftAssignment, target_date: date
+    ) -> Optional[ResolvedShift]:
+        """Resolve a fixed protocol for a given date."""
+        if protocol.working_days:
+            iso_wd = target_date.isoweekday()
+            if iso_wd not in protocol.working_days:
+                return None
+
+        tpl = await self._find_template(protocol.working_hours_start, protocol.working_hours_end)
+        if tpl is None:
+            return None
+
+        grace = self._resolve_grace_period(tpl, None, assignment)
+        return ResolvedShift(template=tpl, grace_period_minutes=grace, source="assignment")
+
+    async def _resolve_rotating_protocol(
+        self, protocol: ShiftProtocol, assignment: EmployeeShiftAssignment, target_date: date
+    ) -> Optional[ResolvedShift]:
+        """Resolve a rotating protocol for a given date."""
+        if not protocol.rotation_shifts:
+            return None
+
+        ref_date = date(2024, 1, 1)
+        days_from_ref = (target_date - ref_date).days
+        shift_label = protocol.rotation_shifts[days_from_ref % len(protocol.rotation_shifts)]
+
+        if shift_label == "off":
+            return None
+
+        if shift_label == "day":
+            tpl = await self._find_template(protocol.day_shift_start, protocol.day_shift_end)
+        elif shift_label == "night":
+            tpl = await self._find_template(protocol.night_shift_start, protocol.night_shift_end)
+        else:
+            return None
+
+        if tpl is None:
+            return None
+
+        grace = self._resolve_grace_period(tpl, None, assignment)
+        return ResolvedShift(template=tpl, grace_period_minutes=grace, source="assignment")
+
+    async def _find_template(self, start_time: Optional[str], end_time: Optional[str]) -> Optional[ShiftTemplate]:
+        """Find a ShiftTemplate by start/end time strings (e.g. '20:00', '08:00')."""
+        if not start_time or not end_time:
+            return None
+
+        # Convert "HH:MM" strings to datetime.time objects for asyncpg
+        from datetime import time as dt_time
+        try:
+            sh, sm = start_time.split(":")
+            eh, em = end_time.split(":")
+            start = dt_time(int(sh), int(sm))
+            end   = dt_time(int(eh), int(em))
+        except (ValueError, AttributeError):
+            logger.warning(f"[ShiftResolver] Invalid time strings: start={start_time!r} end={end_time!r}")
+            return None
+
+        result = await self.session.execute(
+            select(ShiftTemplate).where(
+                ShiftTemplate.start_time == start,
+                ShiftTemplate.end_time == end,
+            )
         )
         return result.scalar_one_or_none()
 

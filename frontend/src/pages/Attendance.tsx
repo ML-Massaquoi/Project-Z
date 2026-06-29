@@ -1,15 +1,159 @@
-import { useState } from 'react'
+﻿import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { motion } from 'framer-motion'
-import { Fingerprint, Calendar } from 'lucide-react'
+import { Fingerprint, Calendar, Download, Radio } from 'lucide-react'
 import { attendanceAPI } from '@/api/client'
 import { format } from 'date-fns'
 import type { AttendanceLog, AttendanceSession } from '@/types'
+import { PageHeader, TabBar } from '@/components/ui/PageHeader'
+import { FilterBar } from '@/components/ui/FilterBar'
+import { StatusBadge } from '@/components/ui/StatusBadge'
+import { DataTable, type ColumnDef } from '@/components/ui/data-table/DataTable'
+import { DetailDrawer } from '@/components/ui/DetailDrawer'
+import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
+
+/* ── Live Feed Columns ───────────────────────────────────── */
+const liveColumns: ColumnDef<AttendanceLog, unknown>[] = [
+  {
+    accessorKey: 'employee_name',
+    header: 'Employee',
+    cell: ({ row }) => (
+      <div className="flex items-center gap-2.5">
+        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-900/40 to-indigo-900/40 text-blue-400 border border-blue-500/20 flex items-center justify-center flex-shrink-0">
+          <span className="text-[10px] font-bold">{row.original.employee_name?.[0] || '?'}</span>
+        </div>
+        <div>
+          <p className="font-semibold text-[var(--pz-text-secondary)] text-sm">{row.original.employee_name || 'Unknown'}</p>
+          <p className="text-[10px] text-[var(--pz-text-muted)]">{row.original.employee_code}</p>
+        </div>
+      </div>
+    ),
+    size: 220,
+  },
+  {
+    accessorKey: 'department_name',
+    header: 'Department',
+    cell: ({ getValue }) => <span className="text-[var(--pz-text-tertiary)] text-sm">{(getValue() as string) || '\u2014'}</span>,
+  },
+  {
+    accessorKey: 'punch_direction',
+    header: 'Direction',
+    cell: ({ getValue }) => {
+      const dir = getValue() as string
+      return <StatusBadge status={dir === 'in' ? 'in' : 'out'} size="xs" dot={false}>{dir?.toUpperCase()}</StatusBadge>
+    },
+    size: 100,
+  },
+  {
+    accessorKey: 'timestamp',
+    header: 'Time',
+    cell: ({ getValue }) => (
+      <span className="text-[var(--pz-text-tertiary)] font-mono tabular-nums text-sm">
+        {format(new Date(getValue() as string), 'hh:mm:ss a')}
+      </span>
+    ),
+    size: 120,
+  },
+  {
+    accessorKey: 'device_name',
+    header: 'Terminal',
+    cell: ({ row }) => (
+      <span className="text-[var(--pz-text-faint)] font-mono text-xs">
+        {row.original.device_ip || row.original.device_name || '\u2014'}
+      </span>
+    ),
+    size: 140,
+  },
+  {
+    accessorKey: 'verify_type',
+    header: 'Verify',
+    cell: ({ getValue }) => (
+      <span className="text-[var(--pz-text-faint)] capitalize text-xs">{getValue() as string}</span>
+    ),
+    size: 100,
+  },
+]
+
+/* ── Session Columns ─────────────────────────────────────── */
+const sessionColumns: ColumnDef<AttendanceSession, unknown>[] = [
+  {
+    accessorKey: 'employee_name',
+    header: 'Employee',
+    cell: ({ row }) => (
+      <div className="flex items-center gap-2.5">
+        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-900/40 to-indigo-900/40 text-blue-400 border border-blue-500/20 flex items-center justify-center flex-shrink-0">
+          <span className="text-[10px] font-bold">{row.original.employee_name?.[0] || '?'}</span>
+        </div>
+        <div>
+          <p className="font-semibold text-[var(--pz-text-secondary)] text-sm">{row.original.employee_name}</p>
+          <p className="text-[10px] text-[var(--pz-text-muted)]">{row.original.employee_code}</p>
+        </div>
+      </div>
+    ),
+    size: 200,
+  },
+  {
+    accessorKey: 'department_name',
+    header: 'Department',
+    cell: ({ getValue }) => <span className="text-[var(--pz-text-tertiary)] text-sm">{(getValue() as string) || '\u2014'}</span>,
+  },
+  {
+    accessorKey: 'check_in',
+    header: 'Check In',
+    cell: ({ getValue }) => {
+      const val = getValue() as string | null
+      return <span className="text-[var(--pz-text-tertiary)] font-mono tabular-nums text-sm">{val ? format(new Date(val), 'hh:mm a') : '\u2014'}</span>
+    },
+    size: 100,
+  },
+  {
+    accessorKey: 'check_out',
+    header: 'Check Out',
+    cell: ({ getValue }) => {
+      const val = getValue() as string | null
+      return <span className="text-[var(--pz-text-tertiary)] font-mono tabular-nums text-sm">{val ? format(new Date(val), 'hh:mm a') : '\u2014'}</span>
+    },
+    size: 100,
+  },
+  {
+    accessorKey: 'duration_minutes',
+    header: 'Duration',
+    cell: ({ getValue }) => {
+      const val = getValue() as number | null
+      if (!val) return <span className="text-[var(--pz-text-muted)]">\u2014</span>
+      const h = Math.floor(val / 60)
+      const m = Math.round(val % 60)
+      return <span className="text-[var(--pz-text-tertiary)] font-mono tabular-nums text-sm">{h > 0 ? `${h}h ${m}m` : `${m}m`}</span>
+    },
+    size: 100,
+  },
+  {
+    accessorKey: 'status',
+    header: 'Status',
+    cell: ({ getValue }) => {
+      const status = getValue() as string
+      return <StatusBadge status={status as 'on_time' | 'late' | 'absent' | 'early_departure'} size="xs" dot={false}>{status.replace(/_/g, ' ')}</StatusBadge>
+    },
+    size: 120,
+  },
+  {
+    accessorKey: 'late_minutes',
+    header: 'Late',
+    cell: ({ getValue }) => {
+      const val = getValue() as number | null
+      if (!val) return <span className="text-[var(--pz-text-muted)]">\u2014</span>
+      return <span className="text-amber-400 font-mono text-[11px] font-semibold">{val}m</span>
+    },
+    size: 80,
+  },
+]
 
 export default function Attendance() {
-  const [tab, setTab] = useState<'live' | 'history'>('live')
+  const [tab, setTab] = useState('live')
   const [historyDate, setHistoryDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [historyPage, setHistoryPage] = useState(1)
+  const [searchValue, setSearchValue] = useState('')
+  const [selectedSession, setSelectedSession] = useState<AttendanceSession | null>(null)
 
   const { data: liveData, isLoading: liveLoading } = useQuery({
     queryKey: ['attendance-live'],
@@ -24,142 +168,188 @@ export default function Attendance() {
     enabled: tab === 'history',
   })
 
-  const statusBadge = (status: string) => {
-    const map: Record<string, string> = {
-      on_time: 'bg-emerald-950/40 text-emerald-400 border border-emerald-900/40',
-      late: 'bg-amber-950/40 text-amber-400 border border-amber-900/40',
-      early_departure: 'bg-orange-950/40 text-orange-400 border border-orange-900/40',
-      absent: 'bg-red-950/40 text-red-400 border border-red-900/40',
+  const filteredLive = useMemo(() => {
+    if (!liveData?.items) return []
+    if (!searchValue.trim()) return liveData.items
+    const q = searchValue.toLowerCase()
+    return liveData.items.filter((log: AttendanceLog) =>
+      log.employee_name?.toLowerCase().includes(q) ||
+      log.employee_code?.toLowerCase().includes(q) ||
+      log.department_name?.toLowerCase().includes(q)
+    )
+  }, [liveData?.items, searchValue])
+
+  const filteredHistory = useMemo(() => {
+    if (!historyData?.items) return []
+    if (!searchValue.trim()) return historyData.items
+    const q = searchValue.toLowerCase()
+    return historyData.items.filter((s: AttendanceSession) =>
+      s.employee_name?.toLowerCase().includes(q) ||
+      s.employee_code?.toLowerCase().includes(q) ||
+      s.department_name?.toLowerCase().includes(q)
+    )
+  }, [historyData?.items, searchValue])
+
+  const handleExport = async () => {
+    try {
+      const data = tab === 'live' ? filteredLive : filteredHistory
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `attendance-${tab}-${format(new Date(), 'yyyy-MM-dd-HHmm')}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('Attendance data exported')
+    } catch {
+      toast.error('Failed to export attendance data')
     }
-    return map[status] || 'bg-slate-800/40 text-slate-400 border border-slate-700/40'
   }
 
   return (
-    <div className="animate-fade-in">
-      {/* Tabs */}
-      <div className="flex items-center gap-1 p-1 bg-slate-900/60 border border-slate-800 rounded-xl w-fit mb-6">
-        {(['live', 'history'] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)} className={`px-5 py-2 rounded-lg text-sm font-medium transition-all ${tab === t ? 'bg-slate-800 text-slate-100 shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}>
-            {t === 'live' ? '🔴 Live Feed' : '📋 History'}
-          </button>
-        ))}
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Attendance"
+        subtitle="Workforce attendance tracking and session management"
+        breadcrumbs={[{ label: 'Operations' }, { label: 'Attendance' }]}
+        tabs={
+          <TabBar
+            tabs={[
+              { id: 'live', label: 'Live Feed', icon: <Radio size={14} /> },
+              { id: 'history', label: 'Sessions', icon: <Calendar size={14} /> },
+            ]}
+            activeTab={tab}
+            onChange={(t) => { setTab(t); setSearchValue('') }}
+          />
+        }
+        actions={
+          <Button variant="outline" size="md" onClick={handleExport}>
+            <Download size={14} />
+            Export
+          </Button>
+        }
+      />
 
       {tab === 'live' ? (
-        /* ── Live Feed ───────────────────────────────────── */
-        <div className="card overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
-            <h3 className="font-semibold text-slate-100">Live Attendance Feed</h3>
-            <div className="flex items-center gap-2 text-xs text-emerald-400">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 pulse-dot" /> Real-time
+        <DataTable
+          data={filteredLive}
+          columns={liveColumns}
+          loading={liveLoading}
+          enablePagination={false}
+          searchValue={searchValue}
+          onSearchChange={setSearchValue}
+          searchPlaceholder="Search employees, departments..."
+          toolbar={
+            <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-semibold ml-auto flex-shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 pz-pulse-dot" />
+              Real-time \u00b7 {filteredLive.length} records
             </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-900/50 border-b border-slate-800">
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-slate-400 uppercase">Employee</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-slate-400 uppercase">Department</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-slate-400 uppercase">Direction</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-slate-400 uppercase">Time</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-slate-400 uppercase">Device</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-slate-400 uppercase">Verify</th>
-                </tr>
-              </thead>
-              <tbody>
-                {liveLoading ? (
-                  Array.from({ length: 8 }).map((_, i) => (
-                    <tr key={i} className="border-b border-slate-800/40">
-                      {Array.from({ length: 6 }).map((_, j) => <td key={j} className="py-3 px-4"><div className="skeleton h-4 w-20" /></td>)}
-                    </tr>
-                  ))
-                ) : liveData?.items?.length ? (
-                  liveData.items.map((log: AttendanceLog, i: number) => (
-                    <motion.tr key={log.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.02 }} className="border-b border-slate-800/60 hover:bg-slate-800/40 transition-colors">
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-900/40 to-indigo-900/40 text-blue-400 border border-blue-800/50 flex items-center justify-center">
-                            <span className="text-xs font-semibold">{log.employee_name?.[0]}</span>
-                          </div>
-                          <div>
-                            <p className="font-medium text-slate-200 text-sm">{log.employee_name}</p>
-                            <p className="text-[10px] text-slate-400">{log.employee_code}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 text-slate-300">{log.department_name || '—'}</td>
-                      <td className="py-3 px-4"><span className={log.punch_direction === 'in' ? 'badge-in' : 'badge-out'}>{log.punch_direction?.toUpperCase()}</span></td>
-                      <td className="py-3 px-4 text-slate-300">{format(new Date(log.timestamp), 'hh:mm:ss a')}</td>
-                      <td className="py-3 px-4 text-slate-400 text-xs font-mono">{log.device_ip || log.device_name}</td>
-                      <td className="py-3 px-4 text-slate-400 text-xs capitalize">{log.verify_type}</td>
-                    </motion.tr>
-                  ))
-                ) : (
-                  <tr><td colSpan={6} className="py-16 text-center text-slate-500">
-                    <Fingerprint size={40} className="mx-auto mb-3 opacity-20" />
-                    <p className="font-medium">No live attendance data</p>
-                    <p className="text-xs mt-1">Records appear in real-time as employees scan</p>
-                  </td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+          }
+          emptyState={
+            <div className="flex flex-col items-center py-8 text-[var(--pz-text-muted)]">
+              <Fingerprint size={36} className="mb-3 opacity-20" />
+              <p className="text-sm font-medium">No live attendance data</p>
+              <p className="text-xs mt-1 text-[var(--pz-text-faint)]">Records appear in real-time as employees scan</p>
+            </div>
+          }
+        />
       ) : (
-        /* ── History ─────────────────────────────────────── */
-        <div className="card overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
-            <h3 className="font-semibold text-slate-100">Attendance Sessions</h3>
-            <div className="flex items-center gap-2">
-              <Calendar size={14} className="text-slate-400" />
-              <input type="date" value={historyDate} onChange={(e) => { setHistoryDate(e.target.value); setHistoryPage(1) }} className="px-3 py-1.5 rounded-lg border border-slate-800 text-sm bg-slate-950 text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+        <DataTable
+          data={filteredHistory}
+          columns={sessionColumns}
+          loading={historyLoading}
+          onRowClick={(session) => setSelectedSession(session)}
+          enablePagination={historyData?.pages > 1}
+          totalRows={historyData?.total}
+          totalPages={historyData?.pages}
+          currentPage={historyPage}
+          onPageChange={(page) => setHistoryPage(page)}
+          searchValue={searchValue}
+          onSearchChange={setSearchValue}
+          searchPlaceholder="Search employees..."
+          toolbar={
+            <span className="text-xs text-[var(--pz-text-muted)] ml-auto">
+              {historyData?.total ?? 0} sessions
+            </span>
+          }
+          emptyState={
+            <div className="flex flex-col items-center py-8 text-[var(--pz-text-muted)]">
+              <Calendar size={36} className="mb-3 opacity-20" />
+              <p className="text-sm font-medium">No attendance sessions for this date</p>
+              <p className="text-xs mt-1 text-[var(--pz-text-faint)]">Select a different date to view records</p>
             </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-900/50 border-b border-slate-800">
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-slate-400 uppercase">Employee</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-slate-400 uppercase">Department</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-slate-400 uppercase">Check In</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-slate-400 uppercase">Check Out</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-slate-400 uppercase">Duration</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-slate-400 uppercase">Status</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-slate-400 uppercase">Late</th>
-                </tr>
-              </thead>
-              <tbody>
-                {historyLoading ? (
-                  Array.from({ length: 8 }).map((_, i) => (
-                    <tr key={i} className="border-b border-slate-800/40">{Array.from({ length: 7 }).map((_, j) => <td key={j} className="py-3 px-4"><div className="skeleton h-4 w-16" /></td>)}</tr>
-                  ))
-                ) : historyData?.items?.length ? (
-                  historyData.items.map((s: AttendanceSession) => (
-                    <tr key={s.id} className="border-b border-slate-800/60 hover:bg-slate-800/40 transition-colors">
-                      <td className="py-3 px-4 font-medium text-slate-200">{s.employee_name}</td>
-                      <td className="py-3 px-4 text-slate-300">{s.department_name || '—'}</td>
-                      <td className="py-3 px-4 text-slate-300">{s.check_in ? format(new Date(s.check_in), 'hh:mm a') : '—'}</td>
-                      <td className="py-3 px-4 text-slate-300">{s.check_out ? format(new Date(s.check_out), 'hh:mm a') : '—'}</td>
-                      <td className="py-3 px-4 text-slate-300">{s.duration_minutes ? `${Math.round(s.duration_minutes)} min` : '—'}</td>
-                      <td className="py-3 px-4"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusBadge(s.status)}`}>{s.status.replace('_', ' ')}</span></td>
-                      <td className="py-3 px-4 text-slate-400">{s.late_minutes ? `${s.late_minutes} min` : '—'}</td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr><td colSpan={7} className="py-16 text-center text-slate-500">No attendance sessions for this date</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          {historyData && historyData.pages > 1 && (
-            <div className="flex items-center justify-center gap-1 py-3 border-t border-slate-800">
-              {Array.from({ length: Math.min(historyData.pages, 5) }, (_, i) => i + 1).map((p) => (
-                <button key={p} onClick={() => setHistoryPage(p)} className={`w-8 h-8 rounded-lg text-sm font-medium ${p === historyPage ? 'bg-[var(--color-primary)] text-white' : 'hover:bg-slate-800 text-slate-400'}`}>{p}</button>
+          }
+        />
+      )}
+
+      {/* Session Detail Drawer */}
+      <DetailDrawer
+        open={!!selectedSession}
+        onClose={() => setSelectedSession(null)}
+        title={selectedSession?.employee_name || 'Session Details'}
+        subtitle={selectedSession ? `${selectedSession.employee_code} · ${selectedSession.date}` : ''}
+        width={680}
+      >
+        {selectedSession && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+
+            {/* Status row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', paddingBottom: '20px', borderBottom: '1px solid var(--pz-border)' }}>
+              <StatusBadge status={selectedSession.status as 'on_time' | 'late' | 'absent'} size="md">
+                {selectedSession.status.replace(/_/g, ' ')}
+              </StatusBadge>
+              {selectedSession.is_complete && (
+                <span style={{ fontSize: '12px', fontWeight: 600, color: '#10B981' }}>Complete</span>
+              )}
+            </div>
+
+            {/* Check in / out */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              {[
+                { label: 'Check In', value: selectedSession.check_in ? format(new Date(selectedSession.check_in), 'hh:mm a') : '—' },
+                { label: 'Check Out', value: selectedSession.check_out ? format(new Date(selectedSession.check_out), 'hh:mm a') : '—' },
+              ].map(({ label, value }) => (
+                <div key={label} style={{ padding: '16px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', borderRadius: '6px', minHeight: '80px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                  <p style={{ fontSize: '12px', fontWeight: 400, color: 'var(--pz-text-muted)', margin: 0 }}>{label}</p>
+                  <p style={{ fontSize: '22px', fontWeight: 700, color: 'var(--pz-text)', fontFamily: 'monospace', margin: 0 }}>{value}</p>
+                </div>
               ))}
             </div>
-          )}
-        </div>
-      )}
+
+            {/* Duration/Late/Overtime */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+              {[
+                { label: 'Duration', value: selectedSession.duration_minutes ? `${Math.round(selectedSession.duration_minutes)}m` : '—', color: 'var(--pz-text)' },
+                { label: 'Late', value: selectedSession.late_minutes ? `${selectedSession.late_minutes}m` : '—', color: selectedSession.late_minutes ? '#F59E0B' : 'var(--pz-text-muted)' },
+                { label: 'Overtime', value: selectedSession.overtime_minutes ? `${selectedSession.overtime_minutes}m` : '—', color: selectedSession.overtime_minutes ? '#818CF8' : 'var(--pz-text-muted)' },
+              ].map(({ label, value, color }) => (
+                <div key={label} style={{ padding: '16px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', borderRadius: '6px', textAlign: 'center', minHeight: '72px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                  <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>{label}</p>
+                  <p style={{ fontSize: '18px', fontWeight: 700, color, margin: 0 }}>{value}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Details table */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Details</h4>
+              <div style={{ border: '1px solid var(--pz-border)', borderRadius: '6px', overflow: 'hidden' }}>
+                {[
+                  ['Department', selectedSession.department_name || '—'],
+                  ['Date', selectedSession.date],
+                  ['Session ID', selectedSession.id],
+                ].map(([label, value], i, arr) => (
+                  <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '44px', paddingInline: '14px', borderBottom: i < arr.length - 1 ? '1px solid var(--pz-border)' : 'none', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--pz-text-muted)' }}>{label}</span>
+                    <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--pz-text-secondary)', fontFamily: 'monospace' }}>{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+          </div>
+        )}
+      </DetailDrawer>
     </div>
   )
 }

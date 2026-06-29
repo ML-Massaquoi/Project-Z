@@ -14,7 +14,7 @@ from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, PermissionChecker
 from app.database.session import get_db
 from app.models.attendance import AttendanceSession
 from app.models.employee import Employee
@@ -39,7 +39,7 @@ def _parse_date(s: str) -> date:
 
 # ── 1. Daily attendance report ────────────────────────────────
 
-@router.get("/attendance/daily")
+@router.get("/attendance/daily", dependencies=[Depends(PermissionChecker("report:view"))])
 async def daily_attendance_report(
     date: str = Query(...),
     department_id: Optional[UUID] = None,
@@ -81,7 +81,7 @@ async def daily_attendance_report(
 
 # ── 2. Lateness report ────────────────────────────────────────
 
-@router.get("/attendance/lateness")
+@router.get("/attendance/lateness", dependencies=[Depends(PermissionChecker("report:view"))])
 async def lateness_report(
     start_date: str = Query(...),
     end_date: str = Query(...),
@@ -123,7 +123,7 @@ async def lateness_report(
 
 # ── 3. Absences report ────────────────────────────────────────
 
-@router.get("/attendance/absences")
+@router.get("/attendance/absences", dependencies=[Depends(PermissionChecker("report:view"))])
 async def absences_report(
     start_date: str = Query(...),
     end_date: str = Query(...),
@@ -164,7 +164,7 @@ async def absences_report(
 
 # ── 4. Overtime report ────────────────────────────────────────
 
-@router.get("/attendance/overtime")
+@router.get("/attendance/overtime", dependencies=[Depends(PermissionChecker("report:view"))])
 async def overtime_report(
     start_date: str = Query(...),
     end_date: str = Query(...),
@@ -206,7 +206,7 @@ async def overtime_report(
 
 # ── 5. Shift compliance report ────────────────────────────────
 
-@router.get("/attendance/shift-compliance")
+@router.get("/attendance/shift-compliance", dependencies=[Depends(PermissionChecker("report:view"))])
 async def shift_compliance_report(
     start_date: str = Query(...),
     end_date: str = Query(...),
@@ -263,7 +263,7 @@ async def shift_compliance_report(
 
 # ── 6. Raw scan audit report ──────────────────────────────────
 
-@router.get("/scans/audit")
+@router.get("/scans/audit", dependencies=[Depends(PermissionChecker("report:view"))])
 async def scan_audit_report(
     start_date: str = Query(...),
     end_date: str = Query(...),
@@ -310,7 +310,7 @@ async def scan_audit_report(
 
 # ── 7. Movement history report ────────────────────────────────
 
-@router.get("/scans/movement")
+@router.get("/scans/movement", dependencies=[Depends(PermissionChecker("report:view"))])
 async def movement_history_report(
     employee_id: UUID = Query(...),
     date: str = Query(...),

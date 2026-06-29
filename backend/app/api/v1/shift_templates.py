@@ -7,14 +7,16 @@ from decimal import Decimal
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, PermissionChecker
 from app.database.session import get_db
 from app.models.shift_template import ShiftTemplate
+from app.services.audit_service import log_audit
+from app.utils.audit_context import get_audit_context
 
 router = APIRouter(prefix="/shift-templates", tags=["Shift Templates"])
 
@@ -78,7 +80,7 @@ def _serialize(t: ShiftTemplate) -> dict:
     }
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(PermissionChecker("shift:view"))])
 async def list_shift_templates(
     is_active: Optional[bool] = None,
     db: AsyncSession = Depends(get_db),
@@ -91,9 +93,10 @@ async def list_shift_templates(
     return [_serialize(t) for t in result.scalars().all()]
 
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, dependencies=[Depends(PermissionChecker("shift:create"))])
 async def create_shift_template(
     data: ShiftTemplateCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     _user=Depends(get_current_user),
 ):
@@ -121,10 +124,17 @@ async def create_shift_template(
     db.add(t)
     await db.flush()
     await db.refresh(t)
+    audit_ctx = get_audit_context(request, _user)
+    await log_audit(
+        db, action="create", entity_type="shift_template",
+        entity_id=str(t.id),
+        details={"name": t.name, "code": t.code},
+        new_value=t, **audit_ctx,
+    )
     return _serialize(t)
 
 
-@router.get("/{template_id}")
+@router.get("/{template_id}", dependencies=[Depends(PermissionChecker("shift:view"))])
 async def get_shift_template(
     template_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -137,10 +147,11 @@ async def get_shift_template(
     return _serialize(t)
 
 
-@router.put("/{template_id}")
+@router.put("/{template_id}", dependencies=[Depends(PermissionChecker("shift:update"))])
 async def update_shift_template(
     template_id: UUID,
     data: ShiftTemplateUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     _user=Depends(get_current_user),
 ):
@@ -149,6 +160,7 @@ async def update_shift_template(
     if not t:
         raise HTTPException(404, "Shift template not found")
 
+    old_t = t
     updates = data.model_dump(exclude_unset=True)
     for time_field in ["start_time", "end_time", "checkin_window_start", "checkin_window_end",
                        "checkout_window_start", "checkout_window_end"]:
@@ -162,20 +174,38 @@ async def update_shift_template(
         await db.flush()
 
     result = await db.execute(select(ShiftTemplate).where(ShiftTemplate.id == template_id))
-    return _serialize(result.scalar_one())
+    updated_t = result.scalar_one()
+    audit_ctx = get_audit_context(request, _user)
+    await log_audit(
+        db, action="update", entity_type="shift_template",
+        entity_id=str(template_id),
+        details={"changed_fields": list(updates.keys())},
+        previous_value=old_t, new_value=updated_t, **audit_ctx,
+    )
+    return _serialize(updated_t)
 
 
-@router.delete("/{template_id}")
+@router.delete("/{template_id}", dependencies=[Depends(PermissionChecker("shift:delete"))])
 async def delete_shift_template(
     template_id: UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     _user=Depends(get_current_user),
 ):
     """Soft delete: sets is_active = False."""
     result = await db.execute(select(ShiftTemplate).where(ShiftTemplate.id == template_id))
-    if not result.scalar_one_or_none():
+    t = result.scalar_one_or_none()
+    if not t:
         raise HTTPException(404, "Shift template not found")
+    old_t = t
     await db.execute(
         update(ShiftTemplate).where(ShiftTemplate.id == template_id).values(is_active=False)
+    )
+    audit_ctx = get_audit_context(request, _user)
+    await log_audit(
+        db, action="deactivate", entity_type="shift_template",
+        entity_id=str(template_id),
+        details={"name": old_t.name, "code": old_t.code},
+        previous_value=old_t, **audit_ctx,
     )
     return {"message": "Shift template deactivated"}

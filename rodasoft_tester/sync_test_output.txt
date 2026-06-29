@@ -1,0 +1,30 @@
+=== Device Sync Test ===
+Source: 172.16.40.12
+Destination: 172.16.40.13
+User to sync: UID 1001
+
+[1] Reading user from Device A...
+  Found: uid=1001 name=TEST_ENR user_id=ENR_1001 privilege=0
+
+[2] Reading templates from Device A...
+  Templates: 1
+    fid=0 size=870 valid=1 has_data=YES
+
+[3] Creating user on Device B...
+  Created user: uid=1001 name=TEST_ENR
+
+[4] Uploading templates to Device B...
+  Uploading 1 templates...
+  Templates uploaded!
+
+[5] Verifying on Device B...
+  User found: uid=1001 name=TEST_ENR user_id=ENR_1001
+  Templates on Device B: 1
+    fid=0 size=870 valid=1
+
+=== RESULT ===
+>>> SYNC SUCCESSFUL! <<<
+>>> User 1001 (TEST_ENR) can now authenticate on Device B <<<
+>>> Templates transferred: 1 <<<
+
+=== Done ===

@@ -33,6 +33,7 @@ class UserInfo(BaseModel):
     full_name: Optional[str] = None
     role: Optional[str] = None
     role_type: Optional[str] = None
+    permissions: list[str] = []
     avatar_url: Optional[str] = None
 
     model_config = {"from_attributes": True}

@@ -1,59 +1,73 @@
-import { useState } from 'react'
-import { Outlet, Navigate, useLocation } from 'react-router-dom'
+import { useState, useEffect, useCallback } from 'react'
+import { Outlet, Navigate } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
 import { useAuthStore } from '@/stores/authStore'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { Toaster } from 'sonner'
-
-const pageTitles: Record<string, { title: string; subtitle: string }> = {
-  '/': { title: 'Dashboard', subtitle: "Welcome back! Here's what's happening today." },
-  '/live-monitor': { title: 'Live Operations Monitor', subtitle: 'Real-time biometric scan feed — every scan, instantly.' },
-  '/employees': { title: 'Employees', subtitle: 'Manage your workforce.' },
-  '/attendance': { title: 'Attendance', subtitle: 'Real-time attendance tracking.' },
-  '/devices': { title: 'Devices', subtitle: 'Biometric terminal management.' },
-  '/departments': { title: 'Departments', subtitle: 'Organizational structure.' },
-  '/shifts': { title: 'Shifts', subtitle: 'Work schedule management.' },
-  '/reports': { title: 'Reports', subtitle: 'Generate and export reports.' },
-  '/settings': { title: 'Settings', subtitle: 'System configuration and offices.' },
-  '/calendar': { title: 'Attendance', subtitle: 'Real-time attendance tracking.' },
-  '/leave': { title: 'Attendance', subtitle: 'Real-time attendance tracking.' },
-  '/unrecognized': { title: 'Unrecognized Users', subtitle: 'Map unknown device fingerprints to employees.' },
-  '/users': { title: 'Users & Roles', subtitle: 'Manage system users and permissions.' },
-  '/audit': { title: 'Settings', subtitle: 'System configuration and offices.' },
-}
+import { CommandPalette } from '@/components/ui/command-palette/CommandPalette'
 
 export default function AppLayout() {
   const { isAuthenticated } = useAuthStore()
-  const location = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
 
   // Connect WebSocket for real-time updates
   useWebSocket()
+
+  // Global Ctrl+K shortcut for Command Palette
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setCommandPaletteOpen(prev => !prev)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
+  const openCommandPalette = useCallback(() => setCommandPaletteOpen(true), [])
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />
   }
 
-  const pageInfo = pageTitles[location.pathname] || { title: 'Project Z', subtitle: '' }
-
   return (
-    <div className="flex min-h-screen bg-[#090D16]">
-      <Sidebar mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
-      <div className="flex-1 flex flex-col min-w-0">
-        <Topbar title={pageInfo.title} subtitle={pageInfo.subtitle} onMenuToggle={() => setMobileOpen(true)} />
-        <main className="flex-1 p-6 overflow-auto">
-          <Outlet />
+    <div className="flex min-h-screen" style={{ background: 'var(--pz-bg)' }}>
+      <Sidebar
+        mobileOpen={mobileOpen}
+        setMobileOpen={setMobileOpen}
+      />
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <Topbar
+          onMenuToggle={() => setMobileOpen(true)}
+          onCommandPalette={openCommandPalette}
+        />
+        <main className="flex-1 p-6 lg:p-8 overflow-y-auto">
+          <div className="max-w-[var(--pz-content-max-width)] mx-auto">
+            <Outlet />
+          </div>
         </main>
       </div>
+
+      {/* Command Palette */}
+      <CommandPalette
+        open={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+      />
+
+      {/* Toast Notifications */}
       <Toaster
         position="top-right"
         toastOptions={{
           style: {
-            background: '#111827',
-            border: '1px solid var(--color-border)',
-            color: '#F9FAFB',
-            boxShadow: 'var(--shadow-lg)',
+            background: 'var(--pz-surface-1)',
+            border: '1px solid var(--pz-border)',
+            color: 'var(--pz-text)',
+            boxShadow: 'var(--pz-shadow-dropdown)',
+            borderRadius: 'var(--pz-radius-lg)',
+            fontSize: '13px',
           },
         }}
         richColors
@@ -62,4 +76,3 @@ export default function AppLayout() {
     </div>
   )
 }
-

@@ -6,11 +6,12 @@ Enterprise Biometric Attendance Management Platform.
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 
+import sqlalchemy as sa
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from app.api.v1.adms import router as adms_router
 from app.api.v1.router import api_router
@@ -21,11 +22,8 @@ from app.core.exceptions import ProjectZException
 settings = get_settings()
 
 # ── Logging ──────────────────────────────────────────────────
-logging.basicConfig(
-    level=logging.DEBUG if settings.DEBUG else logging.INFO,
-    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
+from app.core.logging_config import setup_logging
+setup_logging(debug=settings.DEBUG, json_format=settings.is_production)
 logger = logging.getLogger("projectz")
 
 
@@ -34,10 +32,11 @@ logger = logging.getLogger("projectz")
 async def _device_offline_watcher():
     """
     Mark devices offline if they stop sending ADMS heartbeats.
-    Runs every 60 seconds.
+    Runs every 60 seconds. Records status transitions with full audit trail.
     """
     from app.database.session import async_session_factory
     from app.services.device_service import DeviceService
+    from app.services.device_activity_service import record_status_transition, log_device_activity
 
     while True:
         try:
@@ -45,6 +44,41 @@ async def _device_offline_watcher():
             async with async_session_factory() as session:
                 svc = DeviceService(session)
                 count = await svc.mark_stale_devices_offline()
+
+                # Record status transitions for newly offline devices
+                if count:
+                    from sqlalchemy import select, and_
+                    from app.models.device import Device
+                    from datetime import datetime, timezone, timedelta
+                    now = datetime.now(timezone.utc)
+                    # Devices that just went offline (last_seen > 5 min ago)
+                    stale_threshold = now - timedelta(seconds=300)
+                    result = await session.execute(
+                        select(Device).where(
+                            and_(
+                                Device.is_active == True,
+                                Device.is_online == False,
+                                Device.last_seen < stale_threshold,
+                            )
+                        )
+                    )
+                    for device in result.scalars().all():
+                        await record_status_transition(
+                            device_id=device.id,
+                            new_status="disconnected",
+                            ip_address=device.ip_address,
+                            device_name=device.name,
+                            reason="heartbeat_timeout",
+                            db=session,
+                        )
+                        await log_device_activity(
+                            device_id=device.id,
+                            activity_type="device_disconnected",
+                            details={"reason": "heartbeat_timeout"},
+                            ip_address=device.ip_address,
+                            db=session,
+                        )
+
                 await session.commit()
                 if count:
                     logger.info(f"Offline watcher: marked {count} device(s) offline")
@@ -96,10 +130,11 @@ async def _midnight_rollover():
 
             async with async_session_factory() as session:
                 # Find all open (incomplete) sessions from yesterday
+                # Use shift_date for the unique constraint check
                 result = await session.execute(
                     select(AttendanceSession).where(
                         and_(
-                            AttendanceSession.date == yesterday,
+                            AttendanceSession.shift_date == yesterday,
                             AttendanceSession.is_complete == False,
                             AttendanceSession.check_in.isnot(None),
                         )
@@ -157,12 +192,86 @@ async def _midnight_rollover():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application startup and shutdown events."""
-    logger.info("=" * 60)
+    import socket
+    import platform
+
+    logger.info("=" * 70)
     logger.info(f"  {settings.APP_NAME} v{settings.APP_VERSION}")
     logger.info(f"  Environment: {settings.APP_ENV}")
     logger.info(f"  Organization: {settings.ORG_NAME}")
     logger.info(f"  Timezone: {settings.TIMEZONE}")
-    logger.info("=" * 60)
+    logger.info("=" * 70)
+
+    # ── Network Diagnostics ────────────────────────────────────
+    hostname = socket.gethostname()
+    logger.info("")
+    logger.info("=" * 70)
+    logger.info("  NETWORK DIAGNOSTICS")
+    logger.info("=" * 70)
+    logger.info(f"  Hostname:       {hostname}")
+    logger.info(f"  Platform:       {platform.platform()}")
+
+    # Enumerate all network interfaces
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["ipconfig"],
+            capture_output=True, text=True, timeout=5,
+            creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0,
+        )
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if "IPv4" in line and "172.16" in line:
+                ip = line.split(":")[-1].strip()
+                logger.info(f"  LAN IP:         {ip}")
+            elif "IPv4" in line and not "127.0.0" in line and "Media" not in line:
+                ip = line.split(":")[-1].strip()
+                logger.info(f"  Other IP:       {ip}")
+    except Exception:
+        # Fallback: just get the primary IP
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            primary_ip = s.getsockname()[0]
+            s.close()
+            logger.info(f"  Primary IP:     {primary_ip}")
+        except Exception:
+            logger.warning("  Could not determine IP address")
+
+    logger.info(f"  Backend Port:   8000")
+    logger.info(f"  ADMS Port:      8081 (portproxy → 8000)")
+    logger.info(f"  Frontend Port:  3000 (Vite dev server)")
+
+    # ── Registered Routes ──────────────────────────────────────
+    logger.info("")
+    logger.info("=" * 70)
+    logger.info("  REGISTERED ADMS ROUTES")
+    logger.info("=" * 70)
+    adms_routes = [
+        ("GET",  "/iclock/cdata",       "Device handshake / options"),
+        ("GET",  "/iclock/getrequest",   "Device heartbeat / command poll"),
+        ("POST", "/iclock/cdata",        "Attendance data push"),
+        ("POST", "/iclock/devicecmd",    "Device command ack"),
+        ("POST", "/adms/test-scan",      "Test scan (diagnostics)"),
+        ("GET",  "/adms/status",         "ADMS connection status"),
+    ]
+    for method, path, desc in adms_routes:
+        logger.info(f"  {method:6s} {path:30s}  {desc}")
+
+    logger.info("")
+    logger.info("=" * 70)
+    logger.info("  DEVICE CONNECTIVITY")
+    logger.info("=" * 70)
+    logger.info(f"  Device must be configured to push to:")
+    logger.info(f"    Server IP:   172.16.40.19")
+    logger.info(f"    ADMS Port:   8081")
+    logger.info(f"    Protocol:    HTTP")
+    logger.info(f"    Push Path:   /iclock/cdata?SN=<serial>&table=ATTLOG")
+    logger.info(f"    Heartbeat:   /iclock/getrequest?SN=<serial>")
+    logger.info("")
+    logger.info(f"  Portproxy rule: 0.0.0.0:8081 → 127.0.0.1:8000")
+    logger.info("=" * 70)
+    logger.info("")
 
     from app.database.session import async_session_factory
 
@@ -172,28 +281,63 @@ async def lifespan(app: FastAPI):
     logger.info("Device offline watcher started")
     logger.info("Midnight rollover task started")
 
-    # ── Rodasoft Device Integration Runtime ───────────────────
-    logger.info("Device telemetry manager initialized")
-    logger.info("Rodasoft device listener started")
-    logger.info("Biometric TCP server listening on 0.0.0.0:8000")
-
     # ── Enterprise platform v2 workers ───────────────────────
     from app.workers.attendance_worker import run_attendance_worker
     from app.workers.offline_recovery import run_offline_recovery
     from app.workers.partition_manager import run_partition_manager
+    from app.workers.device_user_sync import run_device_user_sync_worker
+    from app.workers.sdk_polling_worker import run_sdk_polling_worker
+    from app.workers.auto_absent import run_auto_absent_worker
+    from app.workers.alert_worker import run_alert_worker
+    from app.workers.device_health_worker import run_device_health_worker
+    from app.workers.data_integrity_worker import run_data_integrity_worker
+    from app.workers.backup_worker import run_backup_worker
+    from app.workers.device_sync_worker import run_device_sync_worker
+    from app.workers.offline_sync_worker import offline_sync_worker
 
-    attendance_worker_task = asyncio.create_task(
-        run_attendance_worker(async_session_factory)
-    )
-    offline_recovery_task = asyncio.create_task(
-        run_offline_recovery(async_session_factory)
-    )
-    partition_manager_task = asyncio.create_task(
-        run_partition_manager(async_session_factory)
-    )
-    logger.info("Attendance stream consumer worker started")
-    logger.info("Offline recovery task started")
-    logger.info("Partition manager task started")
+    # Worker definitions: (name, coroutine_factory, restart_delay)
+    workers = [
+        ("attendance_worker", lambda: run_attendance_worker(async_session_factory), 5),
+        ("offline_recovery", lambda: run_offline_recovery(async_session_factory), 10),
+        ("partition_manager", lambda: run_partition_manager(async_session_factory), 30),
+        ("device_user_sync", lambda: run_device_user_sync_worker(async_session_factory), 15),
+        ("sdk_polling", lambda: run_sdk_polling_worker(async_session_factory), 5),
+        ("auto_absent", lambda: run_auto_absent_worker(async_session_factory), 10),
+        ("alert_worker", lambda: run_alert_worker(async_session_factory), 15),
+        ("device_health_worker", lambda: run_device_health_worker(async_session_factory), 15),
+        ("data_integrity_worker", lambda: run_data_integrity_worker(async_session_factory), 30),
+        ("backup_worker", lambda: run_backup_worker(async_session_factory), 30),
+        ("device_sync_worker", lambda: run_device_sync_worker(async_session_factory), 15),
+        ("offline_sync_worker", lambda: offline_sync_worker(), 30),
+    ]
+
+    # Store worker tasks for shutdown
+    worker_tasks: list[asyncio.Task] = []
+
+    async def _run_worker_with_watchdog(name: str, coro_factory, restart_delay: int):
+        """Run a worker with automatic restart on crash."""
+        while True:
+            task = asyncio.create_task(coro_factory())
+            logger.info(f"[Watchdog] Worker '{name}' started")
+            try:
+                await task
+                # If task completes normally (shouldn't happen for workers), log and restart
+                logger.warning(f"[Watchdog] Worker '{name}' completed unexpectedly, restarting in {restart_delay}s")
+            except asyncio.CancelledError:
+                logger.info(f"[Watchdog] Worker '{name}' cancelled")
+                return  # Don't restart on cancellation
+            except Exception as e:
+                logger.error(f"[Watchdog] Worker '{name}' crashed: {e}", exc_info=True)
+            await asyncio.sleep(restart_delay)
+
+    for name, coro_factory, restart_delay in workers:
+        worker_task = asyncio.create_task(
+            _run_worker_with_watchdog(name, coro_factory, restart_delay)
+        )
+        worker_tasks.append(worker_task)
+        logger.info(f"Worker '{name}' registered with watchdog")
+
+    logger.info(f"All {len(workers)} workers started with watchdog monitoring")
 
     yield
 
@@ -201,9 +345,7 @@ async def lifespan(app: FastAPI):
     all_tasks = (
         watcher_task,
         rollover_task,
-        attendance_worker_task,
-        offline_recovery_task,
-        partition_manager_task,
+        *worker_tasks,
     )
     for task in all_tasks:
         task.cancel()
@@ -224,6 +366,22 @@ app = FastAPI(
     redoc_url="/redoc" if settings.DEBUG else None,
     lifespan=lifespan,
 )
+
+# ── Request Logging Middleware ───────────────────────────────
+from app.middleware.logging import RequestLoggingMiddleware
+app.add_middleware(RequestLoggingMiddleware)
+
+# ── Metrics Middleware ───────────────────────────────────────
+from app.middleware.metrics import MetricsMiddleware
+app.add_middleware(MetricsMiddleware)
+
+# ── Audit Middleware (captures context for mutating requests) ─
+from app.middleware.audit import AuditMiddleware
+app.add_middleware(AuditMiddleware)
+
+# ── Rate Limiting Middleware ────────────────────────────────
+from app.middleware.rate_limit import RateLimitMiddleware
+app.add_middleware(RateLimitMiddleware, redis_url=settings.REDIS_URL)
 
 # ── CORS Middleware ──────────────────────────────────────────
 app.add_middleware(
@@ -255,6 +413,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
         content={
             "error": True,
             "message": "Internal server error",
+            "detail": str(exc) if settings.DEBUG else None,
         },
     )
 
@@ -279,3 +438,130 @@ async def root():
         "organization": settings.ORG_NAME,
         "status": "operational",
     }
+
+
+# ── Health Check ────────────────────────────────────────────
+@app.get("/health", tags=["Health"])
+async def health_check():
+    """
+    Comprehensive health check for load balancers and Docker HEALTHCHECK.
+    Returns service status, database connectivity, Redis connectivity.
+    """
+    import time
+    from app.database.session import async_session_factory
+    import redis.asyncio as aioredis
+
+    health = {
+        "status": "healthy",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "version": settings.APP_VERSION,
+        "checks": {},
+    }
+
+    # Database check
+    try:
+        start = time.monotonic()
+        async with async_session_factory() as session:
+            await session.execute(sa.text("SELECT 1"))
+        db_ms = round((time.monotonic() - start) * 1000, 1)
+        health["checks"]["database"] = {
+            "status": "healthy",
+            "latency_ms": db_ms,
+        }
+    except Exception as e:
+        health["status"] = "unhealthy"
+        health["checks"]["database"] = {
+            "status": "unhealthy",
+            "error": str(e),
+        }
+
+    # Redis check
+    try:
+        start = time.monotonic()
+        redis_client = aioredis.from_url(settings.REDIS_URL)
+        await redis_client.ping()
+        await redis_client.aclose()
+        redis_ms = round((time.monotonic() - start) * 1000, 1)
+        health["checks"]["redis"] = {
+            "status": "healthy",
+            "latency_ms": redis_ms,
+        }
+    except Exception as e:
+        health["status"] = "unhealthy"
+        health["checks"]["redis"] = {
+            "status": "unhealthy",
+            "error": str(e),
+        }
+
+    status_code = 200 if health["status"] == "healthy" else 503
+    return JSONResponse(content=health, status_code=status_code)
+
+
+# ── Metrics ─────────────────────────────────────────────────
+@app.get("/metrics", tags=["Metrics"])
+async def metrics():
+    """
+    Comprehensive system metrics including request stats, device/employee counts,
+    and request metrics (latency, error rates, endpoint breakdown).
+    """
+    from app.database.session import async_session_factory
+    from app.models.device import Device
+    from app.models.employee import Employee
+    from app.models.attendance import AttendanceSession
+    from app.models.user import User
+    from app.core.metrics import metrics as request_metrics
+
+    try:
+        async with async_session_factory() as session:
+            device_count = (await session.execute(sa.func.count(Device.id))).scalar() or 0
+            employee_count = (await session.execute(sa.func.count(Employee.id))).scalar() or 0
+            today_sessions = (await session.execute(
+                sa.select(sa.func.count(AttendanceSession.id))
+                .where(AttendanceSession.date == date.today())
+            )).scalar() or 0
+            user_count = (await session.execute(sa.func.count(User.id))).scalar() or 0
+
+            online_devices = (await session.execute(
+                sa.select(sa.func.count(Device.id))
+                .where(Device.is_online == True)
+            )).scalar() or 0
+
+        # Merge request metrics snapshot
+        request_snapshot = request_metrics.get_snapshot()
+
+        return {
+            "devices": {
+                "total": device_count,
+                "online": online_devices,
+                "offline": device_count - online_devices,
+            },
+            "employees": {
+                "total": employee_count,
+            },
+            "attendance": {
+                "today_sessions": today_sessions,
+            },
+            "users": {
+                "total": user_count,
+            },
+            "requests": request_snapshot,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception as e:
+        return JSONResponse(
+            content={"error": "Failed to fetch metrics", "detail": str(e)},
+            status_code=500,
+        )
+
+
+@app.get("/metrics/prometheus", tags=["Metrics"])
+async def metrics_prometheus():
+    """
+    Prometheus-compatible metrics endpoint.
+    Returns metrics in OpenMetrics text format for scraping.
+    """
+    from app.core.metrics import metrics as request_metrics
+    return Response(
+        content=request_metrics.get_prometheus_text(),
+        media_type="text/plain; version=0.0.4; charset=utf-8",
+    )

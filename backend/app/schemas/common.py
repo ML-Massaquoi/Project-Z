@@ -16,7 +16,8 @@ class DepartmentCreate(BaseModel):
     code: str = Field(..., min_length=1, max_length=50)
     description: Optional[str] = None
     head_name: Optional[str] = None
-    office_id: UUID
+    office_id: Optional[UUID] = None
+    shift_protocol_id: Optional[UUID] = None  # Required for proper attendance tracking
 
 
 class DepartmentUpdate(BaseModel):
@@ -25,6 +26,7 @@ class DepartmentUpdate(BaseModel):
     description: Optional[str] = None
     head_name: Optional[str] = None
     office_id: Optional[UUID] = None
+    shift_protocol_id: Optional[UUID] = None
     is_active: Optional[bool] = None
 
 
@@ -36,6 +38,8 @@ class DepartmentResponse(BaseModel):
     head_name: Optional[str] = None
     office_id: UUID
     office_name: Optional[str] = None
+    shift_protocol_id: Optional[UUID] = None
+    shift_protocol_name: Optional[str] = None
     is_active: bool
     employee_count: int = 0
     created_at: datetime

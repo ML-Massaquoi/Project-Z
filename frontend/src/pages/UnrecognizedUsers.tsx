@@ -1,439 +1,552 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { motion, AnimatePresence } from 'framer-motion'
-import {
-  AlertTriangle, UserPlus, Link2, X, Loader2,
-  Fingerprint, Clock, Monitor, Search,
-} from 'lucide-react'
-import { devicesAPI, employeesAPI, departmentsAPI } from '@/api/client'
-import { toast } from 'sonner'
+import { AlertCircle, UserCheck, Trash2, Download, UserPlus, Search } from 'lucide-react'
+import { devicesAPI, employeesAPI, departmentsAPI, shiftTemplatesAPI } from '@/api/client'
 import { format } from 'date-fns'
-import type { Employee, Department } from '@/types'
+import { motion } from 'framer-motion'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { FilterBar } from '@/components/ui/FilterBar'
+import { StatusBadge } from '@/components/ui/StatusBadge'
+import { DataTable, type ColumnDef } from '@/components/ui/data-table/DataTable'
+import { DetailDrawer } from '@/components/ui/DetailDrawer'
+import { KPICard } from '@/components/ui/KPICard'
+import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
 
 interface UnrecognizedUser {
-  device_user_id: string
-  device_id: string
+  id: string
+  user_id_on_device: string
   device_serial: string
-  device_name: string | null
-  device_ip: string | null
+  device_name?: string
   scan_count: number
-  last_seen: string | null
+  last_seen: string
+  first_seen: string
+  status: string
+  [key: string]: unknown
 }
 
-const inputCls = 'w-full px-3 py-2.5 rounded-xl border border-slate-800 text-sm bg-slate-950 text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all'
-const labelCls = 'block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5'
-
-// ── Map Modal ────────────────────────────────────────────
-function MapUserModal({
-  user,
-  onClose,
-}: {
-  user: UnrecognizedUser
-  onClose: () => void
-}) {
-  const queryClient = useQueryClient()
-  const [mode, setMode] = useState<'existing' | 'new'>('existing')
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState('')
-  const [empSearch, setEmpSearch] = useState('')
-  const [newForm, setNewForm] = useState({
-    full_name: '',
-    employee_code: `EMP-${user.device_user_id}`,
-    department_id: '',
-  })
-
-  const { data: employeesData } = useQuery({
-    queryKey: ['employees', 1, empSearch, ''],
-    queryFn: async () => {
-      const params: Record<string, unknown> = { page: 1, per_page: 20 }
-      if (empSearch) params.search = empSearch
-      return (await employeesAPI.list(params)).data
-    },
-  })
-
-  const { data: departments = [] } = useQuery<Department[]>({
-    queryKey: ['departments'],
-    queryFn: async () => (await departmentsAPI.list()).data,
-  })
-
-  const mapExistingMutation = useMutation({
-    mutationFn: () => devicesAPI.mapToExisting(user.device_id, user.device_user_id, selectedEmployeeId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['unrecognized-users'] })
-      queryClient.invalidateQueries({ queryKey: ['employees'] })
-      toast.success('Device user mapped successfully')
-      onClose()
-    },
-    onError: (e: any) => toast.error(e.response?.data?.detail || 'Failed to map user'),
-  })
-
-  const mapNewMutation = useMutation({
-    mutationFn: () => devicesAPI.mapToNew(
-      user.device_id,
-      user.device_user_id,
-      newForm.full_name,
-      newForm.employee_code,
-      newForm.department_id || undefined,
+const columns: ColumnDef<UnrecognizedUser, unknown>[] = [
+  {
+    accessorKey: 'user_id_on_device',
+    header: 'Unknown User ID',
+    cell: ({ getValue }) => (
+      <div className="flex items-center gap-2">
+        <div className="w-7 h-7 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+          <AlertCircle size={12} className="text-amber-400" />
+        </div>
+        <span className="text-gray-200 font-mono font-semibold">{getValue() as string}</span>
+      </div>
     ),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['unrecognized-users'] })
-      queryClient.invalidateQueries({ queryKey: ['employees'] })
-      toast.success('Employee created and mapped')
-      onClose()
+    size: 200,
+  },
+  {
+    accessorKey: 'device_name',
+    header: 'Device',
+    cell: ({ row }) => (
+      <span className="text-gray-400">{row.original.device_name || row.original.device_serial}</span>
+    ),
+  },
+  {
+    accessorKey: 'scan_count',
+    header: 'Scans',
+    cell: ({ getValue }) => (
+      <span className={`font-mono font-bold tabular-nums ${(getValue() as number) > 5 ? 'text-amber-400' : 'text-gray-400'}`}>
+        {getValue() as number}
+      </span>
+    ),
+    size: 80,
+  },
+  {
+    accessorKey: 'first_seen',
+    header: 'First Seen',
+    cell: ({ getValue }) => (
+      <span className="text-gray-500 text-xs font-mono tabular-nums">
+        {format(new Date(getValue() as string), 'MMM d, HH:mm')}
+      </span>
+    ),
+    size: 130,
+  },
+  {
+    accessorKey: 'last_seen',
+    header: 'Last Seen',
+    cell: ({ getValue }) => (
+      <span className="text-gray-400 text-xs font-mono tabular-nums">
+        {format(new Date(getValue() as string), 'MMM d, HH:mm')}
+      </span>
+    ),
+    size: 130,
+  },
+  {
+    accessorKey: 'status',
+    header: 'Status',
+    cell: ({ getValue }) => {
+      const s = getValue() as string
+      return <StatusBadge status={s === 'resolved' ? 'success' : 'warning'} size="xs" dot={false}>{s}</StatusBadge>
     },
-    onError: (e: any) => toast.error(e.response?.data?.detail || 'Failed to create employee'),
+    size: 110,
+  },
+]
+
+export default function UnrecognizedUsers() {
+  const queryClient = useQueryClient()
+  const [searchValue, setSearchValue] = useState('')
+  const [selectedUser, setSelectedUser] = useState<UnrecognizedUser | null>(null)
+  const [showLinkModal, setShowLinkModal] = useState(false)
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['unrecognized-users'],
+    queryFn: async () => (await devicesAPI.getUnrecognizedUsers()).data,
+    refetchInterval: 60000,
   })
 
-  const employees: Employee[] = employeesData?.items ?? []
+  const users: UnrecognizedUser[] = data?.items ?? []
+  const pendingCount = users.filter(u => u.status !== 'resolved').length
+  const totalScans = users.reduce((acc, u) => acc + (u.scan_count || 0), 0)
+
+  const resolveMutation = useMutation({
+    mutationFn: ({ employeeId }: { employeeId: string }) =>
+      devicesAPI.mapToExisting(selectedUser?.device_serial || '', selectedUser?.user_id_on_device || '', employeeId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['unrecognized-users'] })
+      queryClient.invalidateQueries({ queryKey: ['device-users'] })
+      toast.success('User resolved and linked to employee')
+      setShowLinkModal(false)
+      setSelectedUser(null)
+    },
+    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to resolve'),
+  })
+
+  const resolveNewMutation = useMutation({
+    mutationFn: async ({ full_name, employee_code, department_id, shift_template_id, position }: {
+      full_name: string
+      employee_code: string
+      department_id: string
+      shift_template_id?: string
+      position?: string
+    }) => {
+      // Step 1: Create the employee
+      const empRes = await employeesAPI.create({
+        full_name,
+        employee_code,
+        department_id,
+        shift_template_id: shift_template_id || undefined,
+        position: position || undefined,
+        status: 'active',
+      })
+      const newEmployeeId = empRes.data.id
+
+      // Step 2: Link device user to new employee
+      await devicesAPI.mapToExisting(
+        selectedUser?.device_serial || '',
+        selectedUser?.user_id_on_device || '',
+        newEmployeeId
+      )
+
+      return newEmployeeId
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['unrecognized-users'] })
+      queryClient.invalidateQueries({ queryKey: ['device-users'] })
+      queryClient.invalidateQueries({ queryKey: ['employees'] })
+      toast.success('Employee created and linked to device')
+      setShowLinkModal(false)
+      setSelectedUser(null)
+    },
+    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to create employee'),
+  })
+
+  const dismissMutation = useMutation({
+    mutationFn: (userId: string) => devicesAPI.dismissUnrecognized(userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['unrecognized-users'] })
+      toast.success('Unrecognized user dismissed')
+      setSelectedUser(null)
+    },
+    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to dismiss'),
+  })
+
+  const filtered = useMemo(() => {
+    if (!searchValue.trim()) return users
+    const q = searchValue.toLowerCase()
+    return users.filter(u =>
+      u.user_id_on_device.toLowerCase().includes(q) ||
+      (u.device_name?.toLowerCase().includes(q)) ||
+      u.device_serial.toLowerCase().includes(q)
+    )
+  }, [users, searchValue])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-        onClick={onClose}
+    <div className="space-y-5 pz-slide-up">
+      <PageHeader
+        title="Unrecognized Users"
+        subtitle="Identity resolution center — resolve unknown biometric scans"
+        breadcrumbs={[{ label: 'Infrastructure' }, { label: 'Unrecognized Users' }]}
+        badge={
+          pendingCount > 0 ? (
+            <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-bold border border-amber-500/20">
+              {pendingCount} pending
+            </span>
+          ) : undefined
+        }
       />
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 8 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96 }}
-        className="relative bg-[#0B0F19] border border-slate-800 rounded-2xl shadow-2xl w-full max-w-lg z-10 overflow-hidden text-slate-200"
+
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <KPICard icon={AlertCircle} label="Total Unrecognized" value={users.length} color="#F59E0B" loading={isLoading} />
+        <KPICard icon={AlertCircle} label="Pending Resolution" value={pendingCount} color="#EF4444" loading={isLoading} />
+        <KPICard icon={AlertCircle} label="Total Scans" value={totalScans} color="#6366F1" loading={isLoading} />
+      </div>
+
+      <DataTable
+        data={filtered}
+        columns={columns}
+        loading={isLoading}
+        onRowClick={(u) => setSelectedUser(u)}
+        toolbar={
+          <FilterBar
+            searchValue={searchValue}
+            onSearchChange={setSearchValue}
+            searchPlaceholder="Search by user ID, device..."
+            actions={
+              <button className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] hover:bg-[var(--pz-surface-3)] border border-[var(--pz-border)] text-xs font-semibold text-gray-300 transition-all">
+                <Download size={14} />
+                Export
+              </button>
+            }
+          />
+        }
+      />
+
+      <DetailDrawer
+        open={!!selectedUser}
+        onClose={() => setSelectedUser(null)}
+        title={`Unknown: ${selectedUser?.user_id_on_device || ''}`}
+        subtitle={selectedUser?.device_name || selectedUser?.device_serial}
+        width={680}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800/80 bg-slate-900/50">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-amber-950/40 border border-amber-900/50 text-amber-400 animate-pulse">
-              <Fingerprint size={16} />
+        {selectedUser && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+
+            {/* Status header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', paddingBottom: '20px', borderBottom: '1px solid var(--pz-border)' }}>
+              <div style={{ padding: '14px', borderRadius: '6px', background: 'rgba(245,158,11,0.10)', border: '1px solid rgba(245,158,11,0.25)', flexShrink: 0 }}>
+                <AlertCircle size={24} style={{ color: '#F59E0B' }} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <StatusBadge status={selectedUser.status === 'resolved' ? 'success' : 'warning'} size="md">
+                  {selectedUser.status}
+                </StatusBadge>
+                <span style={{ fontSize: '12px', color: 'var(--pz-text-muted)' }}>{selectedUser.scan_count} scan(s) recorded</span>
+              </div>
             </div>
-            <div>
-              <h2 className="text-sm font-bold text-slate-100 tracking-wide uppercase">
-                Reconcile Biometric Telemetry
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Profile ID: <span className="font-mono font-semibold text-amber-400">{user.device_user_id}</span>
-                {' · '}{user.device_name || user.device_serial}
+
+            {/* Details table */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Details</h4>
+              <div style={{ border: '1px solid var(--pz-border)', borderRadius: '6px', overflow: 'hidden' }}>
+                {[
+                  ['User ID on Device', selectedUser.user_id_on_device],
+                  ['Device', selectedUser.device_name || selectedUser.device_serial],
+                  ['Scan Count', String(selectedUser.scan_count)],
+                  ['First Seen', format(new Date(selectedUser.first_seen), 'MMM d, yyyy HH:mm')],
+                  ['Last Seen', format(new Date(selectedUser.last_seen), 'MMM d, yyyy HH:mm')],
+                  ['Status', selectedUser.status],
+                ].map(([label, value], i, arr) => (
+                  <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '44px', paddingInline: '14px', borderBottom: i < arr.length - 1 ? '1px solid var(--pz-border)' : 'none', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--pz-text-muted)' }}>{label}</span>
+                    <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--pz-text-secondary)', fontFamily: 'monospace' }}>{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: '12px', paddingTop: '8px', borderTop: '1px solid var(--pz-border)' }}>
+              <Button variant="default" size="md" style={{ flex: 1 }} onClick={() => setShowLinkModal(true)}>
+                <UserCheck size={15} /> Link to Employee
+              </Button>
+              <Button variant="destructive" size="md"
+                disabled={dismissMutation.isPending}
+                loading={dismissMutation.isPending}
+                onClick={() => dismissMutation.mutate(selectedUser.id)}>
+                <Trash2 size={15} />
+              </Button>
+            </div>
+
+          </div>
+        )}
+      </DetailDrawer>
+
+      {/* ── Link Employee Modal ────────────────────────────── */}
+      {showLinkModal && selectedUser && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-6"
+          style={{ background: 'rgba(17,24,39,0.55)', backdropFilter: 'blur(6px)' }}
+          onClick={e => e.target === e.currentTarget && setShowLinkModal(false)}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+            style={{
+              width: '100%', maxWidth: '640px',
+              background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)',
+              boxShadow: 'var(--pz-shadow-modal)', borderRadius: '10px', overflow: 'hidden',
+              maxHeight: '90vh', display: 'flex', flexDirection: 'column',
+            }}
+          >
+            <div style={{ padding: '28px 32px 20px 32px', borderBottom: '1px solid var(--pz-border)', flexShrink: 0 }}>
+              <h3 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--pz-text)', margin: 0 }}>Resolve Unknown User</h3>
+              <p style={{ fontSize: '14px', color: 'var(--pz-text-muted)', marginTop: '4px', marginBottom: 0 }}>
+                User ID <strong style={{ color: 'var(--pz-text-secondary)', fontFamily: 'monospace' }}>{selectedUser.user_id_on_device}</strong> from{' '}
+                <strong style={{ color: 'var(--pz-text-secondary)' }}>{selectedUser.device_name || selectedUser.device_serial}</strong>
               </p>
             </div>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors">
-            <X size={16} />
-          </button>
-        </div>
-
-        {/* Mode tabs */}
-        <div className="flex border-b border-slate-800 bg-slate-900/20 px-6 py-3">
-          <div className="flex gap-2 p-1 rounded-xl bg-slate-950 border border-slate-900 w-full">
-            {[
-              { id: 'existing', label: 'Link Existing Employee', icon: Link2 },
-              { id: 'new', label: 'Create New Employee', icon: UserPlus },
-            ].map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setMode(t.id as any)}
-                className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
-                  mode === t.id
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-950/40'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/40'
-                }`}
-              >
-                <t.icon size={14} />
-                {t.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="p-6 space-y-4">
-          {mode === 'existing' ? (
-            <div className="space-y-4">
-              <div>
-                <label className={labelCls}>Search Employee Roster</label>
-                <div className="relative">
-                  <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
-                  <input
-                    value={empSearch}
-                    onChange={(e) => setEmpSearch(e.target.value)}
-                    placeholder="Search by employee name or code..."
-                    className={`${inputCls} pl-10 bg-slate-950/80 border-slate-800`}
-                  />
-                </div>
-              </div>
-
-              <div className="max-h-56 overflow-y-auto space-y-1 border border-slate-800 rounded-xl p-2 bg-slate-950/70 scrollbar-thin">
-                {employees.length === 0 ? (
-                  <p className="text-center py-8 text-xs text-slate-500 font-mono">NO COMPATIBLE EMPLOYEES FOUND</p>
-                ) : (
-                  employees.map((emp) => {
-                    const isSelected = selectedEmployeeId === emp.id
-                    return (
-                      <button
-                        key={emp.id}
-                        onClick={() => setSelectedEmployeeId(emp.id)}
-                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all ${
-                          isSelected
-                            ? 'bg-blue-950/60 border border-blue-500/40 text-blue-200 shadow-sm'
-                            : 'border border-transparent hover:bg-slate-900/40 hover:border-slate-800/50 text-slate-300'
-                        }`}
-                      >
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 border transition-all ${
-                          isSelected
-                            ? 'bg-blue-900/40 text-blue-400 border-blue-500/30'
-                            : 'bg-slate-900 text-slate-400 border-slate-800'
-                        }`}>
-                          <span className="text-xs font-bold font-mono">
-                            {emp.full_name[0]?.toUpperCase()}
-                          </span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-xs font-bold truncate ${isSelected ? 'text-blue-300' : 'text-slate-200'}`}>
-                            {emp.full_name}
-                          </p>
-                          <p className="text-[10px] font-mono truncate text-slate-400 mt-0.5">
-                            {emp.employee_code} {emp.department_name ? `· ${emp.department_name}` : ''}
-                          </p>
-                        </div>
-                        {isSelected && (
-                          <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping flex-shrink-0" />
-                        )}
-                      </button>
-                    )
-                  })
-                )}
-              </div>
-
-              <div className="flex justify-end gap-3 pt-2 border-t border-slate-800/60">
-                <button
-                  onClick={onClose}
-                  className="px-4 py-2 rounded-xl border border-slate-800 text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-900/60 bg-transparent transition-all"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => mapExistingMutation.mutate()}
-                  disabled={!selectedEmployeeId || mapExistingMutation.isPending}
-                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 border border-blue-500/20 text-white text-xs font-semibold disabled:opacity-50 transition-all flex items-center gap-2 shadow-lg shadow-blue-950/20"
-                >
-                  {mapExistingMutation.isPending && <Loader2 size={14} className="animate-spin" />}
-                  <Link2 size={14} /> Link Employee
-                </button>
-              </div>
+            <div style={{ padding: '28px 32px 32px 32px', overflowY: 'auto', flex: 1 }}>
+              <ResolveForm
+                onResolve={(employeeId) => resolveMutation.mutate({ employeeId })}
+                onResolveNew={(data) => resolveNewMutation.mutate(data)}
+                onCancel={() => setShowLinkModal(false)}
+                isPending={resolveMutation.isPending || resolveNewMutation.isPending}
+                deviceUserId={selectedUser.user_id_on_device}
+              />
             </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className={labelCls}>Full Name *</label>
-                  <input
-                    value={newForm.full_name}
-                    onChange={(e) => setNewForm({ ...newForm, full_name: e.target.value })}
-                    placeholder="e.g. John Doe"
-                    className={inputCls}
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>Employee Code *</label>
-                  <input
-                    value={newForm.employee_code}
-                    onChange={(e) => setNewForm({ ...newForm, employee_code: e.target.value })}
-                    className={inputCls}
-                  />
-                </div>
-              </div>
-              <div>
-                <label className={labelCls}>Department</label>
-                <select
-                  value={newForm.department_id}
-                  onChange={(e) => setNewForm({ ...newForm, department_id: e.target.value })}
-                  className={inputCls}
-                >
-                  <option value="">No Department</option>
-                  {departments.map((d) => (
-                    <option key={d.id} value={d.id}>{d.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-2 border-t border-slate-800/60">
-                <button
-                  onClick={onClose}
-                  className="px-4 py-2 rounded-xl border border-slate-800 text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-900/60 bg-transparent transition-all"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => mapNewMutation.mutate()}
-                  disabled={!newForm.full_name || !newForm.employee_code || mapNewMutation.isPending}
-                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 border border-emerald-500/20 text-white text-xs font-semibold disabled:opacity-50 transition-all flex items-center gap-2 shadow-lg shadow-emerald-950/20"
-                >
-                  {mapNewMutation.isPending && <Loader2 size={14} className="animate-spin" />}
-                  <UserPlus size={14} /> Create & Map
-                </button>
-              </div>
-            </div>
-          )}
+          </motion.div>
         </div>
-      </motion.div>
+      )}
     </div>
   )
 }
 
-// ── Main Page ────────────────────────────────────────────
-export default function UnrecognizedUsers() {
-  const [selectedUser, setSelectedUser] = useState<UnrecognizedUser | null>(null)
+function ResolveForm({
+  onResolve,
+  onResolveNew,
+  onCancel,
+  isPending,
+  deviceUserId,
+}: {
+  onResolve: (employeeId: string) => void
+  onResolveNew: (data: { full_name: string; employee_code: string; department_id: string; shift_template_id?: string; position?: string }) => void
+  onCancel: () => void
+  isPending: boolean
+  deviceUserId: string
+}) {
+  const [mode, setMode] = useState<'search' | 'create'>('search')
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState('')
+  const [search, setSearch] = useState('')
 
-  const { data, isLoading, refetch } = useQuery({
-    queryKey: ['unrecognized-users'],
-    queryFn: async () => (await devicesAPI.getUnrecognizedUsers()).data,
-    refetchInterval: 30000,
+  // ── Create mode state ─────────────────────────────────────
+  const [form, setForm] = useState({
+    full_name: '',
+    employee_code: '',
+    department_id: '',
+    shift_template_id: '',
+    position: '',
   })
 
-  const users: UnrecognizedUser[] = data?.users ?? []
+  const { data: empData } = useQuery({
+    queryKey: ['employees-resolve-search', search],
+    queryFn: async () => (await employeesAPI.list({ search, per_page: 50 })).data,
+    enabled: mode === 'search',
+  })
+
+  const { data: deptData } = useQuery({
+    queryKey: ['departments-list'],
+    queryFn: async () => (await departmentsAPI.list()).data,
+    enabled: mode === 'create',
+  })
+
+  const { data: templateData } = useQuery({
+    queryKey: ['shift-templates-list'],
+    queryFn: async () => (await shiftTemplatesAPI.list()).data,
+    enabled: mode === 'create',
+  })
+
+  const employees = empData?.items ?? []
+  const departments = Array.isArray(deptData) ? deptData : deptData?.items ?? []
+  const templates = Array.isArray(templateData) ? templateData : templateData?.items ?? []
 
   return (
-    <div className="animate-fade-in space-y-6">
-      {/* Banner */}
-      {users.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex items-start gap-4 p-4 rounded-xl bg-gradient-to-r from-amber-950/40 via-amber-950/20 to-transparent border border-amber-500/20 border-l-4 border-l-amber-500 shadow-lg shadow-amber-950/20"
+    <div className="space-y-4">
+      {/* ── Mode Tabs ──────────────────────────────────────── */}
+      <div className="flex rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] p-0.5">
+        <button
+          onClick={() => setMode('search')}
+          className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-semibold transition-all ${
+            mode === 'search'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-gray-400 hover:text-gray-200'
+          }`}
         >
-          <div className="p-2 rounded-lg bg-amber-950/60 border border-amber-500/30 text-amber-400 flex-shrink-0 animate-pulse">
-            <AlertTriangle size={20} />
-          </div>
-          <div className="flex-1">
-            <h4 className="text-sm font-bold text-amber-400 tracking-wide uppercase">
-              System Alert: Unresolved Biometric Telemetry
-            </h4>
-            <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-              Detected <span className="font-semibold text-amber-400 font-mono">{users.length}</span> unrecognized biometric profile{users.length !== 1 ? 's' : ''} actively scanning on registered terminals. These records must be mapped to authorized employee profiles to reconcile attendance logs.
-            </p>
-          </div>
-        </motion.div>
-      )}
-
-      {/* Table Card */}
-      <div className="card overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-800/80 bg-slate-900/20 flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wider">Unmapped Device Biometrics</h3>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Profiles captured on terminal devices but missing employee credentials mapping
-            </p>
-          </div>
-          <button
-            onClick={() => refetch()}
-            className="px-3 py-1.5 rounded-lg border border-slate-800 text-xs font-semibold text-blue-400 hover:text-blue-300 hover:bg-slate-900/60 transition-all bg-transparent"
-          >
-            Refresh Logs
-          </button>
-        </div>
-
-        {isLoading ? (
-          <div className="p-6 space-y-3">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="skeleton h-14 rounded-xl" />
-            ))}
-          </div>
-        ) : users.length === 0 ? (
-          <div className="text-center py-20 text-slate-500">
-            <div className="w-16 h-16 rounded-2xl bg-slate-950 border border-slate-900 flex items-center justify-center mx-auto mb-4 text-slate-600">
-              <Fingerprint size={32} />
-            </div>
-            <p className="font-semibold text-slate-300">All Biometric Profiles Synced</p>
-            <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto leading-relaxed">
-              No unrecognized scans found. Every fingerprint logged by network terminals is correctly matched to a valid worker ID.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-900/50 border-b border-slate-800">
-                  <th className="text-left py-3.5 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">Device User ID</th>
-                  <th className="text-left py-3.5 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">Originating Device</th>
-                  <th className="text-left py-3.5 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Scans</th>
-                  <th className="text-left py-3.5 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">Last Telemetry</th>
-                  <th className="text-right py-3.5 px-6 text-xs font-semibold text-slate-400 uppercase tracking-wider">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((u, i) => (
-                  <motion.tr
-                    key={`${u.device_id}-${u.device_user_id}`}
-                    initial={{ opacity: 0, x: -8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.03 }}
-                    className="border-b border-slate-800/60 hover:bg-slate-800/30 hover:border-slate-700/50 transition-all duration-150"
-                  >
-                    <td className="py-4 px-6">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-amber-950/20 border border-amber-500/20 flex items-center justify-center text-amber-400 shadow-inner">
-                          <Fingerprint size={18} />
-                        </div>
-                        <div>
-                          <p className="font-mono font-bold text-sm text-slate-200">ID: {u.device_user_id}</p>
-                          <div className="mt-1">
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-950/40 text-amber-400 border border-amber-500/20">
-                              Unmapped Profile
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-4 px-6">
-                      <div className="flex items-center gap-3">
-                        <div className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-400">
-                          <Monitor size={15} />
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-slate-200">{u.device_name || 'Terminal (Unknown)'}</p>
-                          <div className="flex items-center gap-1.5 mt-1">
-                            <span className="text-[10px] font-mono text-slate-500 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-900/60">{u.device_ip || 'No IP'}</span>
-                            <span className="text-[10px] font-mono text-slate-500">{u.device_serial}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-4 px-6">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-900 text-slate-300 border border-slate-800">
-                        {u.scan_count} scan{u.scan_count !== 1 ? 's' : ''}
-                      </span>
-                    </td>
-                    <td className="py-4 px-6">
-                      <div className="flex items-center gap-2 text-slate-300">
-                        <Clock size={13} className="text-slate-500" />
-                        <span className="text-xs font-medium">
-                          {u.last_seen ? format(new Date(u.last_seen), 'MMM dd, hh:mm a') : '—'}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="py-4 px-6 text-right">
-                      <button
-                        onClick={() => setSelectedUser(u)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-900/80 hover:bg-blue-600 border border-blue-700/50 text-blue-100 text-xs font-semibold transition-all hover:scale-[1.02] shadow-sm active:scale-95 ml-auto"
-                      >
-                        <Link2 size={12} /> Reconcile Profile
-                      </button>
-                    </td>
-                  </motion.tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+          <Search size={13} />
+          Link Existing
+        </button>
+        <button
+          onClick={() => setMode('create')}
+          className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-semibold transition-all ${
+            mode === 'create'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-gray-400 hover:text-gray-200'
+          }`}
+        >
+          <UserPlus size={13} />
+          Create New
+        </button>
       </div>
 
-      {/* Map Modal */}
-      <AnimatePresence>
-        {selectedUser && (
-          <MapUserModal
-            user={selectedUser}
-            onClose={() => setSelectedUser(null)}
-          />
+      {/* ── Search Existing Employee ───────────────────────── */}
+      {mode === 'search' && (
+        <>
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>Search Employee</label>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name or code..."
+              className="pz-input w-full"
+              style={{ height: '44px', fontSize: '14px' }}
+            />
+          </div>
+
+          <div className="max-h-48 overflow-y-auto space-y-1">
+            {employees.map((emp: any) => (
+              <button
+                key={emp.id}
+                onClick={() => setSelectedEmployeeId(emp.id)}
+                className={`w-full flex items-center gap-3 p-2.5 rounded-lg text-left transition-colors ${
+                  selectedEmployeeId === emp.id
+                    ? 'bg-blue-600/20 border border-blue-500/30'
+                    : 'hover:bg-[var(--pz-surface-2)] border border-transparent'
+                }`}
+              >
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-900/40 to-indigo-900/40 flex items-center justify-center text-[10px] font-bold text-blue-400 border border-blue-500/20 flex-shrink-0">
+                  {emp.full_name?.[0] || '?'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-gray-200 truncate">{emp.full_name}</p>
+                  <p className="text-[10px] text-gray-500 font-mono">{emp.employee_code}</p>
+                </div>
+                {emp.department_name && (
+                  <span className="text-[9px] text-gray-500 bg-[var(--pz-surface)] px-1.5 py-0.5 rounded border border-[var(--pz-border)]">
+                    {emp.department_name}
+                  </span>
+                )}
+              </button>
+            ))}
+            {!employees.length && search && (
+              <div className="text-center py-4">
+                <p className="text-xs text-gray-500">No employees found</p>
+                <button
+                  onClick={() => setMode('create')}
+                  className="text-[10px] text-blue-400 hover:text-blue-300 mt-1"
+                >
+                  Create a new employee →
+                </button>
+              </div>
+            )}
+            {!employees.length && !search && (
+              <p className="text-xs text-gray-500 text-center py-4">Type to search employees</p>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ── Create New Employee ────────────────────────────── */}
+      {mode === 'create' && (
+        <>
+          <div className="p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20">
+            <p className="text-[10px] text-blue-300">
+              Creating a new employee will automatically link device user <span className="font-mono font-bold">{deviceUserId}</span>
+            </p>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>
+                Full Name <span style={{ color: 'var(--pz-danger-500)' }}>*</span>
+              </label>
+              <input
+                value={form.full_name}
+                onChange={(e) => setForm(p => ({ ...p, full_name: e.target.value }))}
+                placeholder="John Doe"
+                className="pz-input w-full"
+                style={{ height: '44px', fontSize: '14px' }}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>
+                Employee Code <span style={{ color: 'var(--pz-danger-500)' }}>*</span>
+              </label>
+              <input
+                value={form.employee_code}
+                onChange={(e) => setForm(p => ({ ...p, employee_code: e.target.value }))}
+                placeholder="EMP001"
+                className="pz-input w-full"
+                style={{ height: '44px', fontSize: '14px' }}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>
+              Department <span style={{ color: 'var(--pz-danger-500)' }}>*</span>
+            </label>
+            <select
+              value={form.department_id}
+              onChange={(e) => setForm(p => ({ ...p, department_id: e.target.value }))}
+              className="pz-input w-full"
+              style={{ height: '44px', fontSize: '14px' }}
+            >
+              <option value="">Select department</option>
+              {departments.map((d: any) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>
+              Shift Template
+            </label>
+            <select
+              value={form.shift_template_id}
+              onChange={(e) => setForm(p => ({ ...p, shift_template_id: e.target.value }))}
+              className="pz-input w-full"
+              style={{ height: '44px', fontSize: '14px' }}
+            >
+              <option value="">No shift assigned</option>
+              {templates.map((t: any) => (
+                <option key={t.id} value={t.id}>{t.name} ({t.start_time} - {t.end_time})</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>
+              Position
+            </label>
+            <input
+              value={form.position}
+              onChange={(e) => setForm(p => ({ ...p, position: e.target.value }))}
+              placeholder="e.g. Security Officer"
+              className="pz-input w-full"
+              style={{ height: '44px', fontSize: '14px' }}
+            />
+          </div>
+        </>
+      )}
+
+      {/* ── Actions ────────────────────────────────────────── */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', paddingTop: '16px', borderTop: '1px solid var(--pz-border)' }}>
+        <Button variant="outline" size="md" onClick={onCancel}>Cancel</Button>
+        {mode === 'search' ? (
+          <Button variant="default" size="md" loading={isPending} disabled={!selectedEmployeeId || isPending} onClick={() => onResolve(selectedEmployeeId)}>
+            {isPending ? 'Linking...' : 'Link & Resolve'}
+          </Button>
+        ) : (
+          <Button variant="success" size="md" loading={isPending} disabled={!form.full_name || !form.employee_code || !form.department_id || isPending} onClick={() => onResolveNew(form)}>
+            <UserPlus size={14} />
+            {isPending ? 'Creating...' : 'Create & Link'}
+          </Button>
         )}
-      </AnimatePresence>
+      </div>
     </div>
   )
 }

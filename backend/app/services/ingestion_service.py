@@ -2,26 +2,26 @@
 Project Z - IngestionService (Layer 1)
 Raw scan ingestion orchestrator.
 
-Pipeline (strict order, per Req 2.2):
+Pipeline:
   1. Resolve device, employee, location context
   2. Classify scan_result
-  3. INSERT scan_events row (always — never fails silently)
-  4. Fire-and-forget: broadcast scan_event WebSocket
-  5. Fire-and-forget: publish to Redis stream projectz:attendance_tasks
-
-Steps 4 and 5 MUST NOT block step 3.
-All errors after step 3 are logged and swallowed — the ADMS device always gets "OK".
+  3. INSERT scan_events row
+  4. INSERT attendance_logs row (immediate — no waiting for background worker)
+  5. Create/update attendance_session
+  6. Broadcast WebSocket
+  7. Enqueue to Redis stream (for summary updates)
 """
-import json
+
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.attendance import AttendanceLog, AttendanceSession, PunchDirection, VerifyType
 from app.models.device import Device
 from app.models.employee import Employee
 from app.models.employee_device_mapping import EmployeeDeviceMapping
@@ -34,7 +34,6 @@ from app.models.scan_event import (
 
 logger = logging.getLogger(__name__)
 
-# Mapping from ADMS verify_type integer to VerificationMethod enum
 _VERIFY_TYPE_MAP = {
     0: VerificationMethod.PASSWORD,
     1: VerificationMethod.FINGERPRINT,
@@ -42,11 +41,26 @@ _VERIFY_TYPE_MAP = {
     9: VerificationMethod.FACE,
 }
 
+_VERIFY_TYPE_STR_MAP = {
+    0: "password",
+    1: "fingerprint",
+    2: "card",
+    9: "face",
+}
+
+_PUNCH_STATUS_MAP = {
+    0: PunchDirection.IN,
+    1: PunchDirection.OUT,
+    2: PunchDirection.OUT,   # break-out
+    3: PunchDirection.IN,    # break-in
+    4: PunchDirection.IN,    # OT-in
+    5: PunchDirection.OUT,   # OT-out
+}
+
 
 class IngestionService:
     """
-    Layer 1 orchestrator: store every scan, then fire-and-forget broadcast + queue.
-    Never raises — all post-storage errors are caught and logged.
+    Layer 1 orchestrator: store every scan, create attendance log immediately.
     """
 
     def __init__(self, session: AsyncSession):
@@ -62,11 +76,7 @@ class IngestionService:
         raw_payload: dict,
         source_ip: Optional[str] = None,
     ) -> Optional[ScanEvent]:
-        """
-        Ingest a single biometric scan event.
-
-        Returns the stored ScanEvent, or None if the DB write failed.
-        """
+        """Ingest a single biometric scan event."""
         t_start = time.monotonic()
 
         # ── Step 1: Resolve device ────────────────────────────
@@ -76,7 +86,6 @@ class IngestionService:
         office_id = device.office_id if device else None
         department_id_from_device = device.department_id if device else None
 
-        # Resolve office/department names (never null — default "Unassigned")
         office_name = "Unassigned"
         department_name = "Unassigned"
         if device and device.office_id:
@@ -112,7 +121,6 @@ class IngestionService:
             employee_code = employee.employee_code
             employee_name = employee.full_name
             employee_dept_id = employee.department_id
-            # Employee's department takes precedence over device's department
             if employee_dept_id:
                 from app.models.department import Department
                 dept_result = await self.session.execute(
@@ -130,14 +138,16 @@ class IngestionService:
         else:
             scan_result = ScanResult.SUCCESSFUL
 
-        # ── Step 4: Map verification method ──────────────────
-        verification_method = _VERIFY_TYPE_MAP.get(
-            verify_type_code, VerificationMethod.OTHER
-        )
+        verification_method = _VERIFY_TYPE_MAP.get(verify_type_code, VerificationMethod.OTHER)
+        punch_direction = _PUNCH_STATUS_MAP.get(raw_punch_state, PunchDirection.UNKNOWN)
 
-        # ── Step 5: INSERT scan_events row ────────────────────
+        # ── Step 4: INSERT scan_events row ────────────────────
         scan_event = None
         try:
+            # Ensure partition exists for this timestamp
+            from app.services.partition_manager import partition_manager
+            await partition_manager.ensure_partition_exists(self.session, scan_timestamp)
+
             scan_event = ScanEvent(
                 employee_id=employee_id,
                 employee_code=employee_code,
@@ -154,58 +164,149 @@ class IngestionService:
                 raw_punch_state=raw_punch_state,
                 raw_payload=raw_payload,
                 scan_timestamp=scan_timestamp,
-                processing_status=ProcessingStatusV2.PENDING,
+                processing_status=ProcessingStatusV2.PROCESSED,
                 websocket_broadcasted=False,
             )
             self.session.add(scan_event)
             await self.session.flush()
             await self.session.refresh(scan_event)
-
-            elapsed_ms = (time.monotonic() - t_start) * 1000
-            logger.debug(
-                f"[Ingestion] Stored scan_event {scan_event.id} "
-                f"employee={employee_code} result={scan_result} "
-                f"in {elapsed_ms:.1f}ms"
-            )
+            logger.info(f">>> SCAN SAVED | id={scan_event.id} employee={employee_code} result={scan_result}")
         except Exception as e:
-            logger.error(
-                f"[Ingestion] CRITICAL: scan storage failed | "
-                f"device={device_serial} user={device_user_id} | "
-                f"error={e} | payload={str(raw_payload)[:500]}",
-                exc_info=True,
-            )
+            logger.error(f"[Ingestion] Scan storage failed: {e}", exc_info=True)
             return None
 
-        # ── Step 6: Fire-and-forget WebSocket broadcast ───────
+        # ── Step 5: Create attendance_log immediately ──────────
+        if employee and device and scan_result == ScanResult.SUCCESSFUL:
+            try:
+                await self._create_attendance_log(
+                    employee_id=employee_id,
+                    device_id=device_id,
+                    timestamp=scan_timestamp,
+                    verify_type_code=verify_type_code,
+                    punch_direction=punch_direction,
+                    device_user_id=device_user_id,
+                    work_code=raw_payload.get("work_code", ""),
+                )
+                logger.info(f">>> ATTENDANCE LOG CREATED | employee={employee_code}")
+            except Exception as e:
+                logger.error(f"[Ingestion] Failed to create attendance log: {e}", exc_info=True)
+
+        # ── Step 6: Broadcast WebSocket ────────────────────────
         try:
             await self._broadcast_scan_event(scan_event, employee, device)
         except Exception as e:
             logger.warning(f"[Ingestion] WebSocket broadcast failed: {e}")
 
-        # ── Step 7: Fire-and-forget Redis stream enqueue ──────
+        # ── Step 7: Enqueue to Redis stream ────────────────────
         try:
             await self._enqueue_processing_task(scan_event)
         except Exception as e:
-            logger.warning(
-                f"[Ingestion] Redis enqueue failed, marking queued_offline: {e}"
-            )
-            try:
-                from sqlalchemy import update
-                await self.session.execute(
-                    update(ScanEvent)
-                    .where(
-                        and_(
-                            ScanEvent.id == scan_event.id,
-                            ScanEvent.scan_timestamp == scan_event.scan_timestamp,
-                        )
-                    )
-                    .values(processing_status=ProcessingStatusV2.QUEUED_OFFLINE)
-                )
-                await self.session.flush()
-            except Exception as e2:
-                logger.error(f"[Ingestion] Failed to mark queued_offline: {e2}")
+            logger.warning(f"[Ingestion] Redis enqueue failed: {e}")
 
         return scan_event
+
+    async def _create_attendance_log(
+        self,
+        employee_id: UUID,
+        device_id: UUID,
+        timestamp: datetime,
+        verify_type_code: int,
+        punch_direction: PunchDirection,
+        device_user_id: str,
+        work_code: str,
+    ) -> AttendanceLog:
+        """Create an attendance_log record immediately."""
+        verify_type_str = _VERIFY_TYPE_STR_MAP.get(verify_type_code, "other")
+        
+        log = AttendanceLog(
+            employee_id=employee_id,
+            device_id=device_id,
+            timestamp=timestamp,
+            device_user_id=device_user_id,
+            verify_type=verify_type_str,
+            punch_direction=punch_direction,
+            work_code=work_code,
+            is_duplicate=False,
+        )
+        self.session.add(log)
+        
+        # Also create or update attendance_session
+        await self._upsert_attendance_session(employee_id, device_id, timestamp, punch_direction)
+        
+        await self.session.flush()
+        return log
+
+    async def _upsert_attendance_session(
+        self,
+        employee_id: UUID,
+        device_id: UUID,
+        timestamp: datetime,
+        punch_direction: PunchDirection,
+    ) -> None:
+        """Create or update attendance_session for this employee today.
+        
+        For night shifts that cross midnight:
+        - If check-in is between 18:00-23:59, attribute to that day's shift
+        - If check-out is between 00:00-06:00, attribute to previous day's shift
+        - This ensures a night shift (e.g., 20:00 Mon → 08:00 Tue) is one session
+        """
+        from app.utils.time_utils import today_date
+        
+        # Determine the "shift date" based on time of day
+        hour = timestamp.hour
+        
+        # Night shift crossing midnight: 00:00-06:00 belongs to previous day's shift
+        if hour < 6:
+            event_date = (timestamp - timedelta(days=1)).date()
+        else:
+            event_date = timestamp.date()
+        
+        # Find existing session for today
+        result = await self.session.execute(
+            select(AttendanceSession).where(
+                and_(
+                    AttendanceSession.employee_id == employee_id,
+                    AttendanceSession.date == event_date,
+                )
+            )
+        )
+        session = result.scalar_one_or_none()
+        
+        if session is None:
+            # First scan of the day — create session with check_in
+            session = AttendanceSession(
+                employee_id=employee_id,
+                date=event_date,
+                check_in=timestamp,
+                check_in_device_id=device_id,
+                late_minutes=0,
+                status="on_time",
+                is_complete=False,
+            )
+            self.session.add(session)
+            logger.info(f">>> SESSION CREATED | employee={employee_id} check_in={timestamp} shift_date={event_date}")
+        else:
+            # Update check_out (rolling last scan)
+            updates = {
+                "check_out": timestamp,
+                "check_out_device_id": device_id,
+                "is_complete": True,
+            }
+            
+            # Calculate duration — normalize timezones before subtraction
+            if session.check_in:
+                # ADMS timestamps are naive; DB timestamps are tz-aware. Normalize both to naive UTC.
+                t_out = timestamp.replace(tzinfo=None) if timestamp.tzinfo else timestamp
+                t_in  = session.check_in.replace(tzinfo=None) if session.check_in.tzinfo else session.check_in
+                delta = t_out - t_in
+                updates["duration_minutes"] = round(delta.total_seconds() / 60, 1)
+            
+            await self.session.execute(
+                update(AttendanceSession)
+                .where(AttendanceSession.id == session.id)
+                .values(**updates)
+            )
+            logger.info(f">>> SESSION UPDATED | employee={employee_id} check_out={timestamp} shift_date={event_date}")
 
     # ── Private helpers ───────────────────────────────────────
 
@@ -215,15 +316,10 @@ class IngestionService:
         )
         return result.scalar_one_or_none()
 
-    async def _resolve_employee(
-        self, device_user_id: str, device_id: UUID
-    ) -> Optional[Employee]:
+    async def _resolve_employee(self, device_user_id: str, device_id: UUID) -> Optional[Employee]:
         result = await self.session.execute(
             select(Employee)
-            .join(
-                EmployeeDeviceMapping,
-                EmployeeDeviceMapping.employee_id == Employee.id,
-            )
+            .join(EmployeeDeviceMapping, EmployeeDeviceMapping.employee_id == Employee.id)
             .where(
                 and_(
                     EmployeeDeviceMapping.device_user_id == device_user_id,
@@ -234,61 +330,40 @@ class IngestionService:
         )
         return result.scalar_one_or_none()
 
-    async def _broadcast_scan_event(
-        self,
-        scan: ScanEvent,
-        employee: Optional[Employee],
-        device: Optional[Device],
-    ) -> None:
+    async def _broadcast_scan_event(self, scan: ScanEvent, employee: Optional[Employee], device: Optional[Device]) -> None:
         from app.services.websocket_service import ws_manager
 
         payload = {
             "scan_event_id": str(scan.id),
-            "employee_photo_url": getattr(employee, "avatar_url", None) if employee else None,
             "employee_name": scan.employee_name,
             "employee_code": scan.employee_code,
             "department_name": scan.department_name,
             "office_name": scan.office_name,
             "device_name": scan.device_name,
             "device_serial": scan.device_serial,
-            "verification_method": scan.verification_method.value
-            if hasattr(scan.verification_method, "value")
-            else str(scan.verification_method),
+            "verification_method": scan.verification_method.value if hasattr(scan.verification_method, "value") else str(scan.verification_method),
             "scan_timestamp": scan.scan_timestamp.isoformat(),
-            "scan_result": scan.scan_result.value
-            if hasattr(scan.scan_result, "value")
-            else str(scan.scan_result),
-            "shift_type": "unknown",  # Resolved by attendance engine after processing
+            "scan_result": scan.scan_result.value if hasattr(scan.scan_result, "value") else str(scan.scan_result),
         }
 
         await ws_manager.broadcast("scan_event", payload)
 
-        # Unknown user alert
         if scan.scan_result in (ScanResult.UNKNOWN_USER, ScanResult.UNKNOWN_DEVICE):
             await ws_manager.broadcast("unknown_user_alert", {
                 "device_serial_number": scan.device_serial,
                 "raw_device_user_id": scan.employee_code,
                 "scan_timestamp": scan.scan_timestamp.isoformat(),
                 "device_name": scan.device_name,
-                "office_name": scan.office_name,
             })
 
-        # Mark broadcasted
-        from sqlalchemy import update
         await self.session.execute(
             update(ScanEvent)
-            .where(
-                and_(
-                    ScanEvent.id == scan.id,
-                    ScanEvent.scan_timestamp == scan.scan_timestamp,
-                )
-            )
+            .where(and_(ScanEvent.id == scan.id, ScanEvent.scan_timestamp == scan.scan_timestamp))
             .values(websocket_broadcasted=True)
         )
         await self.session.flush()
 
     async def _enqueue_processing_task(self, scan: ScanEvent) -> None:
-        """Publish to Redis stream projectz:attendance_tasks."""
         from app.core.config import get_settings
         import redis.asyncio as aioredis
 
@@ -304,16 +379,9 @@ class IngestionService:
                     "attempt": "1",
                 },
             )
-            # Update processing_status to queued
-            from sqlalchemy import update
             await self.session.execute(
                 update(ScanEvent)
-                .where(
-                    and_(
-                        ScanEvent.id == scan.id,
-                        ScanEvent.scan_timestamp == scan.scan_timestamp,
-                    )
-                )
+                .where(and_(ScanEvent.id == scan.id, ScanEvent.scan_timestamp == scan.scan_timestamp))
                 .values(processing_status=ProcessingStatusV2.QUEUED)
             )
             await self.session.flush()

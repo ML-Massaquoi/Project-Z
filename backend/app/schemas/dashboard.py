@@ -19,8 +19,19 @@ class DashboardStats(BaseModel):
     present_today: int = 0
     late_today: int = 0
     absent_today: int = 0
+    expected_today: int = 0
     active_devices: int = 0
     online_devices: int = 0
+    total_scans_today: int = 0
+    offline_devices: int = 0
+    active_departments: int = 0
+    # Enrollment status breakdown
+    employees_active: int = 0
+    employees_pending_enrollment: int = 0
+    employees_enrolled: int = 0
+    employees_inactive: int = 0
+    employees_terminated: int = 0
+    active_enrollment_sessions: int = 0
     trends: DashboardTrends = DashboardTrends()
 
 

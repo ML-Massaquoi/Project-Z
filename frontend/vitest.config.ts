@@ -4,14 +4,25 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
-  test: {
-    environment: 'jsdom',
-    setupFiles: ['./src/__tests__/setup.ts'],
-    globals: true,
-  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+    },
+  },
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: ['./src/__tests__/setup.ts'],
+    include: ['src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      exclude: [
+        'node_modules/',
+        'src/__tests__/',
+        '*.config.*',
+        'src/vite-env.d.ts',
+      ],
     },
   },
 })

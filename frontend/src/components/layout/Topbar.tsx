@@ -1,30 +1,24 @@
 import { useState, useEffect } from 'react'
-import { Bell, Search, Maximize2, Minimize2, Menu, User, Settings as SettingsIcon, LogOut } from 'lucide-react'
+import { Search, Maximize2, Minimize2, Menu, User, Settings as SettingsIcon, LogOut, WifiOff, Moon, Sun } from 'lucide-react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
+import { useConnectionStore } from '@/stores/connectionStore'
+import { useThemeStore } from '@/stores/themeStore'
+import { NotificationPanel } from '@/components/ui/NotificationPanel'
 
 interface TopbarProps {
-  title: string
-  subtitle?: string
   onMenuToggle: () => void
+  onCommandPalette?: () => void
 }
 
-const badgeDisplay = (count: number): string =>
-  count > 99 ? '99+' : count > 0 ? String(count) : ''
-
-export default function Topbar({ title, subtitle, onMenuToggle }: TopbarProps) {
+export default function Topbar({ onMenuToggle, onCommandPalette }: TopbarProps) {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
   const [time, setTime] = useState(new Date())
-
-  const handleLogout = () => {
-    logout()
-    navigate('/login')
-  }
-  const [searchValue, setSearchValue] = useState('')
-  const [notifCount] = useState(0)
+  const connectionStatus = useConnectionStore((s) => s.status)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const { isDark, toggle: toggleTheme } = useThemeStore()
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000)
@@ -38,117 +32,213 @@ export default function Topbar({ title, subtitle, onMenuToggle }: TopbarProps) {
   }, [])
 
   const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen()
-    } else {
-      document.exitFullscreen()
-    }
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen()
+    else document.exitFullscreen()
   }
 
+  const handleLogout = () => { logout(); navigate('/login') }
+  const isConnected = connectionStatus === 'connected'
+
+  const initials = (user?.full_name || user?.username || 'A')
+    .split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
+
   return (
-    <header className="h-16 border-b border-[var(--color-border)] bg-[#111827] flex items-center justify-between px-6 sticky top-0 z-40">
-      {/* Left - Hamburger (mobile) + Title */}
-      <div className="flex items-center">
+    <header
+      className="flex items-center justify-between px-4 lg:px-6 flex-shrink-0"
+      style={{
+        position: 'sticky',
+        top: 0,
+        height: 60,
+        background: 'var(--pz-surface-1)',
+        borderBottom: '1px solid var(--pz-border)',
+        boxShadow: 'var(--pz-shadow-topbar)',
+        zIndex: 100,
+      }}
+    >
+      <div className="flex items-center gap-3">
         <button
           onClick={onMenuToggle}
-          className="flex md:hidden p-2 rounded-lg hover:bg-[#1F2937] text-gray-400 mr-2 animate-pulse"
+          className="flex md:hidden p-2 rounded-lg transition-colors hover:bg-[var(--pz-surface-3)]"
+          style={{ color: 'var(--pz-text-muted)' }}
           aria-label="Open menu"
         >
           <Menu size={20} />
         </button>
-        <div>
-          <h1 className="text-lg font-bold text-gray-100 tracking-tight">{title}</h1>
-          {subtitle && (
-            <p className="text-xs text-gray-400 -mt-0.5">{subtitle}</p>
+
+        <div
+          className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+          style={{
+            color: isConnected ? 'var(--pz-success-500)' : 'var(--pz-warning-600)',
+            background: isConnected ? 'var(--pz-success-50)' : 'var(--pz-warning-50)',
+            border: `1px solid ${isConnected ? 'var(--pz-success-border)' : 'var(--pz-warning-border)'}`,
+          }}
+        >
+          {isConnected ? (
+            <>
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full rounded-full opacity-75"
+                  style={{ background: 'var(--pz-success-500)', animation: 'pulse-glow 2s ease-in-out infinite' }} />
+                <span className="relative inline-flex rounded-full h-2 w-2"
+                  style={{ background: 'var(--pz-success-500)' }} />
+              </span>
+              System Online
+            </>
+          ) : (
+            <>
+              <WifiOff size={13} />
+              {connectionStatus === 'reconnecting' ? 'Reconnecting...' : 'Degraded'}
+            </>
           )}
         </div>
       </div>
 
-      {/* Right - Actions */}
-      <div className="flex items-center gap-3">
-        {/* Search */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1F2937]/50 border border-[var(--color-border)] focus-within:border-[var(--color-primary)] transition-all">
-          <Search size={14} className="text-gray-400 flex-shrink-0" />
-          <input
-            type="text"
-            value={searchValue}
-            onChange={(e) => setSearchValue(e.target.value.slice(0, 200))}
-            placeholder="Search anything..."
-            className="bg-transparent text-xs text-gray-200 placeholder:text-gray-500 outline-none w-32 md:w-48"
-            maxLength={200}
-          />
-        </div>
+      <div className="flex items-center gap-1.5 lg:gap-2">
+        <button
+          onClick={onCommandPalette}
+          className="flex items-center gap-2.5 rounded-lg text-sm transition-all"
+          style={{
+            padding: '7px 12px',
+            background: 'var(--pz-surface-2)',
+            border: '1px solid var(--pz-border)',
+            color: 'var(--pz-text-muted)',
+          }}
+          onMouseEnter={e => {
+            const el = e.currentTarget as HTMLElement
+            el.style.borderColor = 'var(--pz-border-strong)'
+            el.style.color = 'var(--pz-text-secondary)'
+          }}
+          onMouseLeave={e => {
+            const el = e.currentTarget as HTMLElement
+            el.style.borderColor = 'var(--pz-border)'
+            el.style.color = 'var(--pz-text-muted)'
+          }}
+        >
+          <Search size={14} />
+          <span className="hidden md:inline text-xs">Search...</span>
+          <kbd
+            className="hidden md:flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono"
+            style={{ background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', color: 'var(--pz-text-muted)' }}
+          >
+            Ctrl K
+          </kbd>
+        </button>
 
-        {/* Clock */}
-        <div className="hidden lg:flex items-center gap-1 text-xs text-gray-300 font-semibold font-mono bg-[#1F2937] px-2.5 py-1.5 rounded-lg border border-[var(--color-border)] tabular-nums">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse mr-1" />
+        {/* Theme toggle */}
+        <button
+          onClick={toggleTheme}
+          className="p-2.5 rounded-lg transition-colors hidden md:flex"
+          style={{ color: 'var(--pz-text-muted)' }}
+          onMouseEnter={e => {
+            (e.currentTarget.style.background = 'var(--pz-surface-3)')
+            ;(e.currentTarget.style.color = 'var(--pz-text-secondary)')
+          }}
+          onMouseLeave={e => {
+            (e.currentTarget.style.background = 'transparent')
+            ;(e.currentTarget.style.color = 'var(--pz-text-muted)')
+          }}
+          title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+        >
+          {isDark ? <Sun size={15} /> : <Moon size={15} />}
+        </button>
+
+        <div
+          className="hidden lg:flex items-center gap-2 text-xs font-mono font-semibold rounded-lg px-3 py-2 tabular-nums"
+          style={{
+            background: 'var(--pz-surface-2)',
+            border: '1px solid var(--pz-border)',
+            color: 'var(--pz-text-secondary)',
+          }}
+        >
+          <span
+            className="w-1.5 h-1.5 rounded-full"
+            style={{ background: 'var(--pz-success-500)', animation: 'pulse-dot 2s ease-in-out infinite' }}
+          />
           {time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
         </div>
 
-        {/* Notifications */}
-        <button
-          className="relative p-2 rounded-lg hover:bg-[#1F2937] text-gray-400 transition-all"
-          id="notifications-btn"
-        >
-          <Bell size={18} />
-          {badgeDisplay(notifCount) && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] rounded-full bg-[var(--color-danger)] text-white text-[9px] font-bold flex items-center justify-center px-1">
-              {badgeDisplay(notifCount)}
-            </span>
-          )}
-        </button>
+        <NotificationPanel />
 
-        {/* Fullscreen toggle */}
         <button
           onClick={toggleFullscreen}
-          className="p-2 rounded-lg hover:bg-[#1F2937] text-gray-400 transition-all hidden md:flex"
+          className="p-2.5 rounded-lg transition-colors hidden md:flex"
+          style={{ color: 'var(--pz-text-muted)' }}
+          onMouseEnter={e => {
+            (e.currentTarget.style.background = 'var(--pz-surface-3)')
+            ;(e.currentTarget.style.color = 'var(--pz-text-secondary)')
+          }}
+          onMouseLeave={e => {
+            (e.currentTarget.style.background = 'transparent')
+            ;(e.currentTarget.style.color = 'var(--pz-text-muted)')
+          }}
         >
-          {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
         </button>
 
-        {/* User */}
+        <div className="h-6 w-px hidden md:block" style={{ background: 'var(--pz-border)' }} />
+
         <DropdownMenu.Root>
           <DropdownMenu.Trigger asChild>
-            <div className="flex items-center gap-3 pl-3 border-l border-[var(--color-border)] cursor-pointer select-none">
+            <div className="flex items-center gap-2.5 cursor-pointer select-none px-1 py-1 rounded-lg transition-colors"
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--pz-surface-3)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            >
               <div className="text-right hidden md:block">
-                <p className="text-xs font-semibold text-gray-200">
+                <p className="text-sm font-semibold leading-tight" style={{ color: 'var(--pz-text)' }}>
                   {user?.full_name || user?.username}
                 </p>
-                <p className="text-[10px] text-gray-400">
+                <p className="text-[11px] leading-tight" style={{ color: 'var(--pz-text-muted)' }}>
                   {user?.role_type === 'super_admin' ? 'Super Admin' : user?.role || 'Operator'}
                 </p>
               </div>
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-secondary)] flex items-center justify-center flex-shrink-0">
-                <span className="text-white text-xs font-bold">
-                  {user?.full_name?.[0] || user?.username?.[0] || 'A'}
-                </span>
+              <div
+                className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-white text-xs font-bold"
+                style={{
+                  background: 'linear-gradient(135deg, var(--pz-brand), var(--pz-brand-hover))',
+                  boxShadow: '0 0 0 2px var(--pz-border)',
+                }}
+              >
+                {initials}
               </div>
             </div>
           </DropdownMenu.Trigger>
+
           <DropdownMenu.Portal>
             <DropdownMenu.Content
               align="end"
               sideOffset={8}
-              className="z-50 min-w-[160px] rounded-lg border border-[var(--color-border)] bg-[#111827] p-1 shadow-xl animate-fade-in"
+              className="min-w-[180px] rounded-xl p-1.5"
+              style={{
+                background: 'var(--pz-surface-1)',
+                border: '1px solid var(--pz-border)',
+                boxShadow: 'var(--pz-shadow-dropdown)',
+                zIndex: 'var(--pz-z-popover, 80)' as never,
+              }}
             >
+              {[
+                { icon: User, label: 'Profile', action: () => navigate('/settings') },
+                { icon: SettingsIcon, label: 'Settings', action: () => navigate('/settings') },
+              ].map(({ icon: Icon, label, action }) => (
+                <DropdownMenu.Item
+                  key={label}
+                  className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm cursor-pointer outline-none transition-colors"
+                  style={{ color: 'var(--pz-text-secondary)' }}
+                  onSelect={action}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--pz-surface-3)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <Icon size={14} style={{ color: 'var(--pz-text-muted)' }} />
+                  {label}
+                </DropdownMenu.Item>
+              ))}
+
+              <DropdownMenu.Separator className="my-1 h-px" style={{ background: 'var(--pz-border)' }} />
+
               <DropdownMenu.Item
-                className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs text-gray-300 hover:bg-[#1F2937] cursor-pointer outline-none transition-colors"
-                onSelect={() => navigate('/profile')}
-              >
-                <User size={14} />
-                Profile
-              </DropdownMenu.Item>
-              <DropdownMenu.Item
-                className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs text-gray-300 hover:bg-[#1F2937] cursor-pointer outline-none transition-colors"
-                onSelect={() => navigate('/settings')}
-              >
-                <SettingsIcon size={14} />
-                Settings
-              </DropdownMenu.Item>
-              <DropdownMenu.Separator className="my-1 h-px bg-[var(--color-border)]" />
-              <DropdownMenu.Item
-                className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs text-red-400 hover:bg-red-950/20 cursor-pointer outline-none transition-colors"
+                className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm cursor-pointer outline-none transition-colors"
+                style={{ color: 'var(--pz-danger-500)' }}
                 onSelect={handleLogout}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--pz-danger-50)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
               >
                 <LogOut size={14} />
                 Logout

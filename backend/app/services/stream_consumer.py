@@ -113,7 +113,7 @@ async def _process_with_retry(
     # but BEFORE session.commit(). The scan_event row may not yet be visible
     # to this worker's independent DB session. A 150ms wait covers >99% of cases.
     if attempt == 1:
-        await asyncio.sleep(0.15)
+        await asyncio.sleep(0.5)
 
     try:
         async with db_session_factory() as session:
@@ -135,7 +135,7 @@ async def _process_with_retry(
             f"[StreamConsumer] Transient miss | "
             f"scan={scan_event_id} attempt={attempt} | {e}"
         )
-        _requeue_or_dlq(e, attempt, scan_event_id, entry_id, fields, redis)
+        await _requeue_or_dlq(e, attempt, scan_event_id, entry_id, fields, redis)
         return
     except Exception as e:
         logger.error(

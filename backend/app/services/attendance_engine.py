@@ -1,32 +1,17 @@
 """
-Project Z - Attendance Engine Service
-Core business logic for attendance processing.
+DEPRECATED: This is the v1 attendance engine.
+Use attendance_engine_v2.py instead for production.
 
-Business Rules (enforced biometric model):
-─────────────────────────────────────────
-  • EVERY fingerprint scan is REAL — no scan is ever silently dropped.
-  • First scan of the day  → check_in  (creates the session)
-  • Every subsequent scan  → updates check_out (rolling "last seen")
-  • The LAST scan of the day is the departure time — period.
-  • There is NO duplicate suppression window. If someone scans 10 times,
-    all 10 are stored as logs and the last one becomes check_out.
-  • This makes the biometric record the single source of truth.
-    No employee can claim "I scanned" without a DB record to prove it.
-
-Session model:
-─────────────
-  attendance_sessions  — one row per employee per day
-    check_in   = timestamp of the FIRST scan
-    check_out  = timestamp of the MOST RECENT scan (updated on every scan)
-    is_complete = True once check_out is set (i.e. after the 2nd+ scan)
-    duration_minutes = check_out - check_in (live, updated every scan)
-    late_minutes     = calculated once at check_in, never changes
-    overtime_minutes = recalculated on every check_out update
-
-  attendance_logs — one row per scan (full audit trail)
-    punch_direction = 'in' for first scan, 'out' for all subsequent scans
-    is_duplicate    = always False (every scan is real)
+The v1 engine is kept for reference only and will be removed in a future release.
+All active code paths use AttendanceEngineV2 which supports:
+  - 14+ attendance status types
+  - Shift-aware processing via ShiftResolver
+  - Cross-midnight shift support
+  - Grace period and overtime calculations
 """
+
+# This module is deprecated and should not be imported.
+# All references have been migrated to attendance_engine_v2.py.
 
 import logging
 from datetime import date, datetime, timedelta, timezone

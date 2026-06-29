@@ -25,10 +25,10 @@ export function AttendanceOverviewChart() {
   const overview = data?.attendance_overview ?? []
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
+    <div className="rounded-xl border border-border bg-surface p-5 shadow-card">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-slate-800">Attendance Overview</h3>
-        <span className="text-xs text-slate-400 bg-slate-50 px-2 py-1 rounded-md">This Week</span>
+        <h3 className="font-semibold text-text">Attendance Overview</h3>
+        <span className="text-xs text-text-muted bg-surface-2 px-2 py-1 rounded-md border border-border">This Week</span>
       </div>
 
       {overview.length === 0 ? (
@@ -41,7 +41,7 @@ export function AttendanceOverviewChart() {
       ) : (
         <ResponsiveContainer width="100%" height={220}>
           <LineChart data={overview}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
+            <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" />
             <XAxis
               dataKey="date"
               tick={{ fontSize: 11, fill: '#94A3B8' }}
@@ -55,12 +55,16 @@ export function AttendanceOverviewChart() {
             />
             <Tooltip
               contentStyle={{
+                backgroundColor: '#131823',
                 borderRadius: '12px',
-                border: '1px solid #E2E8F0',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                border: '1px solid #1E293B',
+                color: '#F8FAFC',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
               }}
+              itemStyle={{ color: '#E2E8F0' }}
+              labelStyle={{ color: '#F8FAFC', fontWeight: 'bold' }}
             />
-            <Legend iconType="circle" iconSize={8} />
+            <Legend iconType="circle" iconSize={8} wrapperStyle={{ color: '#E2E8F0' }} />
             <Line
               type="monotone"
               dataKey="present"

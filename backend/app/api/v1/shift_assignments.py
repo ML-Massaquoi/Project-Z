@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, PermissionChecker
 from app.database.session import get_db
 from app.models.shift_assignment import EmployeeShiftAssignment
 from app.models.shift_override import EmployeeShiftOverride
@@ -23,28 +23,36 @@ router = APIRouter(tags=["Shift Assignments"])
 
 class AssignmentCreate(BaseModel):
     employee_id: UUID
+    shift_protocol_id: Optional[UUID] = None
     shift_template_id: Optional[UUID] = None
     rotation_templates: List[UUID] = []
     rotation_start_date: Optional[date] = None
+    working_days: Optional[List[int]] = None  # [1,2,3,4,5] = Mon-Fri, None = every day
     grace_period_override: Optional[int] = None
     notes: Optional[str] = None
 
 
 class AssignmentUpdate(BaseModel):
+    shift_protocol_id: Optional[UUID] = None
     shift_template_id: Optional[UUID] = None
     rotation_templates: Optional[List[UUID]] = None
     rotation_start_date: Optional[date] = None
+    working_days: Optional[List[int]] = None
     grace_period_override: Optional[int] = None
     notes: Optional[str] = None
 
 
-def _serialize_assignment(a: EmployeeShiftAssignment) -> dict:
+def _serialize_assignment(a: EmployeeShiftAssignment, employee_name: str = None, template_name: str = None) -> dict:
     return {
         "id": str(a.id),
         "employee_id": str(a.employee_id),
+        "employee_name": employee_name,
+        "shift_protocol_id": str(a.shift_protocol_id) if a.shift_protocol_id else None,
         "shift_template_id": str(a.shift_template_id) if a.shift_template_id else None,
+        "shift_template_name": template_name,
         "rotation_templates": [str(t) for t in (a.rotation_templates or [])],
         "rotation_start_date": str(a.rotation_start_date) if a.rotation_start_date else None,
+        "working_days": a.working_days,
         "grace_period_override": a.grace_period_override,
         "notes": a.notes,
         "is_rotating": a.is_rotating,
@@ -53,20 +61,50 @@ def _serialize_assignment(a: EmployeeShiftAssignment) -> dict:
     }
 
 
-@router.get("/employee-shift-assignments", tags=["Shift Assignments"])
+@router.get("/employee-shift-assignments", tags=["Shift Assignments"], dependencies=[Depends(PermissionChecker("shift:view"))])
 async def list_assignments(
     employee_id: Optional[UUID] = None,
     db: AsyncSession = Depends(get_db),
     _user=Depends(get_current_user),
 ):
+    from app.models.employee import Employee
+    from app.models.shift_template import ShiftTemplate
+
     query = select(EmployeeShiftAssignment).order_by(EmployeeShiftAssignment.created_at.desc())
     if employee_id:
         query = query.where(EmployeeShiftAssignment.employee_id == employee_id)
     result = await db.execute(query)
-    return [_serialize_assignment(a) for a in result.scalars().all()]
+    assignments = result.scalars().all()
+
+    # Batch load names
+    employee_ids = list(set(a.employee_id for a in assignments))
+    template_ids = list(set(a.shift_template_id for a in assignments if a.shift_template_id))
+
+    employee_names = {}
+    if employee_ids:
+        emp_result = await db.execute(
+            select(Employee.id, Employee.full_name).where(Employee.id.in_(employee_ids))
+        )
+        employee_names = {row[0]: row[1] for row in emp_result}
+
+    template_names = {}
+    if template_ids:
+        tpl_result = await db.execute(
+            select(ShiftTemplate.id, ShiftTemplate.name).where(ShiftTemplate.id.in_(template_ids))
+        )
+        template_names = {row[0]: row[1] for row in tpl_result}
+
+    return [
+        _serialize_assignment(
+            a,
+            employee_name=employee_names.get(a.employee_id),
+            template_name=template_names.get(a.shift_template_id),
+        )
+        for a in assignments
+    ]
 
 
-@router.post("/employee-shift-assignments", status_code=201, tags=["Shift Assignments"])
+@router.post("/employee-shift-assignments", status_code=201, tags=["Shift Assignments"], dependencies=[Depends(PermissionChecker("shift:assign"))])
 async def create_assignment(
     data: AssignmentCreate,
     db: AsyncSession = Depends(get_db),
@@ -74,9 +112,11 @@ async def create_assignment(
 ):
     a = EmployeeShiftAssignment(
         employee_id=data.employee_id,
+        shift_protocol_id=data.shift_protocol_id,
         shift_template_id=data.shift_template_id,
         rotation_templates=data.rotation_templates or [],
         rotation_start_date=data.rotation_start_date,
+        working_days=data.working_days,
         grace_period_override=data.grace_period_override,
         notes=data.notes,
         created_by=current_user.id,
@@ -87,7 +127,7 @@ async def create_assignment(
     return _serialize_assignment(a)
 
 
-@router.get("/employee-shift-assignments/{assignment_id}", tags=["Shift Assignments"])
+@router.get("/employee-shift-assignments/{assignment_id}", tags=["Shift Assignments"], dependencies=[Depends(PermissionChecker("shift:view"))])
 async def get_assignment(
     assignment_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -102,7 +142,7 @@ async def get_assignment(
     return _serialize_assignment(a)
 
 
-@router.put("/employee-shift-assignments/{assignment_id}", tags=["Shift Assignments"])
+@router.put("/employee-shift-assignments/{assignment_id}", tags=["Shift Assignments"], dependencies=[Depends(PermissionChecker("shift:update"))])
 async def update_assignment(
     assignment_id: UUID,
     data: AssignmentUpdate,
@@ -128,7 +168,7 @@ async def update_assignment(
     return _serialize_assignment(result.scalar_one())
 
 
-@router.delete("/employee-shift-assignments/{assignment_id}", tags=["Shift Assignments"])
+@router.delete("/employee-shift-assignments/{assignment_id}", tags=["Shift Assignments"], dependencies=[Depends(PermissionChecker("shift:delete"))])
 async def delete_assignment(
     assignment_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -178,7 +218,7 @@ def _serialize_override(o: EmployeeShiftOverride) -> dict:
     }
 
 
-@router.get("/employee-shift-overrides", tags=["Shift Assignments"])
+@router.get("/employee-shift-overrides", tags=["Shift Assignments"], dependencies=[Depends(PermissionChecker("shift:view"))])
 async def list_overrides(
     employee_id: Optional[UUID] = None,
     db: AsyncSession = Depends(get_db),
@@ -191,7 +231,7 @@ async def list_overrides(
     return [_serialize_override(o) for o in result.scalars().all()]
 
 
-@router.post("/employee-shift-overrides", status_code=201, tags=["Shift Assignments"])
+@router.post("/employee-shift-overrides", status_code=201, tags=["Shift Assignments"], dependencies=[Depends(PermissionChecker("shift:assign"))])
 async def create_override(
     data: OverrideCreate,
     db: AsyncSession = Depends(get_db),
@@ -214,7 +254,7 @@ async def create_override(
     return _serialize_override(o)
 
 
-@router.get("/employee-shift-overrides/{override_id}", tags=["Shift Assignments"])
+@router.get("/employee-shift-overrides/{override_id}", tags=["Shift Assignments"], dependencies=[Depends(PermissionChecker("shift:view"))])
 async def get_override(
     override_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -229,7 +269,7 @@ async def get_override(
     return _serialize_override(o)
 
 
-@router.put("/employee-shift-overrides/{override_id}", tags=["Shift Assignments"])
+@router.put("/employee-shift-overrides/{override_id}", tags=["Shift Assignments"], dependencies=[Depends(PermissionChecker("shift:update"))])
 async def update_override(
     override_id: UUID,
     data: OverrideUpdate,
@@ -255,7 +295,7 @@ async def update_override(
     return _serialize_override(result.scalar_one())
 
 
-@router.delete("/employee-shift-overrides/{override_id}", tags=["Shift Assignments"])
+@router.delete("/employee-shift-overrides/{override_id}", tags=["Shift Assignments"], dependencies=[Depends(PermissionChecker("shift:delete"))])
 async def delete_override(
     override_id: UUID,
     db: AsyncSession = Depends(get_db),

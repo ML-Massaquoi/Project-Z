@@ -177,6 +177,7 @@ def generate_adms_options_response(serial_number: str) -> str:
         "TransInterval=1\r\n"
         "TransFlag=TransData AttLog\r\n"
         "Realtime=1\r\n"
+        "Duplicate=0\r\n"
         "Encrypt=0\r\n"
         "ServerVer=2.4.1\r\n"
         "PushProtVer=2.4.1\r\n"

@@ -20,12 +20,14 @@ Diagnostic:
 
 import logging
 import time
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.database.session import get_db
 from app.models.device import Device
 from app.models.scan_event import ScanEvent, ProcessingStatusV2
@@ -40,10 +42,47 @@ from app.utils.adms_parser import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["ADMS"])
+settings = get_settings()
 
 # Throttle: only write last_seen to DB every 30s per device (getrequest fires ~1/sec)
 _last_seen_cache: dict[str, float] = {}
 _LAST_SEEN_WRITE_INTERVAL = 30  # seconds
+
+
+async def _validate_device_ip(db: AsyncSession, serial_number: str, client_ip: str) -> bool:
+    """
+    Validate that the client IP matches the registered device IP.
+    Returns True if valid or if device has no registered IP (first connection).
+    """
+    if not client_ip:
+        return False
+
+    # Allow localhost for development
+    if settings.DEBUG and client_ip in ("127.0.0.1", "::1", "localhost"):
+        return True
+
+    result = await db.execute(
+        select(Device).where(Device.serial_number == serial_number)
+    )
+    device = result.scalar_one_or_none()
+
+    if not device:
+        # Unknown device — allow first connection, will be auto-registered
+        return True
+
+    if not device.ip_address:
+        # Device has no registered IP yet — allow and update
+        return True
+
+    if device.ip_address == client_ip:
+        return True
+
+    # IP mismatch — log but allow (devices may get new IPs via DHCP)
+    logger.warning(
+        f"[ADMS] IP mismatch for {serial_number}: "
+        f"expected={device.ip_address} got={client_ip}"
+    )
+    return True
 
 
 # ── Diagnostic endpoint ───────────────────────────────────────
@@ -122,22 +161,51 @@ async def adms_getrequest(
     """
     Handle RONASOFT/ZKTeco device command polling (~1/sec).
     Throttled DB write: only updates last_seen every 30s per device.
+    Resilient: always returns OK even if DB is temporarily unavailable.
     """
     client_ip = request.client.host if request.client else None
-    logger.info(f"Incoming TCP connection from {client_ip}")
 
     if not SN:
         return Response(content="OK", media_type="text/plain")
 
-    logger.info(f"Heartbeat received from {SN}")
-    logger.info(f"Raw device payload received: INFO={INFO or 'Heartbeat'}")
+    # Log every heartbeat at INFO with status 200 (green in ColorFormatter)
+    logger.info(f"[HEARTBEAT] [200] SN={SN}  IP={client_ip}  status=OK")
 
     now = time.time()
     last_write = _last_seen_cache.get(SN, 0)
     if now - last_write >= _LAST_SEEN_WRITE_INTERVAL:
         _last_seen_cache[SN] = now
-        device_service = DeviceService(db)
-        await device_service.handle_device_connection(SN, client_ip)
+
+        # Try DB update, but don't fail if DB is unavailable
+        try:
+            device_service = DeviceService(db)
+            await device_service.handle_device_connection(SN, client_ip)
+
+            # Log heartbeat activity and record online status
+            from sqlalchemy import select
+            from app.models.device import Device
+            from app.services.device_activity_service import log_device_activity, record_status_transition
+            device_result = await db.execute(select(Device).where(Device.serial_number == SN))
+            device = device_result.scalar_one_or_none()
+            if device:
+                await log_device_activity(
+                    device_id=device.id,
+                    activity_type="heartbeat",
+                    ip_address=client_ip,
+                    db=db,
+                )
+                await record_status_transition(
+                    device_id=device.id,
+                    new_status="online",
+                    ip_address=client_ip,
+                    device_name=device.name,
+                    reason="heartbeat",
+                    db=db,
+                )
+                await db.commit()
+        except Exception as e:
+            # DB temporarily unavailable — log but don't crash
+            logger.warning(f"[HEARTBEAT] DB update skipped for {SN}: {e}")
 
     if INFO:
         logger.info(f"[ADMS] Device reconnected | SN={SN} | INFO={INFO} | IP={client_ip}")
@@ -159,32 +227,43 @@ async def adms_handshake(
     """
     Handle ADMS device handshake / options request.
     Device sends: GET /iclock/cdata?SN={serial}&options=all&pushver=2.4.0
+
+    Resilient: always returns a valid response even if DB is temporarily unavailable.
+    Devices will retry if they don't get a response.
     """
     client_ip = request.client.host if request.client else None
-    logger.info(f"Incoming TCP connection from {client_ip}")
 
     if not SN:
         return Response(content="ERROR: No serial number", media_type="text/plain")
 
-    logger.info(f"Heartbeat received from {SN}")
     logger.info(
-        f"[ADMS] *** HANDSHAKE *** | SN={SN} | options={options} "
+        f"[ADMS] HANDSHAKE | SN={SN} | options={options} "
         f"| pushver={pushver} | IP={client_ip}"
     )
 
-    device_service = DeviceService(db)
-    device = await device_service.handle_device_connection(SN, client_ip)
+    # Always update the last-seen cache (in-memory, no DB needed)
     _last_seen_cache[SN] = time.time()
 
-    await ws_manager.broadcast("device_status_update", {
-        "serial_number": SN,
-        "device_id": str(device.id) if device else None,
-        "device_name": device.name or f"Device {SN}" if device else f"Device {SN}",
-        "status": "online",
-        "ip_address": client_ip,
-        "office_name": "Unassigned",
-        "department_name": "Unassigned",
-    })
+    # Try to update device status in DB, but don't fail if DB is unavailable
+    try:
+        device_service = DeviceService(db)
+        device = await device_service.handle_device_connection(SN, client_ip)
+
+        await ws_manager.broadcast("device_status_update", {
+            "serial_number": SN,
+            "device_id": str(device.id) if device else None,
+            "device_name": device.name or f"Device {SN}" if device else f"Device {SN}",
+            "status": "online",
+            "ip_address": client_ip,
+            "office_name": "Unassigned",
+            "department_name": "Unassigned",
+        })
+    except Exception as e:
+        # DB temporarily unavailable — log but don't crash
+        # Device will retry and we'll catch it next time
+        logger.warning(
+            f"[ADMS] Handshake DB update skipped for {SN}: {e}"
+        )
 
     response_text = generate_adms_options_response(SN)
     logger.info(f"[ADMS] Handshake response sent to {SN}")
@@ -198,6 +277,7 @@ async def process_adms_attendance_background(SN: str, body_str: str, client_ip: 
     from app.services.ingestion_service import IngestionService
     from app.utils.adms_parser import parse_adms_attlog
     from app.models.scan_event import ScanResult
+    from app.services.device_activity_service import log_device_activity, record_status_transition
 
     async with async_session_factory() as db:
         try:
@@ -205,8 +285,62 @@ async def process_adms_attendance_background(SN: str, body_str: str, client_ip: 
             device_service = DeviceService(db)
             await device_service.handle_device_connection(SN, client_ip)
 
-            # 2. Parse logs
+            # 2. Log the activity
+            from sqlalchemy import select
+            from app.models.device import Device
+            device_result = await db.execute(select(Device).where(Device.serial_number == SN))
+            device = device_result.scalar_one_or_none()
+            if device:
+                await log_device_activity(
+                    device_id=device.id,
+                    activity_type="attendance_push",
+                    details={"records_count": len(body_str.splitlines()), "payload_size": len(body_str)},
+                    ip_address=client_ip,
+                    db=db,
+                )
+                await record_status_transition(
+                    device_id=device.id,
+                    new_status="online",
+                    ip_address=client_ip,
+                    device_name=device.name,
+                    reason="attendance_push_received",
+                    db=db,
+                )
+
+            # 3. Parse logs
+            logger.info(
+                f"\n"
+                f"{'='*60}\n"
+                f"[SCAN RECEIVED]\n"
+                f"  Device SN: {SN}\n"
+                f"  Source IP: {client_ip}\n"
+                f"  Payload Size: {len(body_str)} bytes\n"
+                f"  Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"{'='*60}"
+            )
+
             records = parse_adms_attlog(body_str)
+
+            logger.info(
+                f"\n"
+                f"[SCAN PARSED]\n"
+                f"  Device SN: {SN}\n"
+                f"  Records Parsed: {len(records)}\n"
+                f"{'='*60}"
+            )
+
+            for i, rec in enumerate(records[:5]):
+                verify_name = map_verify_type(rec.verify_type)
+                direction = "IN" if rec.status in (0, 3, 4) else "OUT" if rec.status in (1, 2, 5) else "UNKNOWN"
+                logger.info(
+                    f"  Record {i+1}: "
+                    f"User={rec.user_id} | "
+                    f"Time={rec.timestamp} | "
+                    f"Direction={direction} | "
+                    f"Verify={verify_name} | "
+                    f"RawStatus={rec.status}"
+                )
+
             # Persist raw ADMS payload for debugging/audit trail
             try:
                 from app.repositories.attendance import RawPayloadRepository
@@ -221,9 +355,6 @@ async def process_adms_attendance_background(SN: str, body_str: str, client_ip: 
                 })
             except Exception as e:
                 logger.warning(f"[ADMS-BG] Failed to persist raw payload for {SN}: {e}")
-            logger.info(f"Incoming TCP connection from {client_ip}")
-            logger.info(f"Raw device payload received: {body_str[:300]}")
-            logger.info(f"[ADMS-BG] DATA PUSH background processing started | SN={SN} | records={len(records)}")
 
             processed = 0
             unknown_users = set()
@@ -263,7 +394,14 @@ async def process_adms_attendance_background(SN: str, body_str: str, client_ip: 
                 )
 
             logger.info(
-                f"[ADMS-BG] Finished | SN={SN} | ingested={processed}/{len(records)}"
+                f"\n"
+                f"[SCAN COMPLETE]\n"
+                f"  Device SN: {SN}\n"
+                f"  Total Records: {len(records)}\n"
+                f"  Processed: {processed}\n"
+                f"  Unknown Users: {len(unknown_users)}\n"
+                f"  Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"{'='*60}"
             )
 
             # Commit the session explicitly to persist the changes
@@ -297,16 +435,10 @@ async def adms_receive_attendance(
     body_str = body.decode("utf-8", errors="replace")
     client_ip = request.client.host if request.client else None
 
-    logger.info(f"Incoming TCP connection from {client_ip}")
-    logger.info(f"Raw device payload received: {body_str[:300]}")
-
     logger.info(
-        f"[ADMS] DATA PUSH RECEIVED | SN={SN} | table={table} | Stamp={Stamp} "
+        f"[ADMS] DATA PUSH | SN={SN} | table={table} | Stamp={Stamp} "
         f"| bytes={len(body_str)} | IP={client_ip}"
     )
-
-    if body_str.strip():
-        logger.info(f"[ADMS] RAW BODY (first 500 chars): {body_str[:500]!r}")
 
     if not SN:
         return Response(content="OK", media_type="text/plain")
@@ -325,3 +457,84 @@ async def adms_receive_attendance(
 
     # ZKTeco/RONASOFT MUST receive exactly "OK"
     return Response(content="OK", media_type="text/plain")
+
+
+# ── Test endpoint (simulate scan for diagnostics) ──────────────
+
+@router.post("/adms/test-scan")
+async def test_scan(
+    SN: str = "TEST-DEVICE",
+    user_id: str = "1",
+    status: int = 0,
+    verify_type: int = 1,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Test endpoint: simulate a biometric scan for pipeline diagnostics.
+    POST /adms/test-scan?SN=TEST-DEVICE&user_id=1&status=0&verify_type=1
+
+    This exercises the full pipeline:
+    parse → ingest → WebSocket broadcast → Redis stream → attendance engine
+    """
+    from datetime import datetime, timezone
+    from app.services.ingestion_service import IngestionService
+    from app.services.device_service import DeviceService
+    from app.models.scan_event import ScanResult
+
+    now = datetime.now(timezone.utc)
+    ts_str = now.strftime("%Y-%m-%d %H:%M:%S")
+
+    # Ensure device exists
+    device_service = DeviceService(db)
+    await device_service.handle_device_connection(SN, "127.0.0.1")
+
+    # Build ADMS-format body
+    body_str = f"{user_id}\t{ts_str}\t{status}\t{verify_type}\t0\t0\t0"
+
+    logger.info(
+        f"\n"
+        f"{'='*60}\n"
+        f"[TEST SCAN]\n"
+        f"  Device SN: {SN}\n"
+        f"  User ID: {user_id}\n"
+        f"  Timestamp: {ts_str}\n"
+        f"  Status: {status}\n"
+        f"  Verify Type: {verify_type}\n"
+        f"{'='*60}"
+    )
+
+    # Parse
+    records = parse_adms_attlog(body_str)
+    if not records:
+        return {"error": "Failed to parse test scan"}
+
+    # Ingest
+    ingestion = IngestionService(db)
+    scan_event = await ingestion.ingest(
+        device_serial=SN,
+        device_user_id=records[0].user_id,
+        scan_timestamp=records[0].timestamp,
+        verify_type_code=records[0].verify_type,
+        raw_punch_state=records[0].status,
+        raw_payload={
+            "user_id": records[0].user_id,
+            "timestamp": str(records[0].timestamp),
+            "status": records[0].status,
+            "verify_type": records[0].verify_type,
+            "work_code": records[0].work_code,
+        },
+        source_ip="127.0.0.1",
+    )
+
+    if scan_event:
+        await db.commit()
+        return {
+            "status": "ok",
+            "scan_event_id": str(scan_event.id),
+            "employee_code": scan_event.employee_code,
+            "scan_result": scan_event.scan_result.value if hasattr(scan_event.scan_result, "value") else str(scan_event.scan_result),
+            "timestamp": scan_event.scan_timestamp.isoformat(),
+        }
+    else:
+        await db.rollback()
+        return {"error": "Failed to store scan event"}

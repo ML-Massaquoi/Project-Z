@@ -64,7 +64,7 @@ services:
       APP_ENV: ${APP_ENV:-development}
       DEBUG: ${DEBUG:-true}
       # Security
-      SECRET_KEY: ${SECRET_KEY:-projectz-super-secret-key-change-in-production-2024}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set in .env}
       JWT_ALGORITHM: HS256
       JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-30}
       JWT_REFRESH_TOKEN_EXPIRE_DAYS: ${JWT_REFRESH_TOKEN_EXPIRE_DAYS:-7}
@@ -77,7 +77,7 @@ services:
       DEFAULT_GRACE_PERIOD_MINUTES: ${DEFAULT_GRACE_PERIOD_MINUTES:-15}
       # Admin
       DEFAULT_ADMIN_USERNAME: ${DEFAULT_ADMIN_USERNAME:-admin}
-      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:-@linux@kali@DYDY21}
+      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:?DEFAULT_ADMIN_PASSWORD must be set in .env}
       DEFAULT_ADMIN_EMAIL: ${DEFAULT_ADMIN_EMAIL:-admin@projectz.local}
     ports:
       - "8000:8000"
@@ -89,6 +89,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     command: >
       sh -c "
         echo 'Waiting for database...' &&
@@ -112,7 +118,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-projectz}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-projectz}
       REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: ${SECRET_KEY:-projectz-super-secret-key-change-in-production-2024}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set in .env}
       TIMEZONE: "Africa/Freetown"
       DUPLICATE_SCAN_WINDOW_SECONDS: ${DUPLICATE_SCAN_WINDOW_SECONDS:-60}
       DEFAULT_GRACE_PERIOD_MINUTES: ${DEFAULT_GRACE_PERIOD_MINUTES:-15}
@@ -148,7 +154,14 @@ services:
       VITE_API_BASE_URL: http://backend:8000
       VITE_WS_URL: ws://backend:8000
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     command: npm run dev -- --host 0.0.0.0 --port 3000
     networks:
       - projectz-network
