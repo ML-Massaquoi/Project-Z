@@ -7,6 +7,10 @@ Supports two modes:
   - Simple: shift_template_id is set, rotation_templates is empty
   - Rotating: rotation_templates is a non-empty ordered list of template IDs,
               rotation_start_date defines day 0 of the cycle
+
+working_days restricts which days of the week the assignment applies.
+  - [1,2,3,4,5] = Mon-Fri only (weekends off)
+  - [1,2,3,4,5,6,7] or None = every day
 """
 import uuid
 from datetime import date
@@ -41,6 +45,15 @@ class EmployeeShiftAssignment(BaseModel):
         index=True,
     )
 
+    # ── Protocol-based assignment ─────────────────────────────
+    # When set, the employee follows the protocol's rotation logic
+    # (resolved at runtime by ShiftResolver)
+    shift_protocol_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("shift_protocols.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     # ── Simple assignment ─────────────────────────────────────
     shift_template_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
@@ -56,6 +69,12 @@ class EmployeeShiftAssignment(BaseModel):
     # Day 0 of the rotation cycle
     rotation_start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
+    # Restrict which days this assignment applies to
+    # 1=Mon, 2=Tue, ... 7=Sun. None or all 7 = every day
+    working_days: Mapped[Optional[list]] = mapped_column(
+        ARRAY(Integer), nullable=True
+    )
+
     # Override the shift template's default grace period for this employee
     grace_period_override: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -69,6 +88,21 @@ class EmployeeShiftAssignment(BaseModel):
     shift_template: Mapped[Optional["ShiftTemplate"]] = relationship(  # noqa: F821
         "ShiftTemplate", lazy="select"
     )
+    shift_protocol: Mapped[Optional["ShiftProtocol"]] = relationship(  # noqa: F821
+        "ShiftProtocol", lazy="select"
+    )
+
+    def is_working_day(self, target_date: date) -> bool:
+        """
+        Check if target_date is a working day per this assignment's working_days.
+        If working_days is None or empty, all days are working days.
+        """
+        if not self.working_days:
+            return True
+        # date.weekday(): Mon=0 ... Sun=6
+        # working_days: 1=Mon ... 7=Sun
+        iso_weekday = target_date.isoweekday()
+        return iso_weekday in self.working_days
 
     @property
     def is_rotating(self) -> bool:
@@ -79,11 +113,18 @@ class EmployeeShiftAssignment(BaseModel):
         """
         Resolve the active shift template ID for a given date.
 
-        For simple assignments: returns shift_template_id directly.
+        Returns None if not a working day.
+        For protocol-based assignments, returns protocol UUID (caller resolves).
         For rotating assignments: applies modulo arithmetic.
-          index = (target_date - rotation_start_date).days % len(rotation_templates)
-          Python's modulo handles negative values correctly.
+        For simple: returns shift_template_id directly.
         """
+        if not self.is_working_day(target_date):
+            return None
+
+        # Protocol-based: return protocol_id as marker (resolver handles DB lookups)
+        if self.shift_protocol_id:
+            return self.shift_protocol_id
+
         if not self.is_rotating:
             return self.shift_template_id
 

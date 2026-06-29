@@ -4,6 +4,7 @@ GET /api/v1/analytics/departments/summary          — all depts for a date
 GET /api/v1/analytics/departments/{id}/summary     — single dept date range
 """
 import datetime as dt
+import logging
 from typing import Optional
 from uuid import UUID
 
@@ -11,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, PermissionChecker
 from app.database.session import get_db
 from app.models.attendance_summary import AttendanceSummary
 from app.utils.time_utils import today_date
@@ -19,7 +20,7 @@ from app.utils.time_utils import today_date
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
 
 
-@router.get("/departments/summary")
+@router.get("/departments/summary", dependencies=[Depends(PermissionChecker("report:view"))])
 async def get_all_departments_summary(
     date: Optional[str] = Query(None, description="Date YYYY-MM-DD (default: today)"),
     db: AsyncSession = Depends(get_db),
@@ -29,18 +30,22 @@ async def get_all_departments_summary(
     Get attendance summary for all departments on a given date.
     Returns empty array (HTTP 200) when no data exists.
     """
-    target = today_date() if not date else dt.date.fromisoformat(date)
+    try:
+        target = today_date() if not date else dt.date.fromisoformat(date)
 
-    result = await db.execute(
-        select(AttendanceSummary)
-        .where(AttendanceSummary.summary_date == target)
-        .order_by(AttendanceSummary.department_name)
-    )
-    summaries = result.scalars().all()
-    return [_serialize(s) for s in summaries]
+        result = await db.execute(
+            select(AttendanceSummary)
+            .where(AttendanceSummary.summary_date == target)
+            .order_by(AttendanceSummary.department_name)
+        )
+        summaries = result.scalars().all()
+        return [_serialize(s) for s in summaries]
+    except Exception as e:
+        logger.error(f"ANALYTICS ERROR: {e}", exc_info=True)
+        raise HTTPException(500, "Internal server error")
 
 
-@router.get("/departments/{dept_id}/summary")
+@router.get("/departments/{dept_id}/summary", dependencies=[Depends(PermissionChecker("report:view"))])
 async def get_department_summary_range(
     dept_id: UUID,
     start_date: str = Query(..., description="Start date YYYY-MM-DD"),

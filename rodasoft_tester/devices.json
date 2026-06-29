@@ -1,0 +1,9 @@
+[
+  {
+    "name": "IT_Device",
+    "ip": "172.16.40.12",
+    "port": 4370,
+    "password": 0,
+    "timeout": 60
+  }
+]

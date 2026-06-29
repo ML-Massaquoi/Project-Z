@@ -25,17 +25,17 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     # ── Database ─────────────────────────────────────────────
-    DATABASE_URL: str = "postgresql+asyncpg://projectz:projectz_secret@localhost:5432/projectz"
-    DATABASE_URL_SYNC: str = "postgresql://projectz:projectz_secret@localhost:5432/projectz"
+    DATABASE_URL: str
+    DATABASE_URL_SYNC: str
     DB_ECHO: bool = False
-    DB_POOL_SIZE: int = 20
-    DB_MAX_OVERFLOW: int = 10
+    DB_POOL_SIZE: int = 30
+    DB_MAX_OVERFLOW: int = 20
 
     # ── Redis ────────────────────────────────────────────────
     REDIS_URL: str = "redis://localhost:6379/0"
 
     # ── Security ─────────────────────────────────────────────
-    SECRET_KEY: str = "projectz-super-secret-key-change-in-production-2024"
+    SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -50,9 +50,23 @@ class Settings(BaseSettings):
     DEFAULT_GRACE_PERIOD_MINUTES: int = 15
     AUTO_CHECKOUT_HOURS: int = 16
 
+    # ── System Alerts ────────────────────────────────────────
+    ALERT_RETENTION_DAYS: int = 30
+    ALERT_DEVICE_OFFLINE_THRESHOLD_MINUTES: int = 10
+    ALERT_FAILURE_RATE_THRESHOLD: int = 5
+
+    # ── Backup ───────────────────────────────────────────────
+    BACKUP_ENABLED: bool = True
+    BACKUP_SCHEDULE_HOUR: int = 2  # 2 AM
+    BACKUP_SCHEDULE_MINUTE: int = 0
+    BACKUP_RETENTION_DAYS: int = 30
+    BACKUP_DIR: str = "backups"
+    BACKUP_MAX_FILE_SIZE_MB: int = 5000  # 5 GB warning threshold
+    PG_DUMP_PATH: str = "pg_dump"  # Path to pg_dump binary
+
     # ── Admin Defaults ───────────────────────────────────────
     DEFAULT_ADMIN_USERNAME: str = "admin"
-    DEFAULT_ADMIN_PASSWORD: str = "@linux@kali@DYDY21"
+    DEFAULT_ADMIN_PASSWORD: str
     DEFAULT_ADMIN_EMAIL: str = "admin@projectz.local"
 
     # ── CORS ─────────────────────────────────────────────────

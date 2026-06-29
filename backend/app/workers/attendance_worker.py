@@ -10,6 +10,8 @@ import logging
 import os
 import socket
 
+from app.core.metrics import metrics
+
 logger = logging.getLogger(__name__)
 
 
@@ -31,6 +33,10 @@ async def run_attendance_worker(db_session_factory) -> None:
         try:
             redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
             await ensure_consumer_group(redis)
+
+            # Record heartbeat
+            metrics.update_worker_heartbeat("attendance_worker")
+
             await consume_loop(
                 worker_id=worker_id,
                 redis=redis,

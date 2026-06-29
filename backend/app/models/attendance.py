@@ -122,11 +122,18 @@ class AttendanceSession(BaseModel):
     # Computed fields
     duration_minutes: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     late_minutes: Mapped[Optional[float]] = mapped_column(Float, default=0)
+    early_minutes: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=0)
     overtime_minutes: Mapped[Optional[float]] = mapped_column(Float, default=0)
-    status: Mapped[AttendanceStatus] = mapped_column(
-        SAEnum(AttendanceStatus, name="attendance_status", values_callable=lambda x: [e.value for e in x]),
-        default=AttendanceStatus.ON_TIME,
+    status: Mapped[str] = mapped_column(String(50), default="on_time")
+
+    # Shift context (added in migration 0013)
+    shift_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True, index=True)
+    shift_template_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("shift_templates.id", ondelete="SET NULL"),
+        nullable=True,
     )
+    shift_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     is_complete: Mapped[bool] = mapped_column(default=False)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

@@ -5,23 +5,25 @@ Project Z - Device API Routes
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, PermissionChecker
 from app.database.session import get_db
 from app.models.device import Device
 from app.schemas.device import DeviceListResponse, DeviceResponse, DeviceUpdate
 from app.repositories.device import DeviceRepository
+from app.services.audit_service import log_audit
+from app.utils.audit_context import get_audit_context
 
 router = APIRouter(prefix="/devices", tags=["Devices"])
 
 
 # ── List & static routes FIRST (before /{device_id}) ────
 
-@router.get("", response_model=DeviceListResponse)
+@router.get("", response_model=DeviceListResponse, dependencies=[Depends(PermissionChecker("device:view"))])
 async def list_devices(
     db: AsyncSession = Depends(get_db),
     _user=Depends(get_current_user),
@@ -52,7 +54,7 @@ async def list_devices(
 
 # ── Unrecognized users (MUST be before /{device_id}) ────
 
-@router.get("/unrecognized-users/all")
+@router.get("/unrecognized-users/all", dependencies=[Depends(PermissionChecker("device:view"))])
 async def get_unrecognized_users(
     db: AsyncSession = Depends(get_db),
     _user=Depends(get_current_user),
@@ -98,7 +100,7 @@ async def get_unrecognized_users(
     }
 
 
-@router.post("/unrecognized-users/map-existing")
+@router.post("/unrecognized-users/map-existing", dependencies=[Depends(PermissionChecker("device:update"))])
 async def map_to_existing_employee(
     device_id: str,
     device_user_id: str,
@@ -129,7 +131,7 @@ async def map_to_existing_employee(
     return {"message": f"Mapped device user {device_user_id} to {emp.full_name}"}
 
 
-@router.post("/unrecognized-users/map-new")
+@router.post("/unrecognized-users/map-new", dependencies=[Depends(PermissionChecker("device:update"))])
 async def map_to_new_employee(
     device_id: str,
     device_user_id: str,
@@ -175,7 +177,7 @@ async def map_to_new_employee(
 
 # ── Dynamic /{device_id} routes ──────────────────────────
 
-@router.get("/{device_id}", response_model=DeviceResponse)
+@router.get("/{device_id}", response_model=DeviceResponse, dependencies=[Depends(PermissionChecker("device:view"))])
 async def get_device(
     device_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -195,17 +197,26 @@ async def get_device(
     )
 
 
-@router.put("/{device_id}", response_model=DeviceResponse)
+@router.put("/{device_id}", response_model=DeviceResponse, dependencies=[Depends(PermissionChecker("device:update"))])
 async def update_device(
     device_id: UUID,
     data: DeviceUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     _user=Depends(get_current_user),
 ):
     repo = DeviceRepository(db)
-    device = await repo.update(device_id, data.model_dump(exclude_unset=True))
-    if not device:
+    old_device = await repo.get_by_id(device_id)
+    if not old_device:
         raise HTTPException(404, "Device not found")
+    device = await repo.update(device_id, data.model_dump(exclude_unset=True))
+    audit_ctx = get_audit_context(request, _user)
+    await log_audit(
+        db, action="update", entity_type="device",
+        entity_id=str(device_id),
+        details={"changed_fields": list(data.model_dump(exclude_unset=True).keys())},
+        previous_value=old_device, new_value=device, **audit_ctx,
+    )
     return DeviceResponse(
         id=device.id, serial_number=device.serial_number, name=device.name,
         ip_address=device.ip_address, model=device.model, platform=device.platform,
@@ -216,7 +227,7 @@ async def update_device(
     )
 
 
-@router.get("/{device_id}/sdk/users")
+@router.get("/{device_id}/sdk/users", dependencies=[Depends(PermissionChecker("device:view"))])
 async def get_sdk_users(
     device_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -230,14 +241,26 @@ async def get_sdk_users(
     if not device.ip_address:
         raise HTTPException(400, "Device has no IP address")
     try:
-        sdk = ZKSDKService(ip=device.ip_address, port=device.sdk_port or 4370)
-        users = sdk.get_users()
+        import asyncio, socket
+        ip = device.ip_address
+        port = device.sdk_port or 4370
+        def _check():
+            try:
+                with socket.create_connection((ip, port), timeout=3):
+                    return True
+            except (ConnectionRefusedError, TimeoutError, OSError):
+                return False
+        loop = asyncio.get_event_loop()
+        if not await loop.run_in_executor(None, _check):
+            raise HTTPException(502, f"SDK port {port} not reachable on {device.name}")
+        sdk = ZKSDKService(ip=ip, port=port, timeout=5)
+        users = await loop.run_in_executor(None, sdk.get_users)
         return {"device_id": str(device_id), "total_users": len(users), "users": users}
     except RuntimeError as e:
         raise HTTPException(502, str(e))
 
 
-@router.post("/{device_id}/sdk/import-users")
+@router.post("/{device_id}/sdk/import-users", dependencies=[Depends(PermissionChecker("device:sync"))])
 async def import_sdk_users(
     device_id: UUID,
     db: AsyncSession = Depends(get_db),
@@ -257,8 +280,20 @@ async def import_sdk_users(
         raise HTTPException(400, "Device has no IP address")
 
     try:
-        sdk = ZKSDKService(ip=device.ip_address, port=device.sdk_port or 4370)
-        users = sdk.get_users()
+        import asyncio, socket
+        ip = device.ip_address
+        port = device.sdk_port or 4370
+        def _check():
+            try:
+                with socket.create_connection((ip, port), timeout=3):
+                    return True
+            except (ConnectionRefusedError, TimeoutError, OSError):
+                return False
+        loop = asyncio.get_event_loop()
+        if not await loop.run_in_executor(None, _check):
+            raise HTTPException(502, f"SDK port {port} not reachable on {device.name}")
+        sdk = ZKSDKService(ip=ip, port=port, timeout=5)
+        users = await loop.run_in_executor(None, sdk.get_users)
     except RuntimeError as e:
         raise HTTPException(502, str(e))
 
@@ -295,3 +330,41 @@ async def import_sdk_users(
 
     await db.commit()
     return {"total_on_device": len(users), "imported": created, "skipped": skipped, "results": results}
+
+
+@router.get("/{device_id}/sdk/test-connection", dependencies=[Depends(PermissionChecker("device:view"))])
+async def test_device_connection(
+    device_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    _user=Depends(get_current_user),
+):
+    """Test TCP connectivity to a device. Returns diagnostic info for troubleshooting."""
+    import asyncio
+    repo = DeviceRepository(db)
+    device = await repo.get_by_id(device_id)
+    if not device:
+        raise HTTPException(404, "Device not found")
+    if not device.ip_address:
+        raise HTTPException(400, "Device has no IP address")
+
+    from app.services.sdk_service import ZKSDKService, get_device_lock
+
+    device_lock = get_device_lock(device.ip_address)
+    if device_lock.locked():
+        raise HTTPException(
+            409,
+            f"Device {device.name} is busy with another operation. Wait and retry."
+        )
+
+    async with device_lock:
+        sdk = ZKSDKService(
+            ip=device.ip_address,
+            port=device.sdk_port or 4370,
+            timeout=10,
+        )
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, sdk.test_connection)
+        result["device_name"] = device.name
+        result["serial_number"] = device.serial_number
+        result["enrollment_active"] = ZKSDKService.is_enrollment_active(device.ip_address)
+        return result

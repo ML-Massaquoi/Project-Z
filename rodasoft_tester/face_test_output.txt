@@ -1,0 +1,17 @@
+=== Face Enrollment Test ===
+Connected! FW: Ver 6.60 Sep 19 2019
+Face version: 7
+Face function on: 1
+Registered UID 2000
+
+Sending enroll_user with temp_id=1 (face enrollment)...
+>>> DEVICE SHOULD SHOW FACE ENROLLMENT <<<
+>>> LOOK AT THE DEVICE CAMERA <<<
+enroll_user error: Cant Enroll user #2000 [1]
+Error: Cant Enroll user #2000 [1]
+
+Checking templates for UID 2000...
+Templates: 1
+  fid=1 size=804 valid=1
+
+=== Done ===

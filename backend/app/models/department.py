@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from app.models.device import Device
     from app.models.employee import Employee
     from app.models.office import Office
+    from app.models.shift_protocol import ShiftProtocol
 
 
 class Department(BaseModel):
@@ -33,6 +34,13 @@ class Department(BaseModel):
         ForeignKey("offices.id", ondelete="CASCADE"),
         nullable=False,
     )
+    
+    # Shift Protocol - determines work schedule for this department
+    shift_protocol_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("shift_protocols.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     # Relationships
     office: Mapped["Office"] = relationship("Office", back_populates="departments")
@@ -41,6 +49,9 @@ class Department(BaseModel):
     )
     devices: Mapped[list["Device"]] = relationship(
         "Device", back_populates="department"
+    )
+    shift_protocol: Mapped[Optional["ShiftProtocol"]] = relationship(
+        "ShiftProtocol", lazy="select"
     )
 
     def __repr__(self) -> str:

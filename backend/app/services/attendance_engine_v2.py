@@ -67,6 +67,7 @@ class AttendanceEngineV2:
         Returns the upserted AttendanceSession, or None if scan is out-of-window.
         """
         # ── 1. Load scan event ────────────────────────────────
+        logger.info(f">>> ATTENDANCE ENGINE | processing scan_event_id={scan_event_id}")
         scan = await self._load_scan(scan_event_id)
         if scan is None:
             # Raise — NOT a silent return.
@@ -286,7 +287,6 @@ class AttendanceEngineV2:
                 check_out=check_out,
                 check_out_device_id=check_out_device_id,
                 late_minutes=late_minutes,
-                early_minutes=early_minutes,
                 overtime_minutes=overtime_minutes,
                 duration_minutes=duration_minutes,
                 is_complete=check_out is not None,
@@ -303,6 +303,7 @@ class AttendanceEngineV2:
             self.session.add(new_session)
             await self.session.flush()
             await self.session.refresh(new_session)
+            logger.info(f">>> ATTENDANCE CREATED | session_id={new_session.id} employee_id={employee_id} status={status}")
             return new_session
         else:
             updates: dict = {"status": status, "updated_at": datetime.utcnow()}
@@ -411,9 +412,46 @@ class AttendanceEngineV2:
 
         try:
             from app.services.websocket_service import ws_manager
+            from app.models.department import Department
+            from app.models.device import Device
+            from app.models.enrollment_session import EnrollmentSession
+
+            # Only broadcast for enrolled employees (wizard-created)
+            if employee:
+                has_enrollment = await self.session.execute(
+                    select(EnrollmentSession.id).where(
+                        EnrollmentSession.employee_id == employee_id
+                    ).limit(1)
+                )
+                if not has_enrollment.scalar_one_or_none():
+                    return  # Skip broadcast for non-enrolled employees
+
+            # Fetch employee details for enriched feed
+            emp_name = None
+            dept_name = None
+            device_name = None
+            device_ip = None
+
+            if employee:
+                emp_name = employee.full_name
+                if employee.department_id:
+                    dept = await self.session.get(Department, employee.department_id)
+                    dept_name = dept.name if dept else None
+
+            if scan.device_id:
+                device = await self.session.get(Device, scan.device_id)
+                if device:
+                    device_name = device.name
+                    device_ip = device.ip_address
+
             await ws_manager.broadcast("attendance_update", {
                 "session_id": str(session_obj.id),
                 "employee_id": str(employee_id),
+                "employee_code": employee.employee_code if employee else None,
+                "employee_name": emp_name,
+                "department_name": dept_name,
+                "device_name": device_name,
+                "device_ip": device_ip,
                 "shift_date": str(shift_date),
                 "check_in": session_obj.check_in.isoformat() if session_obj.check_in else None,
                 "check_out": session_obj.check_out.isoformat() if session_obj.check_out else None,
@@ -421,6 +459,8 @@ class AttendanceEngineV2:
                 "late_minutes": float(session_obj.late_minutes or 0),
                 "overtime_minutes": float(session_obj.overtime_minutes or 0),
                 "duration_minutes": float(session_obj.duration_minutes or 0),
+                "verification_method": scan.verification_method.value if hasattr(scan.verification_method, 'value') else str(scan.verification_method),
+                "source": "adms",
             })
             # Late alert
             if session_obj.status in ("late",) and (session_obj.late_minutes or 0) > 0:

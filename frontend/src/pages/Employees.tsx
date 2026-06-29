@@ -1,530 +1,1469 @@
-import { useState } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { motion, AnimatePresence } from 'framer-motion'
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay } from 'date-fns'
 import {
-  Search, Edit, Trash2, Loader2, UserPlus, Cpu, Plus, X,
-  Fingerprint, Users, ChevronLeft, ChevronRight, User, Link2,
+  Download, UserPlus, Users, CalendarClock, AlarmClockOff, Ban, Search,
+  ChevronLeft, ChevronRight, Building2, Briefcase, Clock, Sun, Moon,
+  UserCog, Shield, Calendar, ChevronDown, Save, X, Plus, Edit2, Monitor,
 } from 'lucide-react'
-import { employeesAPI, departmentsAPI, devicesAPI, shiftsAPI } from '@/api/client'
+import { motion, AnimatePresence } from 'framer-motion'
+import { employeesAPI, departmentsAPI, shiftTemplatesAPI, shiftAssignmentsAPI, shiftProtocolsAPI, devicesAPI } from '@/api/client'
+import EnrollmentWizard from '@/components/enrollment/EnrollmentWizard'
+import type { Employee, Department, ShiftTemplate, ShiftProtocol, EmployeeShiftAssignment, EmployeeShiftOverride } from '@/types'
+import { StatusBadge } from '@/components/ui/StatusBadge'
+import { Modal } from '@/components/ui/Modal'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import type { Employee, Department, Device, Shift } from '@/types'
 
-interface DeviceMapping {
-  id: string
-  employee_id: string
-  device_id: string
-  device_serial: string
-  device_name: string | null
-  device_user_id: string
-  created_at: string
+type TabKey = 'active' | 'on_leave' | 'suspended' | 'terminated'
+type DrawerTab = 'profile' | 'assignment' | 'devices' | 'calendar'
+
+interface TabDef {
+  key: TabKey
+  label: string
+  icon: React.ReactNode
+  color: string
+  bg: string
 }
 
-const inputCls = 'w-full px-3 py-2.5 rounded-xl border border-slate-800 text-sm bg-slate-950 text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all'
-const labelCls = 'block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5'
+const TABS: TabDef[] = [
+  { key: 'active', label: 'Active', icon: <Users size={14} />, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+  { key: 'on_leave', label: 'On Leave', icon: <CalendarClock size={14} />, color: 'text-amber-400', bg: 'bg-amber-500/10' },
+  { key: 'suspended', label: 'Suspended', icon: <AlarmClockOff size={14} />, color: 'text-orange-400', bg: 'bg-orange-500/10' },
+  { key: 'terminated', label: 'Terminated', icon: <Ban size={14} />, color: 'text-red-400', bg: 'bg-red-500/10' },
+]
 
-// ── Unified Employee Modal ───────────────────────────────
-function EmployeeModal({
-  employee,
-  onClose,
-}: {
-  employee: Employee | null
-  onClose: () => void
-}) {
+export default function Employees() {
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const isEdit = !!employee
-  const [tab, setTab] = useState<'info' | 'devices'>('info')
-  const [form, setForm] = useState({
-    full_name: employee?.full_name || '',
-    employee_code: employee?.employee_code || '',
-    email: employee?.email || '',
-    phone: employee?.phone || '',
-    position: employee?.position || '',
-    department_id: employee?.department_id || '',
-    shift_id: employee?.shift_id || '',
-    status: employee?.status || 'active',
-  })
-  const [newDeviceId, setNewDeviceId] = useState('')
-  const [newDeviceUserId, setNewDeviceUserId] = useState('')
+  const [searchValue, setSearchValue] = useState('')
+  const [activeTab, setActiveTab] = useState<TabKey>('active')
+  const [page, setPage] = useState(1)
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null)
+  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null)
+  const [selectedDept, setSelectedDept] = useState<string>('all')
+  const [drawerTab, setDrawerTab] = useState<DrawerTab>('profile')
+  const [showAddModal, setShowAddModal] = useState(false)
+  const calendarDate = useMemo(() => new Date(), [])
 
-  const { data: departments = [] } = useQuery<Department[]>({
-    queryKey: ['departments'],
+  const { data: deptsData } = useQuery({
+    queryKey: ['departments-list'],
     queryFn: async () => (await departmentsAPI.list()).data,
   })
-  const { data: shiftsData = [] } = useQuery<Shift[]>({
-    queryKey: ['shifts'],
-    queryFn: async () => (await shiftsAPI.list()).data,
-  })
-  const { data: devicesData } = useQuery({
-    queryKey: ['devices'],
-    queryFn: async () => (await devicesAPI.list()).data,
-  })
-  const devices: Device[] = devicesData?.items ?? []
+  const departmentsList: Department[] = Array.isArray(deptsData) ? deptsData : deptsData?.items ?? []
 
-  const { data: mappings = [], isLoading: mappingsLoading } = useQuery<DeviceMapping[]>({
-    queryKey: ['device-mappings', employee?.id],
-    queryFn: async () => (await employeesAPI.listMappings(employee!.id)).data,
-    enabled: isEdit && tab === 'devices',
+  const { data: templatesData } = useQuery({
+    queryKey: ['shift-templates-list'],
+    queryFn: async () => (await shiftTemplatesAPI.list()).data,
   })
+  const shiftTemplates: ShiftTemplate[] = Array.isArray(templatesData) ? templatesData : templatesData?.items ?? []
 
-  const saveMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
-      isEdit ? employeesAPI.update(employee!.id, data) : employeesAPI.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['employees'] })
-      toast.success(isEdit ? 'Employee updated' : 'Employee created')
-      if (!isEdit) onClose()
-      else setTab('devices')
-    },
-    onError: (err: any) => toast.error(err.response?.data?.message || 'Failed to save'),
+  const { data: protocolsData } = useQuery({
+    queryKey: ['shift-protocols-list'],
+    queryFn: async () => (await shiftProtocolsAPI.list()).data,
   })
+  const shiftProtocols: ShiftProtocol[] = Array.isArray(protocolsData) ? protocolsData : protocolsData?.items ?? []
 
-  const addMappingMutation = useMutation({
-    mutationFn: () => employeesAPI.createMapping(employee!.id, newDeviceId, newDeviceUserId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['device-mappings', employee?.id] })
-      toast.success('Device mapping added')
-      setNewDeviceId('')
-      setNewDeviceUserId('')
-    },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to add mapping'),
+  const { data: assignmentsData } = useQuery({
+    queryKey: ['employee-assignments', selectedEmployee?.id],
+    queryFn: async () => (await shiftAssignmentsAPI.listAssignments({ employee_id: selectedEmployee?.id })).data,
+    enabled: !!selectedEmployee,
   })
+  const employeeAssignments: EmployeeShiftAssignment[] = Array.isArray(assignmentsData) ? assignmentsData : assignmentsData?.items ?? []
 
-  const deleteMappingMutation = useMutation({
-    mutationFn: (mappingId: string) => employeesAPI.deleteMapping(employee!.id, mappingId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['device-mappings', employee?.id] })
-      toast.success('Mapping removed')
-    },
+  const { data: overridesData } = useQuery({
+    queryKey: ['employee-overrides', selectedEmployee?.id],
+    queryFn: async () => (await shiftAssignmentsAPI.listOverrides({ employee_id: selectedEmployee?.id })).data,
+    enabled: !!selectedEmployee,
+  })
+  const employeeOverrides: EmployeeShiftOverride[] = Array.isArray(overridesData) ? overridesData : overridesData?.items ?? []
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['employees', page, searchValue, activeTab, selectedDept],
+    queryFn: async () => (await employeesAPI.list({
+      page,
+      per_page: 20,
+      search: searchValue || undefined,
+      status: activeTab === 'on_leave' ? 'inactive' : activeTab !== 'active' ? activeTab : undefined,
+      department_id: selectedDept !== 'all' ? selectedDept : undefined,
+      only_enrolled: true,
+    })).data,
   })
 
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault()
-    const payload: Record<string, unknown> = { ...form }
-    if (!payload.department_id) delete payload.department_id
-    if (!payload.shift_id) delete payload.shift_id
-    if (!payload.email) delete payload.email
-    if (!payload.phone) delete payload.phone
-    saveMutation.mutate(payload)
-  }
+  const { data: deptData } = useQuery({
+    queryKey: ['departments-list'],
+    queryFn: async () => (await departmentsAPI.list()).data,
+  })
 
-  const statusColors: Record<string, string> = {
-    active: 'bg-emerald-950/40 text-emerald-400 border border-emerald-900/40',
-    inactive: 'bg-slate-800/50 text-slate-400 border border-slate-700/40',
-    suspended: 'bg-amber-950/40 text-amber-400 border border-amber-900/40',
-    terminated: 'bg-red-950/40 text-red-400 border border-red-900/40',
+  const departments: Department[] = Array.isArray(deptData) ? deptData : deptData?.items ?? []
+
+  const employees: Employee[] = data?.items ?? []
+  const totalEmployees = data?.total ?? 0
+  const totalPages = data?.pages ?? 1
+
+  const countByStatus = useMemo(() => {
+    if (!data?.items) return { active: 0, on_leave: 0, suspended: 0, terminated: 0 }
+    const all = data.items as Employee[]
+    return {
+      active: all.filter(e => e.status === 'active').length,
+      on_leave: all.filter(e => e.status === 'inactive').length,
+      suspended: all.filter(e => e.status === 'suspended').length,
+      terminated: all.filter(e => e.status === 'terminated').length,
+    }
+  }, [data])
+
+  const handleExport = async () => {
+    try {
+      const response = await employeesAPI.list({ per_page: 10000 })
+      const blob = new Blob([JSON.stringify(response.data.items, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `employees-export-${format(new Date(), 'yyyy-MM-dd')}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('Employee data exported')
+    } catch {
+      toast.error('Failed to export employees')
+    }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <motion.div
-        initial={{ opacity: 0, scale: 0.96, y: 8 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96, y: 8 }}
-        transition={{ duration: 0.2 }}
-        className="relative bg-[#0B0F19] border border-slate-800 rounded-2xl shadow-2xl w-full max-w-xl z-10 overflow-hidden text-slate-200"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/50">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
-              <User size={16} className="text-white" />
-            </div>
-            <div>
-              <h2 className="text-base font-semibold text-slate-100">
-                {isEdit ? employee.full_name : 'Add New Employee'}
-              </h2>
-              <p className="text-xs text-slate-400">
-                {isEdit ? employee.employee_code : 'Fill in the details below'}
-              </p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors">
-            <X size={16} />
-          </button>
+    <div className="space-y-6">
+      {/* Header with integrated search */}
+      <div className="flex items-center gap-4">
+        <div className="flex-1 min-w-0">
+          <h1 className="text-2xl font-bold text-[var(--pz-text)] tracking-tight">Employees</h1>
+          <p className="text-sm text-[var(--pz-text-muted)] mt-1">
+            {totalEmployees} total employees in the workforce
+          </p>
         </div>
+        <div className="relative w-80">
+          <Search size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--pz-text-muted)] pointer-events-none" />
+          <input
+            value={searchValue}
+            onChange={(e) => { setSearchValue(e.target.value); setPage(1) }}
+            placeholder="Search employees..."
+            className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-sm text-[var(--pz-text)] placeholder:text-[var(--pz-text-muted)] focus:outline-none focus:border-blue-500/50 transition-colors"
+          />
+          {searchValue && (
+            <button
+              onClick={() => setSearchValue('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-[var(--pz-text-muted)] hover:text-[var(--pz-text-secondary)] hover:bg-[var(--pz-surface-3)] transition-colors"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-2.5">
+          <Button variant="outline" size="md" onClick={handleExport}>
+            <Download size={15} />
+            Export
+          </Button>
+          <Button variant="default" size="md" onClick={() => setShowAddModal(true)}>
+            <UserPlus size={15} />
+            Add Employee
+          </Button>
+        </div>
+      </div>
 
-        {/* Tabs — only show for edit */}
-        {isEdit && (
-          <div className="flex border-b border-slate-800 px-6">
-            {[
-              { id: 'info', label: 'Profile', icon: User },
-              { id: 'devices', label: 'Device Mappings', icon: Cpu },
-            ].map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id as any)}
-                className={`flex items-center gap-2 px-1 py-3 mr-6 text-sm font-medium border-b-2 transition-colors ${
-                  tab === t.id
-                    ? 'border-[var(--color-primary)] text-[var(--color-primary)]'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <t.icon size={14} />
-                {t.label}
-                {t.id === 'devices' && mappings.length > 0 && (
-                  <span className="ml-1 px-1.5 py-0.5 rounded-full bg-[var(--color-primary)] text-white text-[10px] font-bold">
-                    {mappings.length}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Tab: Profile */}
-        {tab === 'info' && (
-          <form onSubmit={handleSave} className="p-6 space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className={labelCls}>Full Name *</label>
-                <input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} required className={inputCls} placeholder="John Doe" />
+      {/* Stats Tiles */}
+      <div className="grid grid-cols-4 gap-4">
+        {TABS.map((tab) => (
+          <motion.button
+            key={tab.key}
+            whileHover={{ y: -1 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => { setActiveTab(tab.key); setPage(1) }}
+            className={`relative p-4 rounded-2xl border text-left transition-all ${
+              activeTab === tab.key
+                ? 'border-blue-500/40 bg-blue-500/5 shadow-lg shadow-blue-500/5'
+                : 'border-[var(--pz-border)] bg-[var(--pz-surface-1)] hover:border-gray-600'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className={`p-2 rounded-xl ${tab.bg}`}>
+                <span className={tab.color}>{tab.icon}</span>
               </div>
-              <div>
-                <label className={labelCls}>Employee Code *</label>
-                <input value={form.employee_code} onChange={(e) => setForm({ ...form, employee_code: e.target.value })} required className={inputCls} placeholder="EMP001" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className={labelCls}>Email</label>
-                <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={inputCls} placeholder="john@example.com" />
-              </div>
-              <div>
-                <label className={labelCls}>Phone</label>
-                <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className={inputCls} placeholder="+232 XX XXX XXXX" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className={labelCls}>Position</label>
-                <input value={form.position} onChange={(e) => setForm({ ...form, position: e.target.value })} className={inputCls} placeholder="e.g. Security Officer" />
-              </div>
-              <div>
-                <label className={labelCls}>Status</label>
-                <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as any })} className={inputCls}>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                  <option value="suspended">Suspended</option>
-                  <option value="terminated">Terminated</option>
-                </select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className={labelCls}>Department</label>
-                <select value={form.department_id} onChange={(e) => setForm({ ...form, department_id: e.target.value })} className={inputCls}>
-                  <option value="">No Department</option>
-                  {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={labelCls}>Shift</label>
-                <select value={form.shift_id} onChange={(e) => setForm({ ...form, shift_id: e.target.value })} className={inputCls}>
-                  <option value="">No Shift</option>
-                  {shiftsData.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.start_time}–{s.end_time})</option>)}
-                </select>
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 pt-2">
-              <button type="button" onClick={onClose} className="px-4 py-2.5 rounded-xl border border-slate-800 text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white bg-transparent transition-colors">
-                Cancel
-              </button>
-              <button type="submit" disabled={saveMutation.isPending} className="px-5 py-2.5 rounded-xl bg-[var(--color-primary)] text-white text-sm font-medium hover:bg-[var(--color-primary-hover)] transition-colors disabled:opacity-50 flex items-center gap-2">
-                {saveMutation.isPending && <Loader2 size={14} className="animate-spin" />}
-                {isEdit ? 'Save Changes' : 'Create & Add Devices →'}
-              </button>
-            </div>
-          </form>
-        )}
-
-        {/* Tab: Device Mappings */}
-        {tab === 'devices' && isEdit && (
-          <div className="p-6 space-y-5">
-            {/* Existing mappings */}
-            <div>
-              <p className={labelCls}>Linked Devices</p>
-              {mappingsLoading ? (
-                <div className="space-y-2">{[1, 2].map((i) => <div key={i} className="h-12 rounded-xl skeleton" />)}</div>
-              ) : mappings.length === 0 ? (
-                <div className="flex flex-col items-center py-8 text-slate-400 bg-slate-900/40 rounded-xl border border-dashed border-slate-800">
-                  <Fingerprint size={28} className="mb-2 opacity-30" />
-                  <p className="text-sm font-medium">No device mappings yet</p>
-                  <p className="text-xs mt-0.5 text-slate-500">Link this employee to a biometric device below</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {mappings.map((m) => (
-                    <div key={m.id} className="flex items-center justify-between px-3 py-2.5 rounded-xl border border-slate-800 bg-slate-900/40">
-                      <div className="flex items-center gap-2.5">
-                        <div className="p-1.5 rounded-lg bg-blue-950/40 border border-blue-900/50"><Cpu size={14} className="text-[var(--color-primary)]" /></div>
-                        <div>
-                          <p className="text-sm font-medium text-slate-200">{m.device_name || m.device_serial}</p>
-                          <p className="text-xs text-slate-400">User ID on device: <span className="font-mono font-semibold text-slate-300">{m.device_user_id}</span></p>
-                        </div>
-                      </div>
-                      <button onClick={() => deleteMappingMutation.mutate(m.id)} disabled={deleteMappingMutation.isPending} className="p-1.5 rounded-lg hover:bg-red-950/40 text-slate-400 hover:text-red-400 transition-colors">
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
+              {activeTab === tab.key && (
+                <motion.div
+                  layoutId="activeTab"
+                  className="w-1.5 h-1.5 rounded-full bg-blue-500"
+                />
               )}
             </div>
+            <p className="text-2xl font-bold text-[var(--pz-text)] tabular-nums tracking-tight">
+              {countByStatus[tab.key]}
+            </p>
+            <p className="text-xs text-[var(--pz-text-muted)] font-medium mt-1">{tab.label}</p>
+          </motion.button>
+        ))}
+      </div>
 
-            {/* Add mapping */}
-            <div className="border-t border-slate-800 pt-4">
-              <p className={labelCls}>Add Device Mapping</p>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-sm text-slate-400 mb-1">Select Device</label>
-                  <select value={newDeviceId} onChange={(e) => setNewDeviceId(e.target.value)} className={inputCls}>
-                    <option value="">Choose a device…</option>
-                    {devices.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name || d.serial_number} {d.ip_address ? `· ${d.ip_address}` : ''} {d.is_online ? '🟢' : '⚫'}
-                      </option>
-                    ))}
-                  </select>
+      {/* Department Filter */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+        <button
+          onClick={() => { setSelectedDept('all'); setPage(1) }}
+          className={cn(
+            'shrink-0 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border',
+            selectedDept === 'all'
+              ? 'bg-blue-600 text-white border-blue-500 shadow-sm shadow-blue-600/20'
+              : 'bg-[var(--pz-surface-2)] border-[var(--pz-border)] text-[var(--pz-text-muted)] hover:text-[var(--pz-text-secondary)] hover:bg-[var(--pz-surface-3)]'
+          )}
+        >
+          All
+        </button>
+        {departmentsList.map(dept => (
+          <button
+            key={dept.id}
+            onClick={() => { setSelectedDept(dept.id); setPage(1) }}
+            className={cn(
+              'shrink-0 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border',
+              selectedDept === dept.id
+                ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm shadow-indigo-600/20'
+                : 'bg-[var(--pz-surface-2)] border-[var(--pz-border)] text-[var(--pz-text-muted)] hover:text-[var(--pz-text-secondary)] hover:bg-[var(--pz-surface-3)]'
+            )}
+          >
+            <Building2 size={12} className="inline mr-1.5 -mt-0.5" />
+            {dept.name}
+          </button>
+        ))}
+      </div>
+
+      {/* Employee Grid */}
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 9 }).map((_, i) => (
+            <div key={i} className="p-5 rounded-2xl border border-[var(--pz-border)] bg-[var(--pz-surface-1)]">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 rounded-xl skeleton" />
+                <div className="flex-1 space-y-2">
+                  <div className="skeleton h-4 w-32 rounded" />
+                  <div className="skeleton h-3 w-20 rounded" />
                 </div>
-                <div>
-                  <label className="block text-sm text-slate-400 mb-1">
-                    Device User ID <span className="text-xs text-slate-500">(enrollment number on the device)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={newDeviceUserId}
-                    onChange={(e) => setNewDeviceUserId(e.target.value)}
-                    placeholder="e.g. 1, 42, 100"
-                    className={`${inputCls} font-mono`}
-                  />
-                </div>
-                <button
-                  onClick={() => { if (newDeviceId && newDeviceUserId.trim()) addMappingMutation.mutate() }}
-                  disabled={addMappingMutation.isPending || !newDeviceId || !newDeviceUserId.trim()}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[var(--color-primary)] text-white text-sm font-medium hover:bg-[var(--color-primary-hover)] transition-colors disabled:opacity-50"
+              </div>
+              <div className="space-y-2">
+                <div className="skeleton h-3 w-full rounded" />
+                <div className="skeleton h-3 w-2/3 rounded" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : employees.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="p-4 rounded-2xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] mb-4">
+            <Users size={32} className="text-[var(--pz-text-muted)]" />
+          </div>
+          <p className="text-base font-semibold text-[var(--pz-text-secondary)]">No employees found</p>
+          <p className="text-sm text-[var(--pz-text-muted)] mt-1">
+            {searchValue ? 'Try adjusting your search terms' : 'Add your first employee to get started'}
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <AnimatePresence mode="popLayout">
+              {employees.map((employee, idx) => (
+                <motion.div
+                  key={employee.id}
+                  layout
+                  initial={{ opacity: 0, scale: 0.96 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.96 }}
+                  transition={{ delay: idx * 0.02, duration: 0.2 }}
+                  onClick={() => setSelectedEmployee(employee)}
+                  className="group p-5 rounded-2xl border border-[var(--pz-border)] bg-[var(--pz-surface-1)] hover:border-blue-500/30 hover:bg-blue-500/[0.02] transition-all cursor-pointer"
                 >
-                  {addMappingMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />}
-                  Link Device
+                  {/* Top row: Avatar + Name */}
+                  <div className="flex items-start gap-4 mb-4">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-600/20 to-indigo-600/20 border border-blue-500/15 flex items-center justify-center flex-shrink-0 group-hover:border-blue-500/30 transition-colors">
+                      <span className="text-base font-bold text-blue-400">
+                        {employee.full_name?.[0] || '?'}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-[var(--pz-text)] truncate group-hover:text-blue-400 transition-colors">
+                        {employee.full_name}
+                      </p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[11px] font-mono text-[var(--pz-text-muted)]">
+                          {employee.employee_code}
+                        </span>
+                        <StatusBadge status={employee.status as 'active' | 'inactive'} size="sm" dot={false}>
+                          {employee.status}
+                        </StatusBadge>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Detail chips */}
+                  <div className="flex flex-wrap gap-2">
+                    {employee.department_name && (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-500/10 border border-indigo-500/15 text-[10px] font-semibold text-indigo-400">
+                        <Building2 size={11} />
+                        {employee.department_name}
+                      </span>
+                    )}
+                    {employee.position && (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-[10px] font-semibold text-[var(--pz-text-muted)]">
+                        <Briefcase size={11} />
+                        {employee.position}
+                      </span>
+                    )}
+                    {employee.employment_type && (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-500/10 border border-purple-500/15 text-[10px] font-semibold text-purple-400">
+                        {employee.employment_type.replace(/_/g, ' ')}
+                      </span>
+                    )}
+                    {employee.shift_name && (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/15 text-[10px] font-semibold text-amber-400">
+                        <Clock size={11} />
+                        {employee.shift_name}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Footer */}
+                  <div className="mt-4 pt-3 border-t border-[var(--pz-border)] flex items-center justify-between">
+                    <span className="text-[10px] text-[var(--pz-text-faint)]">
+                      Joined {format(new Date(employee.created_at), 'MMM yyyy')}
+                    </span>
+                    <span className="text-[10px] font-semibold text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                      View profile →
+                    </span>
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between pt-2">
+              <p className="text-xs text-[var(--pz-text-muted)]">
+                Page {page} of {totalPages} &middot; {totalEmployees} total
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  disabled={page <= 1}
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  className="p-2.5 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-[var(--pz-text-secondary)] hover:bg-[var(--pz-surface-3)] disabled:opacity-30 transition-colors"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                  const start = Math.max(1, Math.min(page - 2, totalPages - 4))
+                  const p = start + i
+                  if (p > totalPages) return null
+                  return (
+                    <button
+                      key={p}
+                      onClick={() => setPage(p)}
+                      className={`w-9 h-9 rounded-xl text-xs font-bold transition-all ${
+                        p === page
+                          ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
+                          : 'bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-[var(--pz-text-secondary)] hover:bg-[var(--pz-surface-3)]'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  )
+                })}
+                <button
+                  disabled={page >= totalPages}
+                  onClick={() => setPage(p => p + 1)}
+                  className="p-2.5 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-[var(--pz-text-secondary)] hover:bg-[var(--pz-surface-3)] disabled:opacity-30 transition-colors"
+                >
+                  <ChevronRight size={16} />
                 </button>
               </div>
             </div>
-          </div>
+          )}
+        </>
+      )}
+
+      {/* Employee Detail Drawer */}
+      <AnimatePresence>
+        {selectedEmployee && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
+            onClick={() => { setSelectedEmployee(null); setDrawerTab('profile') }}
+          >
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+              onClick={(e) => e.stopPropagation()}
+              className="absolute right-0 top-0 bottom-0 w-[520px] bg-[var(--pz-surface-1)] border-l border-[var(--pz-border)] shadow-2xl overflow-y-auto"
+            >
+              {/* Header */}
+              <div className="sticky top-0 z-10 bg-[var(--pz-surface-1)] border-b border-[var(--pz-border)] px-6 py-4">
+                <div className="flex items-center justify-between mb-3">
+                  <button
+                    onClick={() => { setSelectedEmployee(null); setDrawerTab('profile') }}
+                    className="text-xs font-semibold text-[var(--pz-text-muted)] hover:text-[var(--pz-text-secondary)] transition-colors"
+                  >
+                    ← Back
+                  </button>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-600/20 to-indigo-600/20 border border-blue-500/20 flex items-center justify-center shrink-0">
+                    <span className="text-xl font-bold text-blue-400">{selectedEmployee.full_name?.[0]}</span>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-lg font-bold text-[var(--pz-text)] truncate">{selectedEmployee.full_name}</h2>
+                    <p className="text-xs text-[var(--pz-text-muted)]">
+                      {selectedEmployee.position || selectedEmployee.department_name || '—'}
+                      {selectedEmployee.employment_type && ` · ${selectedEmployee.employment_type.replace(/_/g, ' ')}`}
+                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <StatusBadge status={selectedEmployee.status as 'active' | 'inactive'} size="xs">
+                        {selectedEmployee.status}
+                      </StatusBadge>
+                      <span className="text-[10px] font-mono text-[var(--pz-text-faint)]">{selectedEmployee.employee_code}</span>
+                      {selectedEmployee.employee_number && (
+                        <span className="text-[10px] font-mono text-[var(--pz-text-faint)]">#{selectedEmployee.employee_number}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                {/* Tabs */}
+                <div className="flex gap-1 mt-4">
+                  {([
+                    { key: 'profile' as DrawerTab, label: 'Profile', icon: <UserCog size={14} /> },
+                    { key: 'assignment' as DrawerTab, label: 'Assignment', icon: <Shield size={14} /> },
+                    { key: 'devices' as DrawerTab, label: 'Devices', icon: <Building2 size={14} /> },
+                    { key: 'calendar' as DrawerTab, label: 'Schedule', icon: <Calendar size={14} /> },
+                  ]).map(tab => (
+                    <button
+                      key={tab.key}
+                      onClick={() => setDrawerTab(tab.key)}
+                      className={cn(
+                        'flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all flex-1 justify-center',
+                        drawerTab === tab.key
+                          ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/20'
+                          : 'bg-[var(--pz-surface-2)] text-[var(--pz-text-muted)] hover:text-[var(--pz-text-secondary)]'
+                      )}
+                    >
+                      {tab.icon}
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="p-6">
+                {drawerTab === 'profile' && <EmployeeProfileTab employee={selectedEmployee} departmentsList={departmentsList} queryClient={queryClient} onEdit={() => setEditingEmployee(selectedEmployee)} />}
+                {drawerTab === 'assignment' && <EmployeeAssignmentTab employee={selectedEmployee} shiftTemplates={shiftTemplates} protocols={shiftProtocols} assignments={employeeAssignments} overrides={employeeOverrides} queryClient={queryClient} />}
+                {drawerTab === 'devices' && <EmployeeDevicesTab employee={selectedEmployee} queryClient={queryClient} />}
+                {drawerTab === 'calendar' && <EmployeeCalendarTab employee={selectedEmployee} assignments={employeeAssignments} overrides={employeeOverrides} shiftTemplates={shiftTemplates} />}
+              </div>
+            </motion.div>
+          </motion.div>
         )}
-      </motion.div>
+      </AnimatePresence>
+
+      {/* Enrollment Wizard */}
+      <EnrollmentWizard
+        open={showAddModal}
+        onClose={() => {
+          setShowAddModal(false)
+          queryClient.invalidateQueries({ queryKey: ['employees'] })
+        }}
+      />
+
+      {/* Edit Employee Modal */}
+      <EditEmployeeModal
+        employee={editingEmployee}
+        departments={departments}
+        onClose={() => setEditingEmployee(null)}
+        queryClient={queryClient}
+      />
     </div>
   )
 }
 
-// ── Main Page ────────────────────────────────────────────
-export default function Employees() {
-  const queryClient = useQueryClient()
-  const [page, setPage] = useState(1)
-  const [search, setSearch] = useState('')
-  const [deptFilter, setDeptFilter] = useState('')
-  const [modalEmployee, setModalEmployee] = useState<Employee | null | 'new'>()
+/* ── Edit Employee Modal ────────────────────────────────── */
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['employees', page, search, deptFilter],
-    queryFn: async () => {
-      const params: Record<string, unknown> = { page, per_page: 15 }
-      if (search) params.search = search
-      if (deptFilter) params.department_id = deptFilter
-      return (await employeesAPI.list(params)).data
-    },
-  })
+function EditEmployeeModal({
+  employee,
+  departments,
+  onClose,
+  queryClient,
+}: {
+  employee: Employee | null
+  departments: Department[]
+  onClose: () => void
+  queryClient: ReturnType<typeof useQueryClient>
+}) {
+  const [fullName, setFullName] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [middleName, setMiddleName] = useState('')
+  const [gender, setGender] = useState('')
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
+  const [position, setPosition] = useState('')
+  const [departmentId, setDepartmentId] = useState('')
+  const [employmentType, setEmploymentType] = useState('')
+  const [dateJoined, setDateJoined] = useState('')
+  const [status, setStatus] = useState('')
 
-  const { data: departments = [] } = useQuery<Department[]>({
-    queryKey: ['departments'],
-    queryFn: async () => (await departmentsAPI.list()).data,
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => employeesAPI.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['employees'] })
-      toast.success('Employee deleted')
-    },
-    onError: () => toast.error('Failed to delete employee'),
-  })
-
-  const handleDelete = (emp: Employee) => {
-    if (confirm(`Delete ${emp.full_name}? This cannot be undone.`)) {
-      deleteMutation.mutate(emp.id)
+  useEffect(() => {
+    if (employee) {
+      setFullName(employee.full_name || '')
+      setFirstName(employee.first_name || '')
+      setLastName(employee.last_name || '')
+      setMiddleName(employee.middle_name || '')
+      setGender(employee.gender || '')
+      setEmail(employee.email || '')
+      setPhone(employee.phone || '')
+      setPosition(employee.position || '')
+      setDepartmentId(employee.department_id || '')
+      setEmploymentType(employee.employment_type || '')
+      setDateJoined(employee.date_joined || '')
+      setStatus(employee.status || 'active')
     }
-  }
+  }, [employee])
 
-  const statusColor: Record<string, string> = {
-    active: 'bg-emerald-950/40 text-emerald-400 border border-emerald-900/40',
-    inactive: 'bg-slate-800/50 text-slate-400 border border-slate-700/40',
-    suspended: 'bg-amber-950/40 text-amber-400 border border-amber-900/40',
-    terminated: 'bg-red-950/40 text-red-400 border border-red-900/40',
-  }
+  const updateMutation = useMutation({
+    mutationFn: (data: Record<string, unknown>) => employeesAPI.update(employee!.id, data),
+    onSuccess: () => {
+      toast.success('Employee updated successfully')
+      queryClient.invalidateQueries({ queryKey: ['employees'] })
+      onClose()
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.detail || 'Failed to update employee'),
+  })
 
-  const totalPages = data?.pages || 1
+  const handleSave = () => {
+    const data: Record<string, unknown> = {}
+    if (fullName.trim()) data.full_name = fullName.trim()
+    if (firstName.trim()) data.first_name = firstName.trim()
+    if (lastName.trim()) data.last_name = lastName.trim()
+    if (middleName.trim()) data.middle_name = middleName.trim()
+    if (gender) data.gender = gender
+    if (email.trim()) data.email = email.trim()
+    if (phone.trim()) data.phone = phone.trim()
+    if (position.trim()) data.position = position.trim()
+    data.department_id = departmentId || null
+    if (employmentType) data.employment_type = employmentType
+    if (dateJoined) data.date_joined = dateJoined
+    if (status) data.status = status
+    updateMutation.mutate(data)
+  }
 
   return (
-    <div className="animate-fade-in">
-      {/* Toolbar */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
-        <div className="flex items-center gap-3 flex-1 w-full sm:w-auto">
-          <div className="relative flex-1 max-w-sm">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search by name, code, email…"
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(1) }}
-              className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-slate-800 bg-slate-950 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-            />
-          </div>
-          <select
-            value={deptFilter}
-            onChange={(e) => { setDeptFilter(e.target.value); setPage(1) }}
-            className="px-3 py-2.5 rounded-xl border border-slate-800 bg-slate-950 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-          >
-            <option value="">All Departments</option>
-            {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select>
+    <Modal
+      open={!!employee}
+      onClose={onClose}
+      title="Edit Employee"
+      description={employee ? `${employee.employee_code} — ${employee.full_name}` : ''}
+      size="lg"
+      onConfirm={handleSave}
+      confirmLabel="Save Changes"
+      confirmLoading={updateMutation.isPending}
+    >
+      <div className="space-y-4">
+        <Input
+          label="Full Name"
+          value={fullName}
+          onChange={(e) => setFullName(e.target.value)}
+          placeholder="e.g. Mohamed Kamara"
+        />
+        <div className="grid grid-cols-3 gap-4">
+          <Input
+            label="First Name"
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            placeholder="First name"
+          />
+          <Input
+            label="Last Name"
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
+            placeholder="Last name"
+          />
+          <Input
+            label="Middle Name"
+            value={middleName}
+            onChange={(e) => setMiddleName(e.target.value)}
+            placeholder="Middle name"
+          />
         </div>
+        <div className="grid grid-cols-3 gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-[var(--pz-text-secondary)] uppercase tracking-wide">Gender</label>
+            <select
+              value={gender}
+              onChange={(e) => setGender(e.target.value)}
+              className="h-11 px-3.5 rounded-lg border border-[var(--pz-border)] bg-[var(--pz-surface-1)] text-sm text-[var(--pz-text)]"
+            >
+              <option value="">Not set</option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <Input
+            label="Email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="e.g. mohamed@airport.com"
+          />
+          <Input
+            label="Phone"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="e.g. +232 77 123456"
+          />
+        </div>
+        <Input
+          label="Position"
+          value={position}
+          onChange={(e) => setPosition(e.target.value)}
+          placeholder="e.g. IT Technician"
+        />
+        <div className="grid grid-cols-3 gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-[var(--pz-text-secondary)] uppercase tracking-wide">Department</label>
+            <select
+              value={departmentId}
+              onChange={(e) => setDepartmentId(e.target.value)}
+              className="h-11 px-3.5 rounded-lg border border-[var(--pz-border)] bg-[var(--pz-surface-1)] text-sm text-[var(--pz-text)]"
+            >
+              <option value="">No Department</option>
+              {departments.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-[var(--pz-text-secondary)] uppercase tracking-wide">Employment Type</label>
+            <select
+              value={employmentType}
+              onChange={(e) => setEmploymentType(e.target.value)}
+              className="h-11 px-3.5 rounded-lg border border-[var(--pz-border)] bg-[var(--pz-surface-1)] text-sm text-[var(--pz-text)]"
+            >
+              <option value="">Not set</option>
+              <option value="full_time">Full Time</option>
+              <option value="part_time">Part Time</option>
+              <option value="contract">Contract</option>
+              <option value="intern">Intern</option>
+              <option value="temporary">Temporary</option>
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-[var(--pz-text-secondary)] uppercase tracking-wide">Status</label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="h-11 px-3.5 rounded-lg border border-[var(--pz-border)] bg-[var(--pz-surface-1)] text-sm text-[var(--pz-text)]"
+            >
+              <option value="active">Active</option>
+              <option value="inactive">On Leave</option>
+              <option value="suspended">Suspended</option>
+              <option value="terminated">Terminated</option>
+              <option value="retired">Retired</option>
+            </select>
+          </div>
+        </div>
+        <Input
+          label="Date Joined"
+          type="date"
+          value={dateJoined}
+          onChange={(e) => setDateJoined(e.target.value)}
+        />
+      </div>
+    </Modal>
+  )
+}
+
+/* ── Employee Profile Tab ─────────────────────────────────── */
+
+function EmployeeProfileTab({
+  employee,
+  departmentsList,
+  queryClient,
+  onEdit,
+}: {
+  employee: Employee
+  departmentsList: Department[]
+  queryClient: ReturnType<typeof useQueryClient>
+  onEdit: () => void
+}) {
+  const [deptId, setDeptId] = useState(employee.department_id || '')
+
+  const updateDeptMut = useMutation({
+    mutationFn: (id: string) => employeesAPI.update(employee.id, { department_id: id || null }),
+    onSuccess: () => {
+      queryClient.refetchQueries({ queryKey: ['employees'] })
+      toast.success('Department updated')
+    },
+    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to update'),
+  })
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <h4 className="text-xs font-bold text-[var(--pz-text-secondary)] uppercase tracking-wider">Personal Info</h4>
         <button
-          onClick={() => setModalEmployee('new')}
-          className="flex items-center gap-2 px-4 py-2.5 bg-[var(--color-primary)] text-white rounded-xl text-sm font-medium hover:bg-[var(--color-primary-hover)] transition-colors shadow-lg shadow-blue-950/20 whitespace-nowrap"
+          onClick={onEdit}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--pz-surface-2)] hover:bg-[var(--pz-surface-3)] text-[var(--pz-text-secondary)] text-xs font-bold transition-colors border border-[var(--pz-border)]"
         >
-          <UserPlus size={15} /> Add Employee
+          <Edit2 size={12} />
+          Edit
+        </button>
+      </div>
+      <div>
+        <div className="space-y-1">
+          {[
+            { label: 'Employee Code', value: employee.employee_code },
+            { label: 'Employee Number', value: employee.employee_number || '—' },
+            { label: 'First Name', value: employee.first_name || '—' },
+            { label: 'Last Name', value: employee.last_name || '—' },
+            { label: 'Gender', value: employee.gender ? employee.gender.charAt(0).toUpperCase() + employee.gender.slice(1) : '—' },
+            { label: 'Email', value: employee.email || '—' },
+            { label: 'Phone', value: employee.phone || '—' },
+            { label: 'Position', value: employee.position || '—' },
+            { label: 'Employment Type', value: employee.employment_type ? employee.employment_type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '—' },
+            { label: 'Date Joined', value: employee.date_joined ? format(new Date(employee.date_joined), 'MMMM d, yyyy') : '—' },
+            { label: 'Joined System', value: format(new Date(employee.created_at), 'MMMM d, yyyy') },
+          ].map(({ label, value }) => (
+            <div key={label} className="flex items-center justify-between py-2.5 px-4 rounded-xl bg-[var(--pz-surface-2)]/50">
+              <span className="text-xs text-[var(--pz-text-muted)] font-medium">{label}</span>
+              <span className="text-sm text-[var(--pz-text-secondary)] font-semibold">{value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <h4 className="text-xs font-bold text-[var(--pz-text-secondary)] uppercase tracking-wider mb-3">Department Assignment</h4>
+        <div className="p-4 rounded-xl bg-[var(--pz-surface-2)]/50 border border-[var(--pz-border)] space-y-3">
+          <div>
+            <label className="text-[11px] font-semibold text-[var(--pz-text-muted)] mb-1 block">Current Department</label>
+            <select
+              value={deptId}
+              onChange={(e) => setDeptId(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50"
+            >
+              <option value="">— No department —</option>
+              {departmentsList.map(d => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+          </div>
+          <button
+            onClick={() => updateDeptMut.mutate(deptId)}
+            disabled={updateDeptMut.isPending || deptId === (employee.department_id || '')}
+            className="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-colors disabled:opacity-50"
+          >
+            {updateDeptMut.isPending ? 'Saving...' : 'Update Department'}
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <h4 className="text-xs font-bold text-[var(--pz-text-secondary)] uppercase tracking-wider mb-3">Current Status</h4>
+        <div className="flex items-center gap-3">
+          <span className={cn(
+            'px-3 py-1.5 rounded-lg text-xs font-bold',
+            employee.status === 'active' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' :
+            employee.status === 'inactive' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/20' :
+            'bg-red-500/15 text-red-400 border border-red-500/20'
+          )}>
+            {employee.status}
+          </span>
+          {employee.shift_name && (
+            <span className="px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/15 text-xs font-bold">
+              <Clock size={12} className="inline mr-1 -mt-0.5" />
+              {employee.shift_name}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ── Employee Devices Tab ─────────────────────────────────── */
+
+function EmployeeDevicesTab({
+  employee,
+  queryClient,
+}: {
+  employee: Employee
+  queryClient: ReturnType<typeof useQueryClient>
+}) {
+  const [showAssignModal, setShowAssignModal] = useState(false)
+
+  const { data: assignedData, isLoading } = useQuery({
+    queryKey: ['employee-devices', employee.id],
+    queryFn: async () => (await devicesAPI.getEmployeeDevices(employee.id)).data,
+  })
+
+  const { data: allDevicesData } = useQuery({
+    queryKey: ['devices-list'],
+    queryFn: async () => (await devicesAPI.list()).data,
+  })
+
+  const assignedDevices: any[] = assignedData?.items ?? assignedData ?? []
+  const allDevices: any[] = allDevicesData?.items ?? allDevicesData ?? []
+  const unassignedDevices = allDevices.filter(
+    (d: any) => !assignedDevices.some((a: any) => a.device_id === d.id)
+  )
+
+  const removeMutation = useMutation({
+    mutationFn: (deviceId: string) => {
+      const newIds = assignedDevices.filter((a: any) => a.device_id !== deviceId).map((a: any) => a.device_id)
+      return devicesAPI.assignEmployeeDevices(employee.id, newIds)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employee-devices', employee.id] })
+      toast.success('Device removed')
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.detail || 'Failed to remove device'),
+  })
+
+  const assignMutation = useMutation({
+    mutationFn: (deviceIds: string[]) => {
+      const currentIds = assignedDevices.map((a: any) => a.device_id)
+      return devicesAPI.assignEmployeeDevices(employee.id, [...currentIds, ...deviceIds])
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employee-devices', employee.id] })
+      setShowAssignModal(false)
+      toast.success('Device(s) assigned')
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.detail || 'Failed to assign device'),
+  })
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <h4 className="text-xs font-bold text-[var(--pz-text-secondary)] uppercase tracking-wider">
+          Assigned Devices
+        </h4>
+        <button
+          onClick={() => setShowAssignModal(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-colors"
+        >
+          <Plus size={12} />
+          Assign Device
         </button>
       </div>
 
-      {/* Table */}
-      <div className="card overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-slate-900/50 border-b border-slate-800">
-                <th className="text-left py-3.5 px-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">Employee</th>
-                <th className="text-left py-3.5 px-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">Code</th>
-                <th className="text-left py-3.5 px-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">Department</th>
-                <th className="text-left py-3.5 px-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">Position</th>
-                <th className="text-left py-3.5 px-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">Status</th>
-                <th className="text-right py-3.5 px-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading ? (
-                Array.from({ length: 6 }).map((_, i) => (
-                  <tr key={i} className="border-b border-slate-800/40">
-                    {Array.from({ length: 6 }).map((_, j) => (
-                      <td key={j} className="py-4 px-4"><div className="skeleton h-4 w-24 rounded" /></td>
-                    ))}
-                  </tr>
-                ))
-              ) : data?.items?.length ? (
-                data.items.map((emp: Employee) => (
-                  <tr key={emp.id} className="border-b border-slate-800/60 hover:bg-slate-800/40 transition-colors group">
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-900/40 to-indigo-900/40 text-blue-400 border border-blue-800/50 flex items-center justify-center flex-shrink-0">
-                          <span className="text-xs font-bold">{emp.full_name[0]?.toUpperCase()}</span>
-                        </div>
-                        <div>
-                          <p className="font-medium text-slate-200">{emp.full_name}</p>
-                          <p className="text-xs text-slate-400">{emp.email || emp.phone || '—'}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-4 font-mono text-xs text-slate-400">{emp.employee_code}</td>
-                    <td className="py-3.5 px-4 text-slate-300">{emp.department_name || <span className="text-slate-500">—</span>}</td>
-                    <td className="py-3.5 px-4 text-slate-300">{emp.position || <span className="text-slate-500">—</span>}</td>
-                    <td className="py-3.5 px-4">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${statusColor[emp.status] || statusColor.active}`}>
-                        {emp.status}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={() => setModalEmployee(emp)}
-                          className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-blue-400 transition-colors"
-                          title="Edit employee"
-                        >
-                          <Edit size={15} />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(emp)}
-                          className="p-1.5 rounded-lg hover:bg-red-950/40 text-slate-400 hover:text-red-400 transition-colors"
-                          title="Delete employee"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={6} className="py-20 text-center">
-                    <Users size={40} className="mx-auto mb-3 text-[var(--color-slate-300)]" />
-                    <p className="font-medium text-[var(--color-slate-500)]">No employees found</p>
-                    <p className="text-xs text-[var(--color-slate-400)] mt-1">
-                      {search || deptFilter ? 'Try adjusting your filters' : 'Add your first employee to get started'}
-                    </p>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      {isLoading ? (
+        <div className="space-y-2">
+          {[1, 2].map(i => (
+            <div key={i} className="h-16 rounded-xl bg-[var(--pz-surface-2)]/50 animate-pulse" />
+          ))}
         </div>
-
-        {/* Pagination */}
-        {data && totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-800">
-            <p className="text-sm text-slate-400">
-              {((page - 1) * 15) + 1}–{Math.min(page * 15, data.total)} of {data.total} employees
-            </p>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 disabled:opacity-20 transition-colors"
-              >
-                <ChevronLeft size={16} />
-              </button>
-              {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => i + 1).map((p) => (
+      ) : assignedDevices.length === 0 ? (
+        <div className="p-6 rounded-xl bg-[var(--pz-surface-2)]/50 border border-[var(--pz-border)] text-center">
+          <Building2 size={24} className="mx-auto text-[var(--pz-text-muted)] mb-2" />
+          <p className="text-sm text-[var(--pz-text-muted)]">No devices assigned</p>
+          <p className="text-xs text-[var(--pz-text-faint)] mt-1">Assign devices to control where this employee's biometrics are synced</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {assignedDevices.map((assignment: any) => (
+            <div
+              key={assignment.device_id}
+              className="flex items-center justify-between p-3 rounded-xl bg-[var(--pz-surface-2)]/50 border border-[var(--pz-border)]"
+            >
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg ${assignment.is_online ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-[var(--pz-surface-3)] border border-[var(--pz-border)]'}`}>
+                  <Monitor size={14} className={assignment.is_online ? 'text-emerald-400' : 'text-[var(--pz-text-muted)]'} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-[var(--pz-text-secondary)]">{assignment.device_name || assignment.serial_number}</p>
+                  <p className="text-[10px] text-[var(--pz-text-muted)] font-mono">{assignment.ip_address} · {assignment.serial_number}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <StatusBadge status={assignment.is_online ? 'online' : 'offline'} size="xs" />
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                  assignment.sync_status === 'synced' ? 'bg-emerald-500/15 text-emerald-400' :
+                  assignment.sync_status === 'failed' ? 'bg-red-500/15 text-red-400' :
+                  'bg-amber-500/15 text-amber-400'
+                }`}>
+                  {assignment.sync_status || 'pending'}
+                </span>
                 <button
-                  key={p}
-                  onClick={() => setPage(p)}
-                  className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${p === page ? 'bg-[var(--color-primary)] text-white' : 'hover:bg-slate-800 text-slate-400'}`}
+                  onClick={() => removeMutation.mutate(assignment.device_id)}
+                  disabled={removeMutation.isPending}
+                  className="p-1.5 rounded-lg hover:bg-red-500/10 text-[var(--pz-text-muted)] hover:text-red-400 transition-colors"
+                  title="Remove device"
                 >
-                  {p}
+                  <X size={14} />
                 </button>
-              ))}
-              <button
-                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-                className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 disabled:opacity-20 transition-colors"
-              >
-                <ChevronRight size={16} />
-              </button>
+              </div>
             </div>
+          ))}
+        </div>
+      )}
+
+      {/* Assign Device Modal */}
+      <Modal
+        open={showAssignModal}
+        onClose={() => setShowAssignModal(false)}
+        title="Assign Devices"
+        description={`Select devices to assign to ${employee.full_name}`}
+        size="md"
+      >
+        <div className="space-y-3">
+          {unassignedDevices.length === 0 ? (
+            <p className="text-sm text-[var(--pz-text-muted)] text-center py-4">All devices are already assigned</p>
+          ) : (
+            unassignedDevices.map((device: any) => (
+              <label
+                key={device.id}
+                className="flex items-center gap-3 p-3 rounded-xl bg-[var(--pz-surface-2)]/50 border border-[var(--pz-border)] hover:border-blue-500/30 cursor-pointer transition-colors"
+              >
+                <input
+                  type="checkbox"
+                  className="rounded border-[var(--pz-border)]"
+                  data-device-id={device.id}
+                />
+                <div className={`p-1.5 rounded-lg ${device.is_online ? 'bg-emerald-500/10' : 'bg-[var(--pz-surface-3)]'}`}>
+                  <Monitor size={12} className={device.is_online ? 'text-emerald-400' : 'text-[var(--pz-text-muted)]'} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-[var(--pz-text-secondary)]">{device.name || `Device ${device.serial_number?.slice(-6)}`}</p>
+                  <p className="text-[10px] text-[var(--pz-text-muted)] font-mono">{device.ip_address}</p>
+                </div>
+                <StatusBadge status={device.is_online ? 'online' : 'offline'} size="xs" />
+              </label>
+            ))
+          )}
+        </div>
+        {unassignedDevices.length > 0 && (
+          <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-[var(--pz-border)]">
+            <Button variant="outline" onClick={() => setShowAssignModal(false)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                const checkboxes = document.querySelectorAll('input[data-device-id]:checked')
+                const ids = Array.from(checkboxes).map((el) => el.getAttribute('data-device-id')!)
+                if (ids.length > 0) assignMutation.mutate(ids)
+              }}
+              loading={assignMutation.isPending}
+            >
+              Assign Selected
+            </Button>
           </div>
         )}
+      </Modal>
+    </div>
+  )
+}
+
+/* ── Employee Assignment Tab ──────────────────────────────── */
+
+function EmployeeAssignmentTab({
+  employee,
+  shiftTemplates,
+  protocols,
+  assignments,
+  overrides,
+  queryClient,
+}: {
+  employee: Employee
+  shiftTemplates: ShiftTemplate[]
+  protocols: ShiftProtocol[]
+  assignments: EmployeeShiftAssignment[]
+  overrides: EmployeeShiftOverride[]
+  queryClient: ReturnType<typeof useQueryClient>
+}) {
+  const currentAssignment = assignments[0]
+  const DAYS_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+  // Determine current selection: protocol or template
+  const [selectedProtocol, setSelectedProtocol] = useState(currentAssignment?.shift_protocol_id || '')
+  const [selectedTemplate, setSelectedTemplate] = useState(
+    (!currentAssignment?.shift_protocol_id ? currentAssignment?.shift_template_id : '') || ''
+  )
+  const [assignmentType, setAssignmentType] = useState<'auto' | 'protocol' | 'custom'>(
+    currentAssignment?.shift_protocol_id ? 'protocol' : currentAssignment?.shift_template_id ? 'custom' : 'auto'
+  )
+  const [workingDays, setWorkingDays] = useState<number[]>(currentAssignment?.working_days || [1, 2, 3, 4, 5])
+  const [confirmOpen, setConfirmOpen] = useState(false)
+
+  const selectedProto = protocols.find(p => p.id === selectedProtocol)
+  const selectedTpl = shiftTemplates.find(t => t.id === selectedTemplate)
+
+  const hasChanges = assignmentType === 'protocol'
+    ? selectedProtocol !== (currentAssignment?.shift_protocol_id || '')
+    : assignmentType === 'custom'
+      ? selectedTemplate !== (currentAssignment?.shift_template_id || '')
+      : !!currentAssignment // switching back to auto = delete assignment
+
+  const assignMut = useMutation({
+    mutationFn: (data: { protocolId?: string; templateId?: string; workingDays: number[]; deleteAssignment: boolean }) => {
+      if (data.deleteAssignment && currentAssignment) {
+        return shiftAssignmentsAPI.deleteAssignment(currentAssignment.id)
+      }
+      const wd = data.workingDays.length > 0 && data.workingDays.length < 7 ? data.workingDays : null
+      if (currentAssignment) {
+        return shiftAssignmentsAPI.updateAssignment(currentAssignment.id, {
+          shift_protocol_id: data.protocolId || null,
+          shift_template_id: data.templateId || null,
+          working_days: wd,
+        })
+      }
+      return shiftAssignmentsAPI.createAssignment({
+        employee_id: employee.id,
+        shift_protocol_id: data.protocolId || null,
+        shift_template_id: data.templateId || null,
+        rotation_templates: [],
+        working_days: wd,
+      })
+    },
+    onSuccess: () => {
+      queryClient.refetchQueries({ queryKey: ['employee-assignments', employee.id] })
+      toast.success('Shift assignment updated')
+      setConfirmOpen(false)
+    },
+    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to assign'),
+  })
+
+  const toggleDay = (day: number) => {
+    setWorkingDays(prev =>
+      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort()
+    )
+  }
+
+  const handleConfirm = () => {
+    if (assignmentType === 'auto') {
+      assignMut.mutate({ workingDays: [], deleteAssignment: true })
+    } else if (assignmentType === 'protocol') {
+      assignMut.mutate({ protocolId: selectedProtocol || undefined, workingDays, deleteAssignment: false })
+    } else {
+      assignMut.mutate({ templateId: selectedTemplate || undefined, workingDays, deleteAssignment: false })
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h4 className="text-xs font-bold text-[var(--pz-text-secondary)] uppercase tracking-wider mb-3">Shift Assignment</h4>
+        <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-3">
+          <p className="text-[11px] text-amber-400 font-semibold">
+            ⚠ Warning: This overrides the department's default shift protocol for this specific employee.
+          </p>
+          <p className="text-[10px] text-amber-400/70 mt-1">
+            Attendance calculations, lateness detection, and overtime rules will follow the selected assignment instead of the department protocol. Use with caution.
+          </p>
+        </div>
+
+        {/* Assignment Type Selector */}
+        <div className="p-4 rounded-xl bg-[var(--pz-surface-2)]/50 border border-[var(--pz-border)] space-y-4">
+          {/* Auto — department protocol */}
+          <label className="flex items-start gap-3 p-3 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] cursor-pointer hover:border-blue-500/30 transition-colors">
+            <input type="radio" name="assign-type" checked={assignmentType === 'auto'} onChange={() => setAssignmentType('auto')} className="mt-0.5 accent-blue-600" />
+            <div>
+              <p className="text-sm font-semibold text-[var(--pz-text)]">Auto — department protocol</p>
+              <p className="text-[10px] text-[var(--pz-text-muted)] mt-0.5">Employee follows the department's default shift protocol. No override.</p>
+            </div>
+          </label>
+
+          {/* Protocol-based assignments */}
+          {protocols.filter(p => p.is_active).map(p => {
+            const isRotating = p.protocol_type === 'rotating'
+            const patternColors: Record<string, string> = { day: 'bg-amber-400', night: 'bg-emerald-500', off: 'bg-[var(--pz-surface-3)]' }
+            const patternLetters: Record<string, string> = { day: 'D', night: 'N', off: '' }
+            return (
+            <label key={p.id} className={cn(
+              'flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors',
+              assignmentType === 'protocol' && selectedProtocol === p.id
+                ? 'bg-blue-600/5 border-blue-500/40'
+                : 'bg-[var(--pz-surface-2)] border-[var(--pz-border)] hover:border-blue-500/30'
+            )}>
+              <input
+                type="radio" name="assign-type"
+                checked={assignmentType === 'protocol' && selectedProtocol === p.id}
+                onChange={() => { setAssignmentType('protocol'); setSelectedProtocol(p.id); setSelectedTemplate('') }}
+                className="mt-0.5 accent-blue-600"
+              />
+              <div className="flex-1 space-y-2">
+                {/* Header */}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-[var(--pz-text)]">{p.name}</span>
+                  <span className={cn(
+                    'text-[9px] px-1.5 py-0.5 rounded font-semibold uppercase tracking-wider',
+                    isRotating
+                      ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
+                      : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                  )}>
+                    {p.protocol_type}
+                  </span>
+                </div>
+
+                {/* Description */}
+                <p className="text-[10px] text-[var(--pz-text-muted)]">
+                  {isRotating
+                    ? `${p.days_on || '?'}on / ${p.days_off || '?'}off · ${p.day_shift_start || '?'}–${p.day_shift_end || '?'} day · ${p.night_shift_start || '?'}–${p.night_shift_end || '?'} night`
+                    : `${p.working_hours_start || '?'}–${p.working_hours_end || '?'} · ${p.working_days?.length || 5} day/week`
+                  }
+                </p>
+
+                {/* Rotation Pattern Preview */}
+                {isRotating && p.rotation_shifts && p.rotation_shifts.length > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex gap-[2px]">
+                      {p.rotation_shifts.slice(0, 8).map((s: string, i: number) => (
+                        <div
+                          key={i}
+                          className={cn(
+                            'w-5 h-5 rounded-[3px] flex items-center justify-center text-[7px] font-bold',
+                            patternColors[s] || 'bg-[var(--pz-surface-3)]',
+                            s === 'off' ? 'text-[var(--pz-text-muted)]' : 'text-white'
+                          )}
+                        >
+                          {patternLetters[s] || ''}
+                        </div>
+                      ))}
+                    </div>
+                    <span className="text-[8px] text-[var(--pz-text-muted)]">↻ {p.rotation_shifts.length}-day cycle</span>
+                  </div>
+                )}
+
+                {/* Legend for rotating */}
+                {isRotating && (
+                  <div className="flex items-center gap-3 text-[9px] text-[var(--pz-text-muted)]">
+                    <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-amber-400" /> Day</span>
+                    <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500" /> Night</span>
+                    <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-[var(--pz-surface-3)]" /> Off</span>
+                  </div>
+                )}
+
+                {/* Working days for fixed */}
+                {!isRotating && p.working_days && (
+                  <div className="flex gap-1">
+                    {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((d, i) => {
+                      const isWorking = p.working_days!.includes(i + 1)
+                      return (
+                        <span key={d} className={cn(
+                          'w-6 h-5 rounded-[3px] flex items-center justify-center text-[8px] font-bold',
+                          isWorking
+                            ? 'bg-amber-400/20 text-amber-400 border border-amber-400/30'
+                            : 'bg-[var(--pz-surface-2)] text-[var(--pz-text-muted)] border border-[var(--pz-border)]'
+                        )}>
+                          {d[0]}
+                        </span>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </label>
+            )
+          })}
+
+          {/* Custom template override */}
+          <div className="p-3 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] space-y-2">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input type="radio" name="assign-type" checked={assignmentType === 'custom'} onChange={() => setAssignmentType('custom')} className="mt-0.5 accent-blue-600" />
+              <span className="text-sm font-semibold text-[var(--pz-text)]">Custom template override</span>
+            </label>
+            {assignmentType === 'custom' && (
+              <div className="ml-7">
+                <select
+                  value={selectedTemplate}
+                  onChange={(e) => setSelectedTemplate(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50"
+                >
+                  <option value="">Select a shift template</option>
+                  {shiftTemplates.map(t => (
+                    <option key={t.id} value={t.id}>{t.name} ({t.start_time}–{t.end_time})</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={() => setConfirmOpen(true)}
+            disabled={
+              assignMut.isPending ||
+              !hasChanges ||
+              (assignmentType === 'custom' && !selectedTemplate) ||
+              (assignmentType === 'protocol' && !selectedProtocol)
+            }
+            className="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-colors disabled:opacity-50"
+          >
+            {assignMut.isPending ? 'Saving...' : assignmentType === 'auto' && currentAssignment ? 'Remove Override' : currentAssignment ? 'Update Override' : 'Apply Override'}
+          </button>
+        </div>
       </div>
 
-      {/* Modal */}
-      <AnimatePresence>
-        {modalEmployee !== undefined && (
-          <EmployeeModal
-            employee={modalEmployee === 'new' ? null : modalEmployee as Employee}
-            onClose={() => setModalEmployee(undefined)}
-          />
-        )}
-      </AnimatePresence>
+      {/* Confirmation Modal */}
+      <Modal
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        title={assignmentType === 'auto' ? 'Remove Assignment Override' : 'Confirm Shift Override'}
+        size="sm"
+        description={assignmentType === 'auto' ? 'Revert employee to department protocol' : 'This changes how attendance is calculated for this employee'}
+        footer={
+          <div className="flex gap-3 w-full">
+            <button
+              onClick={() => setConfirmOpen(false)}
+              className="flex-1 px-5 py-3 rounded-xl bg-[var(--pz-surface-2)] hover:bg-[var(--pz-surface-3)] border border-[var(--pz-border)] text-sm font-semibold text-[var(--pz-text-secondary)] transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirm}
+              disabled={assignMut.isPending}
+              className={cn(
+                'flex-1 px-5 py-3 rounded-xl text-white text-sm font-semibold transition-colors disabled:opacity-50',
+                assignmentType === 'auto' ? 'bg-red-600 hover:bg-red-500' : 'bg-amber-600 hover:bg-amber-500'
+              )}
+            >
+              {assignMut.isPending ? 'Saving...' : assignmentType === 'auto' ? 'Remove Override' : 'Confirm Override'}
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
+            <p className="text-xs font-bold text-amber-400 mb-1">⚠ Repercussions</p>
+            <ul className="text-[11px] text-amber-400/80 space-y-1 list-disc list-inside">
+              {assignmentType === 'auto' ? (
+                <li>Employee will revert to the department's default shift protocol</li>
+              ) : (
+                <>
+                  <li>Employee will no longer follow the department's shift protocol</li>
+                  <li>IN/OUT detection, lateness, and overtime will use the override rules</li>
+                  <li>Department-level protocol changes will NOT affect this employee</li>
+                  <li>Manual review required to revert back to department protocol</li>
+                </>
+              )}
+            </ul>
+          </div>
+          <div className="space-y-1 text-xs">
+            <div className="flex justify-between py-2 px-3 rounded-lg bg-[var(--pz-surface-2)]/50">
+              <span className="text-[var(--pz-text-muted)]">Employee</span>
+              <span className="font-semibold text-[var(--pz-text)]">{employee.full_name}</span>
+            </div>
+            {assignmentType === 'protocol' && selectedProto && (
+              <>
+                <div className="flex justify-between py-2 px-3 rounded-lg bg-[var(--pz-surface-2)]/50">
+                  <span className="text-[var(--pz-text-muted)]">Protocol</span>
+                  <span className="font-semibold text-[var(--pz-text)]">{selectedProto.name} ({selectedProto.protocol_type})</span>
+                </div>
+                <div className="flex justify-between py-2 px-3 rounded-lg bg-[var(--pz-surface-2)]/50">
+                  <span className="text-[var(--pz-text-muted)]">Pattern</span>
+                  <span className="font-semibold text-[var(--pz-text)]">
+                    {selectedProto.protocol_type === 'rotating'
+                      ? `${selectedProto.days_on || '?'} on / ${selectedProto.days_off || '?'} off`
+                      : `${selectedProto.working_hours_start || '?'}–${selectedProto.working_hours_end || '?'}`
+                    }
+                  </span>
+                </div>
+              </>
+            )}
+            {assignmentType === 'custom' && selectedTpl && (
+              <div className="flex justify-between py-2 px-3 rounded-lg bg-[var(--pz-surface-2)]/50">
+                <span className="text-[var(--pz-text-muted)]">Override Template</span>
+                <span className="font-semibold text-[var(--pz-text)]">{selectedTpl.name} ({selectedTpl.start_time}–{selectedTpl.end_time})</span>
+              </div>
+            )}
+            {currentAssignment && assignmentType !== 'auto' && (
+              <div className="flex justify-between py-2 px-3 rounded-lg bg-[var(--pz-surface-2)]/50">
+                <span className="text-[var(--pz-text-muted)]">Current Override</span>
+                <span className="font-semibold text-[var(--pz-text)]">Active</span>
+              </div>
+            )}
+          </div>
+          {/* Working Days Selector (only for protocol/custom) */}
+          {assignmentType !== 'auto' && (
+            <div className="p-3 rounded-xl bg-[var(--pz-surface-2)]/50 border border-[var(--pz-border)]">
+              <label className="text-[10px] font-semibold text-[var(--pz-text-muted)] mb-1.5 block">
+                Apply on which days?
+              </label>
+              <div className="flex gap-1.5">
+                {DAYS_SHORT.map((day, idx) => (
+                  <button
+                    key={day}
+                    onClick={() => toggleDay(idx + 1)}
+                    className={cn(
+                      'flex-1 py-2 rounded-lg text-[9px] font-bold transition-all border',
+                      workingDays.includes(idx + 1)
+                        ? 'bg-blue-600 text-white border-blue-500 shadow-sm shadow-blue-600/20'
+                        : 'bg-[var(--pz-surface-2)] border-[var(--pz-border)] text-[var(--pz-text-muted)] hover:text-[var(--pz-text-secondary)]'
+                    )}
+                  >
+                    {day[0]}
+                  </button>
+                ))}
+              </div>
+              {workingDays.length === 0 && (
+                <p className="text-[9px] text-amber-400 mt-1.5">No days selected — assignment will not apply to any day</p>
+              )}
+              {workingDays.length === 7 && (
+                <p className="text-[9px] text-[var(--pz-text-muted)] mt-1.5">All days — employee works every day including weekends</p>
+              )}
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      {overrides.length > 0 && (
+        <div>
+          <h4 className="text-xs font-bold text-[var(--pz-text-secondary)] uppercase tracking-wider mb-3">Date-Specific Overrides</h4>
+          <div className="space-y-2">
+            {overrides.map(o => (
+              <div key={o.id} className="p-3 rounded-xl bg-[var(--pz-surface-2)]/50 border border-[var(--pz-border)]">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-[var(--pz-text)]">
+                    {o.start_date} → {o.end_date}
+                  </span>
+                  <span className="text-[10px] text-[var(--pz-text-muted)] font-mono">
+                    {shiftTemplates.find(t => t.id === o.shift_template_id)?.name || o.shift_template_id.slice(0, 8)}
+                  </span>
+                </div>
+                {o.reason && (
+                  <p className="text-[10px] text-[var(--pz-text-muted)] mt-1">{o.reason}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ── Employee Schedule Calendar Tab ────────────────────────── */
+
+function EmployeeCalendarTab({
+  employee,
+  assignments,
+  overrides,
+  shiftTemplates,
+}: {
+  employee: Employee
+  assignments: EmployeeShiftAssignment[]
+  overrides: EmployeeShiftOverride[]
+  shiftTemplates: ShiftTemplate[]
+}) {
+  const today = new Date()
+  const monthStart = startOfMonth(today)
+  const monthEnd = endOfMonth(today)
+  const days = eachDayOfInterval({ start: monthStart, end: monthEnd })
+  const startPadding = getDay(monthStart)
+
+  const assignment = assignments[0]
+  const overrideMap = new Map<string, string>()
+  overrides.forEach(o => {
+    const s = new Date(o.start_date)
+    const e = new Date(o.end_date)
+    for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
+      overrideMap.set(format(d, 'yyyy-MM-dd'), o.shift_template_id)
+    }
+  })
+
+  const getDayShift = (date: Date): { type: string; label: string } | null => {
+    const key = format(date, 'yyyy-MM-dd')
+    const overrideTplId = overrideMap.get(key)
+    if (overrideTplId) {
+      const tpl = shiftTemplates.find(t => t.id === overrideTplId)
+      return tpl ? { type: 'override', label: tpl.name } : { type: 'override', label: 'Custom' }
+    }
+    return null
+  }
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h4 className="text-xs font-bold text-[var(--pz-text-secondary)] uppercase tracking-wider mb-1">
+          {format(today, 'MMMM yyyy')}
+        </h4>
+        <p className="text-[11px] text-[var(--pz-text-muted)]">
+          {employee.full_name}'s shift schedule. Overrides and assignments shown below.
+        </p>
+      </div>
+
+      {/* Calendar Grid */}
+      <div className="rounded-xl border border-[var(--pz-border)] overflow-hidden">
+        <div className="grid grid-cols-7 bg-[var(--pz-surface-2)]/80">
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+            <div key={d} className="py-2 text-center text-[10px] font-bold text-[var(--pz-text-muted)] uppercase tracking-wider">{d}</div>
+          ))}
+        </div>
+        <div className="grid grid-cols-7">
+          {Array.from({ length: startPadding }).map((_, i) => (
+            <div key={`pad-${i}`} className="h-14 border-b border-r border-[var(--pz-border)] bg-[var(--pz-surface-1)]/50" />
+          ))}
+          {days.map((date) => {
+            const shift = getDayShift(date)
+            const isToday = format(date, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd')
+            return (
+              <div
+                key={date.toISOString()}
+                className={cn(
+                  'h-14 border-b border-r border-[var(--pz-border)] p-1.5 relative group cursor-default',
+                  isToday && 'bg-blue-500/[0.03]'
+                )}
+              >
+                <span className={cn(
+                  'text-[10px] font-semibold',
+                  isToday ? 'text-blue-400' : 'text-[var(--pz-text-muted)]'
+                )}>
+                  {date.getDate()}
+                </span>
+                {shift && (
+                  <div className={cn(
+                    'mt-0.5 px-1.5 py-0.5 rounded text-[8px] font-bold truncate',
+                    shift.type === 'override' ? 'bg-green-500/15 text-green-400 border border-green-500/20' :
+                    'bg-zinc-500/15 text-zinc-400'
+                  )}>
+                    {shift.label}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div className="flex flex-wrap gap-3">
+        <span className="flex items-center gap-1.5 text-[10px] text-[var(--pz-text-muted)]">
+          <span className="w-3 h-3 rounded bg-zinc-500/30" /> Off / Unassigned
+        </span>
+        <span className="flex items-center gap-1.5 text-[10px] text-[var(--pz-text-muted)]">
+          <span className="w-3 h-3 rounded bg-green-500/30" /> Override
+        </span>
+      </div>
+
+      {overrides.length > 0 && (
+        <div>
+          <h4 className="text-xs font-bold text-[var(--pz-text-secondary)] uppercase tracking-wider mb-2">Active Overrides</h4>
+          <div className="space-y-1">
+            {overrides.map(o => (
+              <div key={o.id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-[var(--pz-surface-2)]/50 border border-[var(--pz-border)]">
+                <span className="text-[11px] font-semibold text-[var(--pz-text)]">
+                  {o.start_date} – {o.end_date}
+                </span>
+                <span className="text-[10px] text-green-400 font-mono">
+                  {shiftTemplates.find(t => t.id === o.shift_template_id)?.name || 'Custom'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,0 +1,263 @@
+:root {
+  /* ════════════════════════════════════════════════════════
+     PROJECT Z — DARK ENTERPRISE THEME
+     Full dark mode · Charcoal surfaces · Blue + Emerald accents
+     ════════════════════════════════════════════════════════ */
+
+  /* ── Brand Colors ──────────────────────────────────────── */
+  --pz-brand:           #3B82F6;
+  --pz-brand-hover:     #60A5FA;
+  --pz-brand-light:     rgba(59, 130, 246, 0.10);
+  --pz-brand-50:        rgba(59, 130, 246, 0.08);
+  --pz-brand-100:       rgba(59, 130, 246, 0.14);
+  --pz-brand-200:       rgba(59, 130, 246, 0.20);
+
+  --pz-accent:          #10B981;
+  --pz-accent-hover:    #34D399;
+  --pz-accent-light:    rgba(16, 185, 129, 0.10);
+  --pz-accent-border:   rgba(16, 185, 129, 0.25);
+
+  /* ── Semantic Status ───────────────────────────────────── */
+  --pz-success-50:      rgba(16, 185, 129, 0.10);
+  --pz-success-100:     rgba(16, 185, 129, 0.18);
+  --pz-success-400:     #34D399;
+  --pz-success-500:     #10B981;
+  --pz-success-600:     #34D399;
+  --pz-success-border:  rgba(16, 185, 129, 0.25);
+
+  --pz-warning-50:      rgba(245, 158, 11, 0.12);
+  --pz-warning-100:     rgba(245, 158, 11, 0.18);
+  --pz-warning-400:     #FBBF24;
+  --pz-warning-500:     #F59E0B;
+  --pz-warning-600:     #FBBF24;
+  --pz-warning-border:  rgba(245, 158, 11, 0.25);
+
+  --pz-danger-50:       rgba(239, 68, 68, 0.10);
+  --pz-danger-100:      rgba(239, 68, 68, 0.18);
+  --pz-danger-400:      #F87171;
+  --pz-danger-500:      #EF4444;
+  --pz-danger-600:      #F87171;
+  --pz-danger-border:   rgba(239, 68, 68, 0.25);
+
+  --pz-info-50:         rgba(59, 130, 246, 0.10);
+  --pz-info-100:        rgba(59, 130, 246, 0.18);
+  --pz-info-400:        #60A5FA;
+  --pz-info-500:        #3B82F6;
+  --pz-info-border:     rgba(59, 130, 246, 0.25);
+
+  /* ── Surface System (Dark Theme) ───────────────────────── */
+  --pz-bg:          #0B1121;
+  --pz-surface-0:   #0F172A;
+  --pz-surface-1:   #0F172A;
+  --pz-surface-2:   #1E293B;
+  --pz-surface-3:   #334155;
+  --pz-surface-4:   #475569;
+
+  /* ── Border System ─────────────────────────────────────── */
+  --pz-border:        #1E293B;
+  --pz-border-subtle: rgba(255, 255, 255, 0.04);
+  --pz-border-strong: #334155;
+  --pz-border-focus:  #3B82F6;
+
+  /* ── Text System ───────────────────────────────────────── */
+  --pz-text:          #F1F5F9;
+  --pz-text-secondary:#CBD5E1;
+  --pz-text-tertiary: #94A3B8;
+  --pz-text-muted:    #64748B;
+  --pz-text-faint:    #475569;
+
+  /* ── Typography Scale ──────────────────────────────────── */
+  --pz-font-sans: 'Inter', 'Geist', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --pz-font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+
+  --pz-text-2xs:  11px;
+  --pz-text-xs:   12px;
+  --pz-text-sm:   13px;
+  --pz-text-base: 14px;
+  --pz-text-md:   16px;
+  --pz-text-lg:   18px;
+  --pz-text-xl:   20px;
+  --pz-text-2xl:  24px;
+  --pz-text-3xl:  30px;
+  --pz-text-4xl:  32px;
+
+  --pz-leading-none:    1;
+  --pz-leading-tight:   1.25;
+  --pz-leading-snug:    1.35;
+  --pz-leading-normal:  1.5;
+  --pz-leading-relaxed: 1.625;
+
+  --pz-tracking-tight:   -0.025em;
+  --pz-tracking-normal:  0;
+  --pz-tracking-wide:    0.03em;
+  --pz-tracking-wider:   0.05em;
+  --pz-tracking-widest:  0.08em;
+
+  /* ── Spacing Scale ─────────────────────────────────────── */
+  --pz-space-0:   0;
+  --pz-space-px:  1px;
+  --pz-space-0-5: 0.125rem;
+  --pz-space-1:   0.25rem;
+  --pz-space-1-5: 0.375rem;
+  --pz-space-2:   0.5rem;
+  --pz-space-2-5: 0.625rem;
+  --pz-space-3:   0.75rem;
+  --pz-space-3-5: 0.875rem;
+  --pz-space-4:   1rem;
+  --pz-space-5:   1.25rem;
+  --pz-space-6:   1.5rem;
+  --pz-space-8:   2rem;
+  --pz-space-10:  2.5rem;
+  --pz-space-12:  3rem;
+  --pz-space-16:  4rem;
+  --pz-space-20:  5rem;
+
+  /* ── Border Radius ─────────────────────────────────────── */
+  --pz-radius-sm:   3px;
+  --pz-radius-md:   4px;
+  --pz-radius-lg:   6px;
+  --pz-radius-xl:   8px;
+  --pz-radius-2xl:  10px;   /* modal border radius */
+  --pz-radius-full: 9999px;
+
+  /* ── Enterprise Form Sizing ────────────────────────────── */
+  --pz-input-height:  44px;    /* inputs, selects, dropdowns */
+  --pz-btn-height:    42px;    /* buttons — spacious enterprise */
+  --pz-form-gap:      24px;    /* vertical gap between form rows */
+  --pz-form-gap-2col: 28px;    /* horizontal gap for 2-col forms */
+  --pz-label-gap:     10px;    /* space between label and input */
+
+  /* ── Shadow System (Dark) ──────────────────────────────── */
+  --pz-shadow-xs:         0 1px 2px rgba(0, 0, 0, 0.20);
+  --pz-shadow-sm:         0 1px 3px rgba(0, 0, 0, 0.25), 0 1px 2px rgba(0, 0, 0, 0.20);
+  --pz-shadow-md:         0 4px 6px -1px rgba(0, 0, 0, 0.30), 0 2px 4px -2px rgba(0, 0, 0, 0.25);
+  --pz-shadow-lg:         0 10px 15px -3px rgba(0, 0, 0, 0.35), 0 4px 6px -4px rgba(0, 0, 0, 0.25);
+  --pz-shadow-xl:         0 20px 25px -5px rgba(0, 0, 0, 0.40), 0 8px 10px -6px rgba(0, 0, 0, 0.30);
+  --pz-shadow-card:       0 1px 2px rgba(0, 0, 0, 0.20), 0 1px 4px rgba(0, 0, 0, 0.15);
+  --pz-shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.35), 0 2px 6px rgba(0, 0, 0, 0.20);
+  --pz-shadow-sidebar:    1px 0 0 var(--pz-sidebar-border);
+  --pz-shadow-topbar:     0 1px 0 var(--pz-border);
+  --pz-shadow-modal:      0 20px 60px rgba(0, 0, 0, 0.50);
+  --pz-shadow-dropdown:   0 4px 16px rgba(0, 0, 0, 0.40);
+
+  /* ── Layout ────────────────────────────────────────────── */
+  --pz-sidebar-width:     260px;
+  --pz-sidebar-collapsed: 64px;
+  --pz-topbar-height:     60px;
+  --pz-drawer-width:      480px;
+  --pz-content-max-width: 1600px;
+
+  /* ── Z-Index Scale ─────────────────────────────────────── */
+  --pz-z-base:     1;
+  --pz-z-dropdown: 30;
+  --pz-z-sticky:   35;
+  --pz-z-topbar:   100;
+  --pz-z-sidebar:  50;
+  --pz-z-modal:    80;
+  --pz-z-popover:  90;
+  --pz-z-toast:    100;
+  --pz-z-tooltip:  110;
+
+  /* ── Transitions ───────────────────────────────────────── */
+  --pz-duration-fast:   120ms;
+  --pz-duration-normal: 180ms;
+  --pz-duration-slow:   280ms;
+  --pz-ease-default:    cubic-bezier(0.4, 0, 0.2, 1);
+  --pz-ease-spring:     cubic-bezier(0.16, 1, 0.3, 1);
+  --pz-ease-bounce:     cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ── Sidebar ───────────────────────────────────────────── */
+  --pz-sidebar-bg:           #070D1A;
+  --pz-sidebar-border:       #1E293B;
+  --pz-sidebar-text:         #94A3B8;
+  --pz-sidebar-text-muted:   #64748B;
+  --pz-sidebar-icon:         #64748B;
+  --pz-sidebar-hover-bg:     #1E293B;
+  --pz-sidebar-active-bg:    rgba(59, 130, 246, 0.12);
+  --pz-sidebar-active-text:  #60A5FA;
+  --pz-sidebar-active-icon:  #60A5FA;
+  --pz-sidebar-active-bar:   #3B82F6;
+}
+
+/* ════════════════════════════════════════════════════════════
+   LIGHT THEME (optional — toggled via .pz-light on html)
+   ════════════════════════════════════════════════════════════ */
+.pz-light {
+  --pz-brand:           #2563EB;
+  --pz-brand-hover:     #1D4ED8;
+  --pz-brand-light:     rgba(37, 99, 235, 0.06);
+  --pz-brand-50:        rgba(37, 99, 235, 0.04);
+  --pz-brand-100:       rgba(37, 99, 235, 0.08);
+  --pz-brand-200:       rgba(37, 99, 235, 0.12);
+
+  --pz-accent:          #059669;
+  --pz-accent-hover:    #047857;
+  --pz-accent-light:    rgba(5, 150, 105, 0.06);
+  --pz-accent-border:   rgba(5, 150, 105, 0.20);
+
+  --pz-success-50:      rgba(5, 150, 105, 0.06);
+  --pz-success-100:     rgba(5, 150, 105, 0.10);
+  --pz-success-400:     #34D399;
+  --pz-success-500:     #059669;
+  --pz-success-600:     #047857;
+  --pz-success-border:  rgba(5, 150, 105, 0.20);
+
+  --pz-warning-50:      rgba(245, 158, 11, 0.06);
+  --pz-warning-100:     rgba(245, 158, 11, 0.10);
+  --pz-warning-400:     #FBBF24;
+  --pz-warning-500:     #F59E0B;
+  --pz-warning-600:     #D97706;
+  --pz-warning-border:  rgba(245, 158, 11, 0.20);
+
+  --pz-danger-50:       rgba(220, 38, 38, 0.06);
+  --pz-danger-100:      rgba(220, 38, 38, 0.10);
+  --pz-danger-400:      #F87171;
+  --pz-danger-500:      #DC2626;
+  --pz-danger-600:      #B91C1C;
+  --pz-danger-border:   rgba(220, 38, 38, 0.20);
+
+  --pz-info-50:         rgba(37, 99, 235, 0.06);
+  --pz-info-100:        rgba(37, 99, 235, 0.10);
+  --pz-info-400:        #60A5FA;
+  --pz-info-500:        #3B82F6;
+  --pz-info-border:     rgba(37, 99, 235, 0.20);
+
+  --pz-bg:          #F3F4F6;
+  --pz-surface-0:   #E5E7EB;
+  --pz-surface-1:   #FFFFFF;
+  --pz-surface-2:   #F9FAFB;
+  --pz-surface-3:   #F3F4F6;
+  --pz-surface-4:   #E5E7EB;
+
+  --pz-border:        #E5E7EB;
+  --pz-border-subtle: rgba(0, 0, 0, 0.04);
+  --pz-border-strong: #D1D5DB;
+  --pz-border-focus:  #2563EB;
+
+  --pz-text:          #111827;
+  --pz-text-secondary:#374151;
+  --pz-text-tertiary: #6B7280;
+  --pz-text-muted:    #9CA3AF;
+  --pz-text-faint:    #D1D5DB;
+
+  --pz-shadow-xs:         0 1px 2px rgba(0, 0, 0, 0.04);
+  --pz-shadow-sm:         0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --pz-shadow-md:         0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --pz-shadow-lg:         0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
+  --pz-shadow-xl:         0 20px 25px -5px rgba(0, 0, 0, 0.10), 0 8px 10px -6px rgba(0, 0, 0, 0.06);
+  --pz-shadow-card:       0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 4px rgba(0, 0, 0, 0.03);
+  --pz-shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.06), 0 2px 6px rgba(0, 0, 0, 0.04);
+  --pz-shadow-modal:      0 20px 60px rgba(0, 0, 0, 0.15), 0 4px 16px rgba(0, 0, 0, 0.08);
+  --pz-shadow-dropdown:   0 4px 16px rgba(0, 0, 0, 0.10), 0 1px 4px rgba(0, 0, 0, 0.06);
+
+  --pz-sidebar-bg:           #111827;
+  --pz-sidebar-border:       #1F2937;
+  --pz-sidebar-text:         #9CA3AF;
+  --pz-sidebar-text-muted:   #6B7280;
+  --pz-sidebar-icon:         #6B7280;
+  --pz-sidebar-hover-bg:     #1F2937;
+  --pz-sidebar-active-bg:    rgba(37, 99, 235, 0.12);
+  --pz-sidebar-active-text:  #60A5FA;
+  --pz-sidebar-active-icon:  #60A5FA;
+  --pz-sidebar-active-bar:   #3B82F6;
+}

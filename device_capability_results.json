@@ -1,0 +1,502 @@
+[
+  {
+    "ip": "172.16.40.12",
+    "port": 4370,
+    "timestamp": "2026-06-20T10:00:34.823692",
+    "tests": {
+      "tcp_connection": {
+        "status": "PASS",
+        "message": "Connected"
+      },
+      "device_info": {
+        "status": "PASS",
+        "data": {
+          "serial_number": "5870203560313",
+          "firmware_version": "Ver 6.60 Sep 19 2019",
+          "platform": "ZMM220_TFT",
+          "mac": "00:17:61:12:6d:a0",
+          "device_name": "MX-710",
+          "face_version": 7,
+          "fp_version": 10,
+          "pin_width": 9,
+          "ip_address": "192.168.1.201",
+          "subnet_mask": "255.255.255.0",
+          "gateway": "0.0.0.0",
+          "users_count": 471,
+          "users_capacity": 2000,
+          "fingers_count": 873,
+          "fingers_capacity": 2000,
+          "records_count": 71,
+          "memory_error": "'ZK' object has no attribute 'records_cap'"
+        }
+      },
+      "get_users": {
+        "status": "PASS",
+        "count": 471,
+        "users": [
+          {
+            "uid": 1,
+            "user_id": "493",
+            "name": "yusuf yu",
+            "privilege": 0,
+            "card": 0
+          },
+          {
+            "uid": 2,
+            "user_id": "491",
+            "name": "Ibrahim",
+            "privilege": 0,
+            "card": 0
+          },
+          {
+            "uid": 3,
+            "user_id": "1",
+            "name": "Mrs. Hai",
+            "privilege": 0,
+            "card": 0
+          },
+          {
+            "uid": 4,
+            "user_id": "2",
+            "name": "Desmond",
+            "privilege": 0,
+            "card": 0
+          },
+          {
+            "uid": 5,
+            "user_id": "3",
+            "name": "Kadiatu",
+            "privilege": 0,
+            "card": 0
+          },
+          {
+            "uid": 6,
+            "user_id": "4",
+            "name": "Mohamed",
+            "privilege": 0,
+            "card": 0
+          },
+          {
+            "uid": 7,
+            "user_id": "5",
+            "name": "Samuel L",
+            "privilege": 0,
+            "card": 0
+          },
+          {
+            "uid": 8,
+            "user_id": "6",
+            "name": "Aruna AY",
+            "privilege": 0,
+            "card": 0
+          },
+          {
+            "uid": 9,
+            "user_id": "7",
+            "name": "Ruth Yat",
+            "privilege": 0,
+            "card": 0
+          },
+          {
+            "uid": 10,
+            "user_id": "8",
+            "name": "Musu MAC",
+            "privilege": 0,
+            "card": 0
+          }
+        ]
+      },
+      "get_templates": {
+        "status": "PASS",
+        "total_templates": 873,
+        "unique_users": 423,
+        "by_user": {
+          "3": [
+            {
+              "fid": 4,
+              "valid": 1,
+              "size": 896,
+              "has_data": true
+            },
+            {
+              "fid": 7,
+              "valid": 1,
+              "size": 944,
+              "has_data": true
+            }
+          ],
+          "4": [
+            {
+              "fid": 4,
+              "valid": 1,
+              "size": 900,
+              "has_data": true
+            },
+            {
+              "fid": 7,
+              "valid": 1,
+              "size": 776,
+              "has_data": true
+            }
+          ],
+          "5": [
+            {
+              "fid": 4,
+              "valid": 1,
+              "size": 972,
+              "has_data": true
+            },
+            {
+              "fid": 7,
+              "valid": 1,
+              "size": 812,
+              "has_data": true
+            }
+          ],
+          "6": [
+            {
+              "fid": 4,
+              "valid": 1,
+              "size": 836,
+              "has_data": true
+            },
+            {
+              "fid": 7,
+              "valid": 1,
+              "size": 728,
+              "has_data": true
+            }
+          ],
+          "7": [
+            {
+              "fid": 4,
+              "valid": 1,
+              "size": 926,
+              "has_data": true
+            },
+            {
+              "fid": 7,
+              "valid": 1,
+              "size": 688,
+              "has_data": true
+            }
+          ]
+        }
+      },
+      "get_user_template": {
+        "status": "PASS",
+        "message": "No template found (user may have no fingerprints enrolled)"
+      },
+      "set_user": {
+        "status": "SKIP",
+        "message": "Dry run \u2014 use --test-write to enable"
+      },
+      "save_user_template": {
+        "status": "SKIP",
+        "message": "Dry run \u2014 use --test-write to enable"
+      },
+      "get_attendance": {
+        "status": "PASS",
+        "count": 71,
+        "sample": [
+          {
+            "user_id": "491",
+            "timestamp": "2025-12-05T13:55:21",
+            "punch": 0
+          },
+          {
+            "user_id": "491",
+            "timestamp": "2025-12-05T13:55:26",
+            "punch": 0
+          },
+          {
+            "user_id": "491",
+            "timestamp": "2025-12-05T13:55:28",
+            "punch": 0
+          },
+          {
+            "user_id": "491",
+            "timestamp": "2025-12-05T13:55:34",
+            "punch": 0
+          },
+          {
+            "user_id": "491",
+            "timestamp": "2025-12-05T13:55:36",
+            "punch": 0
+          }
+        ]
+      }
+    }
+  },
+  {
+    "ip": "172.16.40.13",
+    "port": 4370,
+    "timestamp": "2026-06-20T10:00:40.069494",
+    "tests": {
+      "tcp_connection": {
+        "status": "PASS",
+        "message": "Connected"
+      },
+      "device_info": {
+        "status": "PASS",
+        "data": {
+          "serial_number": "5870203560374",
+          "firmware_version": "Ver 6.60 Sep 19 2019",
+          "platform": "ZMM220_TFT",
+          "mac": "00:17:61:12:6e:46",
+          "device_name": "MX-710",
+          "face_version": 7,
+          "fp_version": 10,
+          "pin_width": 9,
+          "ip_address": "192.168.1.201",
+          "subnet_mask": "255.255.255.0",
+          "gateway": "0.0.0.0",
+          "users_count": 468,
+          "users_capacity": 2000,
+          "fingers_count": 876,
+          "fingers_capacity": 2000,
+          "records_count": 270,
+          "memory_error": "'ZK' object has no attribute 'records_cap'"
+        }
+      },
+      "get_users": {
+        "status": "PASS",
+        "count": 468,
+        "users": [
+          {
+            "uid": 1,
+            "user_id": "1",
+            "name": "Mrs. Hai",
+            "privilege": 0,
+            "card": 0
+          },
+          {
+            "uid": 2,
+            "user_id": "57",
+            "name": "Abdul Ak",
+            "privilege": 0,
+            "card": 0
+          },
+          {
+            "uid": 3,
+            "user_id": "2",
+            "name": "Desmond",
+            "privilege": 0,
+            "card": 0
+          },
+          {
+            "uid": 4,
+            "user_id": "3",
+            "name": "Kadiatu",
+            "privilege": 0,
+            "card": 0
+          },
+          {
+            "uid": 5,
+            "user_id": "4",
+            "name": "Mohamed",
+            "privilege": 0,
+            "card": 0
+          },
+          {
+            "uid": 6,
+            "user_id": "5",
+            "name": "Samuel L",
+            "privilege": 0,
+            "card": 0
+          },
+          {
+            "uid": 7,
+            "user_id": "6",
+            "name": "Aruna AY",
+            "privilege": 0,
+            "card": 0
+          },
+          {
+            "uid": 8,
+            "user_id": "7",
+            "name": "Ruth Yat",
+            "privilege": 0,
+            "card": 0
+          },
+          {
+            "uid": 9,
+            "user_id": "8",
+            "name": "Musu MAC",
+            "privilege": 0,
+            "card": 0
+          },
+          {
+            "uid": 10,
+            "user_id": "9",
+            "name": "Victoria",
+            "privilege": 0,
+            "card": 0
+          }
+        ]
+      },
+      "get_templates": {
+        "status": "PASS",
+        "total_templates": 876,
+        "unique_users": 422,
+        "by_user": {
+          "1": [
+            {
+              "fid": 6,
+              "valid": 1,
+              "size": 1018,
+              "has_data": true
+            },
+            {
+              "fid": 4,
+              "valid": 1,
+              "size": 896,
+              "has_data": true
+            },
+            {
+              "fid": 7,
+              "valid": 1,
+              "size": 944,
+              "has_data": true
+            }
+          ],
+          "294": [
+            {
+              "fid": 1,
+              "valid": 1,
+              "size": 938,
+              "has_data": true
+            },
+            {
+              "fid": 4,
+              "valid": 1,
+              "size": 786,
+              "has_data": true
+            },
+            {
+              "fid": 7,
+              "valid": 1,
+              "size": 976,
+              "has_data": true
+            },
+            {
+              "fid": 4,
+              "valid": 1,
+              "size": 786,
+              "has_data": true
+            },
+            {
+              "fid": 7,
+              "valid": 1,
+              "size": 976,
+              "has_data": true
+            },
+            {
+              "fid": 2,
+              "valid": 1,
+              "size": 938,
+              "has_data": true
+            },
+            {
+              "fid": 5,
+              "valid": 1,
+              "size": 786,
+              "has_data": true
+            },
+            {
+              "fid": 8,
+              "valid": 1,
+              "size": 976,
+              "has_data": true
+            }
+          ],
+          "3": [
+            {
+              "fid": 4,
+              "valid": 1,
+              "size": 900,
+              "has_data": true
+            },
+            {
+              "fid": 7,
+              "valid": 1,
+              "size": 776,
+              "has_data": true
+            }
+          ],
+          "4": [
+            {
+              "fid": 4,
+              "valid": 1,
+              "size": 972,
+              "has_data": true
+            },
+            {
+              "fid": 7,
+              "valid": 1,
+              "size": 812,
+              "has_data": true
+            }
+          ],
+          "5": [
+            {
+              "fid": 4,
+              "valid": 1,
+              "size": 836,
+              "has_data": true
+            },
+            {
+              "fid": 7,
+              "valid": 1,
+              "size": 728,
+              "has_data": true
+            }
+          ]
+        }
+      },
+      "get_user_template": {
+        "status": "PASS",
+        "message": "No template found (user may have no fingerprints enrolled)"
+      },
+      "set_user": {
+        "status": "SKIP",
+        "message": "Dry run \u2014 use --test-write to enable"
+      },
+      "save_user_template": {
+        "status": "SKIP",
+        "message": "Dry run \u2014 use --test-write to enable"
+      },
+      "get_attendance": {
+        "status": "PASS",
+        "count": 270,
+        "sample": [
+          {
+            "user_id": "325",
+            "timestamp": "2025-12-05T17:58:35",
+            "punch": 0
+          },
+          {
+            "user_id": "295",
+            "timestamp": "2025-12-06T07:04:42",
+            "punch": 0
+          },
+          {
+            "user_id": "295",
+            "timestamp": "2025-12-06T07:04:45",
+            "punch": 0
+          },
+          {
+            "user_id": "265",
+            "timestamp": "2025-12-06T07:46:48",
+            "punch": 0
+          },
+          {
+            "user_id": "255",
+            "timestamp": "2025-12-06T17:39:08",
+            "punch": 0
+          }
+        ]
+      }
+    }
+  }
+]

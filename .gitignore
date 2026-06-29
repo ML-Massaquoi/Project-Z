@@ -58,3 +58,12 @@ coverage/
 # Testing
 .pytest_cache/
 .mypy_cache/
+.aider*
+
+# Stale artifact files
+nul
+backend/nul
+frontend/nul
+
+# OpenCode config
+.opencode/

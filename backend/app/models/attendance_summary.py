@@ -6,16 +6,16 @@ Dashboard queries read from this table — never aggregate attendance_sessions d
 Updated by SummaryService within 10 seconds of any Attendance_Session status change.
 """
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.database.base import BaseModel
+from app.database.base import Base, UUIDMixin
 
 
-class AttendanceSummary(BaseModel):
+class AttendanceSummary(Base, UUIDMixin):
     __tablename__ = "attendance_summaries"
     __table_args__ = (
         UniqueConstraint(
@@ -45,6 +45,12 @@ class AttendanceSummary(BaseModel):
     # Employees with check_in but no check_out within active shift window
     on_shift_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+        nullable=False,
+    )
     last_updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

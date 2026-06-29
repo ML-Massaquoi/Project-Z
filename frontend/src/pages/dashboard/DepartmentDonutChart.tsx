@@ -18,10 +18,10 @@ function CustomTooltip({ active, payload }: CustomTooltipProps) {
   if (!active || !payload?.length) return null
   const d = payload[0].payload
   return (
-    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-lg text-xs">
-      <p className="font-medium text-slate-700">{d.department_name}</p>
-      <p className="text-slate-500">Count: {d.count}</p>
-      <p className="text-slate-500">{d.percentage.toFixed(1)}%</p>
+    <div className="rounded-lg border border-border bg-surface px-3 py-2 shadow-lg text-xs text-text">
+      <p className="font-medium text-text">{d.department_name}</p>
+      <p className="text-text-muted">Count: {d.count}</p>
+      <p className="text-text-muted">{d.percentage.toFixed(1)}%</p>
     </div>
   )
 }
@@ -41,8 +41,8 @@ export function DepartmentDonutChart() {
   const breakdown = data?.department_breakdown ?? []
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-card">
-      <h3 className="font-semibold text-slate-800 mb-4">Attendance by Department</h3>
+    <div className="rounded-xl border border-border bg-surface p-5 shadow-card">
+      <h3 className="font-semibold text-text mb-4">Attendance by Department</h3>
 
       {breakdown.length === 0 ? (
         <EmptyState
@@ -76,7 +76,7 @@ export function DepartmentDonutChart() {
             {breakdown.slice(0, 6).map((dept, i) => (
               <div
                 key={dept.department_id}
-                className="flex items-center gap-1.5 text-xs text-slate-500"
+                className="flex items-center gap-1.5 text-xs text-text-muted"
               >
                 <div
                   className="w-2.5 h-2.5 rounded-full flex-shrink-0"

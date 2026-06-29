@@ -7,8 +7,9 @@ import path from 'path'
 const isDocker = process.env.RUNNING_IN_DOCKER === 'true'
 const dockerGateway = process.env.DOCKER_HOST_GATEWAY || '172.19.0.1'
 
-// 🔥 Backend is running on 8081 (MUST match your backend)
-const BACKEND_PORT = 8081
+// Backend is running on port 8000 (FastAPI directly)
+// Port 8081 is reserved for ADMS device push via Windows portproxy → do not use for API
+const BACKEND_PORT = 8000
 
 const proxyTarget =
   process.env.VITE_API_BASE_URL ||
@@ -37,7 +38,7 @@ export default defineConfig({
         secure: false,
       },
 
-      '/ws': {
+      '/ws-app': {
         target: wsTarget,
         ws: true,
         changeOrigin: true,

@@ -1,0 +1,6 @@
+Connecting...
+ZK object created
+Connected!
+Device time: 2026-06-27 07:15:11
+Users: 482
+Calling enroll_user (may block)...
