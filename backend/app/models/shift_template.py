@@ -13,6 +13,14 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.database.base import BaseModel
 
 
+class ShiftType:
+    DAY = "day"
+    NIGHT = "night"
+    WEEKEND = "weekend"
+    HOLIDAY = "holiday"
+    OFF = "off"
+
+
 class ShiftTemplate(BaseModel):
     __tablename__ = "shift_templates"
     __table_args__ = (
@@ -61,6 +69,16 @@ class ShiftTemplate(BaseModel):
     description: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, index=True
+    )
+
+    # Phase 5: Shift classification and visual identity
+    shift_type: Mapped[Optional[str]] = mapped_column(
+        String(20), nullable=True, default="day",
+        comment="day, night, weekend, holiday, off"
+    )
+    color: Mapped[Optional[str]] = mapped_column(
+        String(20), nullable=True, default="#3B82F6",
+        comment="Hex color for calendar/schedule display"
     )
 
     def __repr__(self) -> str:

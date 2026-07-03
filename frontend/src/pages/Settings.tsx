@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Settings as SettingsIcon, Building2, Clock, Monitor, Bell, Shield, Save, RotateCcw } from 'lucide-react'
 import { settingsAPI } from '@/api/client'
-import { PageHeader } from '@/components/ui/PageHeader'
 import { toast } from 'sonner'
 
 interface SettingSection {
@@ -20,6 +19,54 @@ const sections: SettingSection[] = [
   { id: 'notifications', label: 'Notifications', icon: Bell, color: '#F59E0B' },
   { id: 'security', label: 'Security', icon: Shield, color: '#EF4444' },
 ]
+
+const s = {
+  page: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '28px',
+    padding: '32px',
+    flex: 1,
+  },
+  header: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  headerLeft: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '4px',
+  },
+  headerTitle: {
+    fontSize: '22px',
+    fontWeight: 700,
+    color: 'var(--pz-text)',
+    margin: 0,
+    letterSpacing: '-0.02em',
+  },
+  headerSubtitle: {
+    fontSize: '13px',
+    color: 'var(--pz-text-muted)',
+    margin: 0,
+  },
+  card: {
+    background: 'var(--pz-surface-1)',
+    border: '1px solid var(--pz-border)',
+    borderRadius: '10px',
+    padding: '24px',
+  },
+  input: {
+    width: '100%',
+    padding: '10px 14px',
+    background: 'var(--pz-surface-2)',
+    border: '1px solid var(--pz-border)',
+    borderRadius: '8px',
+    color: 'var(--pz-text)',
+    fontSize: '14px',
+    outline: 'none',
+  },
+}
 
 export default function Settings() {
   const queryClient = useQueryClient()
@@ -105,33 +152,45 @@ export default function Settings() {
   }
 
   return (
-    <div className="space-y-5 pz-slide-up">
-      <PageHeader
-        title="Settings"
-        subtitle="System configuration and preferences"
-        breadcrumbs={[{ label: 'Administration' }, { label: 'Settings' }]}
-        actions={
-          isDirty ? (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleReset}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] hover:bg-[var(--pz-surface-3)] border border-[var(--pz-border)] text-xs font-semibold text-gray-300 transition-all"
-              >
-                <RotateCcw size={14} />
-                Reset
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={updateMutation.isPending}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors shadow-lg shadow-blue-600/20 disabled:opacity-50"
-              >
-                <Save size={14} />
-                {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
-              </button>
-            </div>
-          ) : undefined
-        }
-      />
+    <div style={s.page}>
+      <div style={s.header}>
+        <div style={s.headerLeft}>
+          <h1 style={s.headerTitle}>Settings</h1>
+          <p style={s.headerSubtitle}>System configuration and preferences</p>
+        </div>
+        {isDirty ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              onClick={handleReset}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px',
+                borderRadius: '8px', background: 'var(--pz-surface-2)',
+                border: '1px solid var(--pz-border)', fontSize: '12px',
+                fontWeight: 600, color: 'var(--pz-text-secondary)', cursor: 'pointer',
+                transition: 'all 0.15s',
+              }}
+            >
+              <RotateCcw size={14} />
+              Reset
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={updateMutation.isPending}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px',
+                borderRadius: '8px', background: '#3B82F6', color: '#fff',
+                fontSize: '14px', fontWeight: 600, border: 'none', cursor: 'pointer',
+                boxShadow: '0 4px 6px rgba(59,130,246,0.2)',
+                opacity: updateMutation.isPending ? 0.5 : 1,
+                transition: 'all 0.15s',
+              }}
+            >
+              <Save size={14} />
+              {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        ) : undefined}
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
         {/* Section Nav */}
@@ -140,11 +199,23 @@ export default function Settings() {
             <button
               key={section.id}
               onClick={() => setActiveSection(section.id)}
-              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
-                ${activeSection === section.id
-                  ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20'
-                  : 'text-gray-400 hover:bg-[var(--pz-surface-2)] hover:text-gray-200 border border-transparent'
-                }`}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                padding: '9px 12px',
+                width: '100%',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: 500,
+                border: activeSection === section.id ? '1px solid rgba(59,130,246,0.2)' : '1px solid transparent',
+                background: activeSection === section.id ? 'rgba(59,130,246,0.1)' : 'transparent',
+                color: activeSection === section.id ? '#3B82F6' : 'var(--pz-text-muted)',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => { if (activeSection !== section.id) { e.currentTarget.style.background = 'var(--pz-surface-2)'; e.currentTarget.style.color = 'var(--pz-text-secondary)' } }}
+              onMouseLeave={(e) => { if (activeSection !== section.id) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--pz-text-muted)' } }}
             >
               <section.icon size={16} style={{ color: activeSection === section.id ? section.color : undefined }} />
               {section.label}
@@ -159,9 +230,10 @@ export default function Settings() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2 }}
-            className="pz-card p-6 space-y-5"
+            style={{ ...s.card }}
+            className="space-y-5"
           >
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
+            <h3 className="text-base font-bold" style={{ color: 'var(--pz-text)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
               {(() => {
                 const section = sections.find(s => s.id === activeSection)
                 const Icon = section?.icon || SettingsIcon
@@ -174,8 +246,8 @@ export default function Settings() {
               <div className="space-y-4">
                 {Array.from({ length: 4 }).map((_, i) => (
                   <div key={i} className="space-y-2">
-                    <div className="pz-skeleton h-3 w-28 rounded" />
-                    <div className="pz-skeleton h-10 w-full rounded-lg" />
+                    <div style={{ height: '12px', width: '112px', borderRadius: '6px', background: 'var(--pz-surface-3)' }} />
+                    <div style={{ height: '40px', width: '100%', borderRadius: '8px', background: 'var(--pz-surface-3)' }} />
                   </div>
                 ))}
               </div>
@@ -183,17 +255,27 @@ export default function Settings() {
               <div className="space-y-5">
                 {(settingFields[activeSection] || []).map((field) => (
                   <div key={field.key} className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-300">{field.label}</label>
+                    <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--pz-text-secondary)' }}>{field.label}</label>
                     {field.description && (
-                      <p className="text-[10px] text-gray-500">{field.description}</p>
+                      <p style={{ fontSize: '10px', color: 'var(--pz-text-muted)', margin: 0 }}>{field.description}</p>
                     )}
                     {field.type === 'toggle' ? (
                       <button
                         onClick={() => handleChange(field.key, formValues[field.key] === 'true' ? 'false' : 'true')}
-                        className={`relative w-10 h-5 rounded-full transition-colors ${formValues[field.key] === 'true' ? 'bg-blue-600' : 'bg-[var(--pz-surface-3)]'}`}
+                        style={{
+                          position: 'relative', width: '40px', height: '20px',
+                          borderRadius: '10px', border: 'none', cursor: 'pointer',
+                          transition: 'background 0.2s',
+                          background: formValues[field.key] === 'true' ? '#3B82F6' : 'var(--pz-surface-3)',
+                        }}
                       >
                         <span
-                          className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${formValues[field.key] === 'true' ? 'translate-x-5' : 'translate-x-0.5'}`}
+                          style={{
+                            position: 'absolute', top: '2px', width: '16px', height: '16px',
+                            borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                            transition: 'transform 0.2s',
+                            transform: formValues[field.key] === 'true' ? 'translateX(20px)' : 'translateX(2px)',
+                          }}
                         />
                       </button>
                     ) : (
@@ -201,7 +283,7 @@ export default function Settings() {
                         type={field.type}
                         value={formValues[field.key] || ''}
                         onChange={(e) => handleChange(field.key, e.target.value)}
-                        className="w-full pz-input"
+                        style={s.input}
                       />
                     )}
                   </div>

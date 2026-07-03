@@ -40,6 +40,7 @@ class PairScheduleEntry:
     shift_end: Optional[str]
     pair_id: Optional[str]
     pair_name: Optional[str]
+    slot_index: Optional[int] = None
 
 
 @dataclass
@@ -129,8 +130,8 @@ def generate_pair_schedule(
     current = start_date
 
     while current <= end_date:
-        for slot_index, (emp_id, emp_code, emp_name) in enumerate(pair.members):
-            assignment, shift_start, shift_end = get_pair_assignment(pair, slot_index, current)
+        for slot_idx, (emp_id, emp_code, emp_name) in enumerate(pair.members):
+            assignment, shift_start, shift_end = get_pair_assignment(pair, slot_idx, current)
             entries.append(PairScheduleEntry(
                 employee_id=emp_id,
                 employee_code=emp_code,
@@ -141,6 +142,7 @@ def generate_pair_schedule(
                 shift_end=shift_end,
                 pair_id=pair.pair_id,
                 pair_name=pair.pair_name,
+                slot_index=slot_idx,
             ))
         current += timedelta(days=1)
 

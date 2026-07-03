@@ -1,11 +1,11 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay } from 'date-fns'
 import {
   Download, UserPlus, Users, CalendarClock, AlarmClockOff, Ban, Search,
-  ChevronLeft, ChevronRight, Building2, Briefcase, Clock, Sun, Moon,
-  UserCog, Shield, Calendar, ChevronDown, Save, X, Plus, Edit2, Monitor,
+  Building2, Clock, Sun, Moon, ChevronDown, ChevronUp, RefreshCw,
+  UserCog, Shield, Calendar, Save, X, Plus, Edit2, Monitor, User, Mail,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { employeesAPI, departmentsAPI, shiftTemplatesAPI, shiftAssignmentsAPI, shiftProtocolsAPI, devicesAPI } from '@/api/client'
@@ -36,6 +36,316 @@ const TABS: TabDef[] = [
   { key: 'terminated', label: 'Terminated', icon: <Ban size={14} />, color: 'text-red-400', bg: 'bg-red-500/10' },
 ]
 
+const COLOR_MAP: Record<string, { bg: string; fg: string; border: string; icon: string }> = {
+  blue: { bg: 'rgba(59,130,246,0.1)', fg: 'var(--pz-brand)', border: 'rgba(59,130,246,0.2)', icon: 'linear-gradient(135deg, #3B82F6, #2563EB)' },
+  emerald: { bg: 'rgba(16,185,129,0.1)', fg: '#10B981', border: 'rgba(16,185,129,0.2)', icon: 'linear-gradient(135deg, #10B981, #059669)' },
+  purple: { bg: 'rgba(124,58,237,0.1)', fg: '#7C3AED', border: 'rgba(124,58,237,0.2)', icon: 'linear-gradient(135deg, #7C3AED, #6D28D9)' },
+  amber: { bg: 'rgba(245,158,11,0.1)', fg: '#F59E0B', border: 'rgba(245,158,11,0.2)', icon: 'linear-gradient(135deg, #F59E0B, #D97706)' },
+  red: { bg: 'rgba(239,68,68,0.1)', fg: '#EF4444', border: 'rgba(239,68,68,0.2)', icon: 'linear-gradient(135deg, #EF4444, #DC2626)' },
+  gray: { bg: 'var(--pz-surface-3)', fg: 'var(--pz-text-muted)', border: 'var(--pz-border)', icon: 'linear-gradient(135deg, #64748B, #475569)' },
+}
+
+const s = {
+  page: {
+    padding: '32px',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '28px',
+    minHeight: '100%',
+    boxSizing: 'border-box' as const,
+  },
+  headerRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  title: {
+    fontSize: '24px',
+    fontWeight: 700,
+    color: 'var(--pz-text)',
+    margin: 0,
+  },
+  subtitle: {
+    fontSize: '14px',
+    color: 'var(--pz-text-muted)',
+    marginTop: '4px',
+    marginBottom: 0,
+  },
+  actionBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '6px 14px',
+    borderRadius: '20px',
+    background: 'rgba(59,130,246,0.08)',
+    border: '1px solid rgba(59,130,246,0.2)',
+  },
+  summaryGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, 1fr)',
+    gap: '16px',
+  },
+  summaryCard: {
+    background: 'var(--pz-surface-1)',
+    border: '1px solid var(--pz-border)',
+    borderRadius: '10px',
+    padding: '16px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '14px',
+  },
+  iconBox: (color: string): React.CSSProperties => ({
+    width: '42px',
+    height: '42px',
+    borderRadius: '10px',
+    background: color,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  }),
+  statValue: {
+    fontSize: '24px',
+    fontWeight: 700,
+    color: 'var(--pz-text)',
+    margin: 0,
+    lineHeight: 1,
+  },
+  statLabel: {
+    fontSize: '12px',
+    color: 'var(--pz-text-muted)',
+    margin: '4px 0 0',
+  },
+  section: {
+    background: 'var(--pz-surface-1)',
+    border: '1px solid var(--pz-border)',
+    borderRadius: '10px',
+    overflow: 'hidden',
+  },
+  sectionHeader: {
+    padding: '16px 20px',
+    borderBottom: '1px solid var(--pz-border)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sectionTitleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+  },
+  sectionTitle: {
+    fontSize: '15px',
+    fontWeight: 600,
+    color: 'var(--pz-text)',
+    margin: 0,
+  },
+  tableContainer: {
+    overflowX: 'auto' as const,
+  },
+  table: {
+    width: '100%',
+    borderCollapse: 'collapse' as const,
+    fontSize: '14px',
+  },
+  th: {
+    padding: '12px 20px',
+    textAlign: 'left' as const,
+    fontSize: '11px',
+    fontWeight: 600,
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.04em',
+    color: 'var(--pz-text-muted)',
+    background: 'var(--pz-surface-2)',
+    borderBottom: '1.5px solid var(--pz-border)',
+    whiteSpace: 'nowrap' as const,
+  },
+  td: {
+    padding: '14px 20px',
+    borderBottom: '1px solid var(--pz-border)',
+    color: 'var(--pz-text-secondary)',
+    verticalAlign: 'middle' as const,
+  },
+  row: {
+    cursor: 'pointer',
+    transition: 'background 0.12s',
+  },
+  avatar: {
+    width: '36px',
+    height: '36px',
+    borderRadius: '10px',
+    background: 'linear-gradient(135deg, var(--pz-brand), #7C3AED)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    color: '#fff',
+    fontSize: '13px',
+    fontWeight: 700,
+  },
+  emptyState: {
+    padding: '48px 20px',
+    textAlign: 'center' as const,
+    color: 'var(--pz-text-muted)',
+  },
+  pill: (bg: string, fg: string, border: string): React.CSSProperties => ({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    padding: '3px 10px',
+    borderRadius: '20px',
+    fontSize: '10px',
+    fontWeight: 700,
+    letterSpacing: '0.03em',
+    textTransform: 'uppercase' as const,
+    background: bg,
+    color: fg,
+    border: `1px solid ${border}`,
+  }),
+  filterBar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    flexWrap: 'wrap' as const,
+  },
+  filterChip: (active: boolean): React.CSSProperties => ({
+    padding: '5px 14px',
+    borderRadius: '20px',
+    fontSize: '12px',
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'all 0.12s',
+    background: active ? 'rgba(59,130,246,0.1)' : 'var(--pz-surface-2)',
+    color: active ? 'var(--pz-brand)' : 'var(--pz-text-muted)',
+    border: `1px solid ${active ? 'rgba(59,130,246,0.25)' : 'var(--pz-border)'}`,
+    outline: 'none',
+  }),
+  paginationBar: {
+    padding: '12px 20px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderTop: '1px solid var(--pz-border)',
+    background: 'var(--pz-surface-2)',
+  },
+  paginationBtn: (disabled: boolean): React.CSSProperties => ({
+    padding: '6px 10px',
+    borderRadius: '6px',
+    border: '1px solid var(--pz-border)',
+    background: 'var(--pz-surface-1)',
+    color: disabled ? 'var(--pz-text-faint)' : 'var(--pz-text-secondary)',
+    cursor: disabled ? 'default' : 'pointer',
+    fontSize: '12px',
+    fontWeight: 600,
+    transition: 'all 0.12s',
+    outline: 'none',
+  }),
+}
+
+function SummaryCard({ icon: Icon, label, value, color }: {
+  icon: React.ElementType
+  label: string
+  value: number
+  color: string
+}) {
+  const c = COLOR_MAP[color] || COLOR_MAP.blue
+  return (
+    <div style={s.summaryCard}>
+      <div style={s.iconBox(c.icon)}>
+        <Icon size={18} style={{ color: '#fff' }} />
+      </div>
+      <div>
+        <p style={s.statValue}>{value}</p>
+        <p style={s.statLabel}>{label}</p>
+      </div>
+    </div>
+  )
+}
+
+function EmployeeRow({ employee, onSelect, onHover, isHovered }: {
+  employee: Employee
+  onSelect: () => void
+  onHover: (id: string | null) => void
+  isHovered: boolean
+}) {
+  const statusColor =
+    employee.status === 'active' ? COLOR_MAP.emerald :
+    employee.status === 'inactive' ? COLOR_MAP.amber :
+    employee.status === 'suspended' ? COLOR_MAP.amber :
+    employee.status === 'terminated' ? COLOR_MAP.red :
+    COLOR_MAP.gray
+
+  return (
+    <tr
+      style={{
+        ...s.row,
+        background: isHovered ? 'var(--pz-surface-2)' : 'transparent',
+      }}
+      onMouseEnter={() => onHover(employee.id)}
+      onMouseLeave={() => onHover(null)}
+      onClick={onSelect}
+    >
+      <td style={s.td}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={s.avatar}>
+            {employee.full_name?.[0] || '?'}
+          </div>
+          <div>
+            <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--pz-text)', margin: 0 }}>
+              {employee.full_name}
+            </p>
+            <p style={{ fontSize: '12px', color: 'var(--pz-text-muted)', fontFamily: 'monospace', margin: '2px 0 0' }}>
+              {employee.employee_code}
+            </p>
+          </div>
+        </div>
+      </td>
+      <td style={s.td}>
+        <span style={{ color: 'var(--pz-text-secondary)', fontSize: '13px' }}>
+          {employee.department_name || '\u2014'}
+        </span>
+      </td>
+      <td style={s.td}>
+        <span style={{ color: 'var(--pz-text-tertiary)', fontSize: '13px' }}>
+          {employee.position || '\u2014'}
+        </span>
+      </td>
+      <td style={s.td}>
+        {employee.shift_name ? (
+          <span style={s.pill('rgba(245,158,11,0.1)', '#F59E0B', 'rgba(245,158,11,0.25)')}>
+            {employee.shift_name}
+          </span>
+        ) : (
+          <span style={{ color: 'var(--pz-text-faint)', fontSize: '13px' }}>\u2014</span>
+        )}
+      </td>
+      <td style={s.td}>
+        {employee.employment_type ? (
+          <span style={s.pill('rgba(124,58,237,0.1)', '#7C3AED', 'rgba(124,58,237,0.25)')}>
+            {employee.employment_type.replace(/_/g, ' ')}
+          </span>
+        ) : (
+          <span style={{ color: 'var(--pz-text-faint)', fontSize: '13px' }}>\u2014</span>
+        )}
+      </td>
+      <td style={s.td}>
+        <span style={{
+          ...s.pill(statusColor.bg, statusColor.fg, statusColor.border),
+          textTransform: 'capitalize' as const,
+          letterSpacing: 'normal',
+        }}>
+          {employee.status}
+        </span>
+      </td>
+      <td style={s.td}>
+        <span style={{ color: 'var(--pz-text-muted)', fontSize: '12px', fontFamily: 'monospace' }}>
+          {format(new Date(employee.created_at), 'MMM yyyy')}
+        </span>
+      </td>
+    </tr>
+  )
+}
+
 export default function Employees() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -47,6 +357,7 @@ export default function Employees() {
   const [selectedDept, setSelectedDept] = useState<string>('all')
   const [drawerTab, setDrawerTab] = useState<DrawerTab>('profile')
   const [showAddModal, setShowAddModal] = useState(false)
+  const [hoveredRow, setHoveredRow] = useState<string | null>(null)
   const calendarDate = useMemo(() => new Date(), [])
 
   const { data: deptsData } = useQuery({
@@ -132,258 +443,187 @@ export default function Employees() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header with integrated search */}
-      <div className="flex items-center gap-4">
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold text-[var(--pz-text)] tracking-tight">Employees</h1>
-          <p className="text-sm text-[var(--pz-text-muted)] mt-1">
-            {totalEmployees} total employees in the workforce
-          </p>
+    <div style={s.page}>
+      {/* Header */}
+      <div style={s.headerRow}>
+        <div>
+          <h1 style={s.title}>Employees</h1>
+          <p style={s.subtitle}>{totalEmployees} total employees in the workforce</p>
         </div>
-        <div className="relative w-80">
-          <Search size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--pz-text-muted)] pointer-events-none" />
-          <input
-            value={searchValue}
-            onChange={(e) => { setSearchValue(e.target.value); setPage(1) }}
-            placeholder="Search employees..."
-            className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-sm text-[var(--pz-text)] placeholder:text-[var(--pz-text-muted)] focus:outline-none focus:border-blue-500/50 transition-colors"
-          />
-          {searchValue && (
-            <button
-              onClick={() => setSearchValue('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-[var(--pz-text-muted)] hover:text-[var(--pz-text-secondary)] hover:bg-[var(--pz-surface-3)] transition-colors"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-            </button>
-          )}
-        </div>
-        <div className="flex items-center gap-2.5">
-          <Button variant="outline" size="md" onClick={handleExport}>
-            <Download size={15} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ position: 'relative' }}>
+            <Search size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--pz-text-muted)', pointerEvents: 'none' }} />
+            <input
+              value={searchValue}
+              onChange={(e) => { setSearchValue(e.target.value); setPage(1) }}
+              placeholder="Search employees..."
+              style={{
+                width: '220px',
+                padding: '8px 12px 8px 36px',
+                borderRadius: '8px',
+                border: '1px solid var(--pz-border)',
+                background: 'var(--pz-surface-2)',
+                fontSize: '13px',
+                color: 'var(--pz-text)',
+                outline: 'none',
+              }}
+              onFocus={e => e.currentTarget.style.borderColor = 'var(--pz-brand)'}
+              onBlur={e => e.currentTarget.style.borderColor = 'var(--pz-border)'}
+            />
+            {searchValue && (
+              <button
+                onClick={() => setSearchValue('')}
+                style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--pz-text-muted)', cursor: 'pointer', padding: '2px' }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            )}
+          </div>
+          <button
+            onClick={handleExport}
+            style={{
+              ...s.filterChip(false),
+              display: 'flex', alignItems: 'center', gap: '6px',
+            }}
+          >
+            <Download size={14} />
             Export
-          </Button>
-          <Button variant="default" size="md" onClick={() => setShowAddModal(true)}>
+          </button>
+          <button
+            onClick={() => setShowAddModal(true)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '6px',
+              padding: '8px 16px',
+              borderRadius: '8px',
+              fontSize: '13px',
+              fontWeight: 600,
+              background: 'var(--pz-brand)',
+              color: '#fff',
+              border: 'none',
+              cursor: 'pointer',
+              transition: 'opacity 0.12s',
+            }}
+          >
             <UserPlus size={15} />
             Add Employee
-          </Button>
-        </div>
-      </div>
-
-      {/* Stats Tiles */}
-      <div className="grid grid-cols-4 gap-4">
-        {TABS.map((tab) => (
-          <motion.button
-            key={tab.key}
-            whileHover={{ y: -1 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => { setActiveTab(tab.key); setPage(1) }}
-            className={`relative p-4 rounded-2xl border text-left transition-all ${
-              activeTab === tab.key
-                ? 'border-blue-500/40 bg-blue-500/5 shadow-lg shadow-blue-500/5'
-                : 'border-[var(--pz-border)] bg-[var(--pz-surface-1)] hover:border-gray-600'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <div className={`p-2 rounded-xl ${tab.bg}`}>
-                <span className={tab.color}>{tab.icon}</span>
-              </div>
-              {activeTab === tab.key && (
-                <motion.div
-                  layoutId="activeTab"
-                  className="w-1.5 h-1.5 rounded-full bg-blue-500"
-                />
-              )}
-            </div>
-            <p className="text-2xl font-bold text-[var(--pz-text)] tabular-nums tracking-tight">
-              {countByStatus[tab.key]}
-            </p>
-            <p className="text-xs text-[var(--pz-text-muted)] font-medium mt-1">{tab.label}</p>
-          </motion.button>
-        ))}
-      </div>
-
-      {/* Department Filter */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-        <button
-          onClick={() => { setSelectedDept('all'); setPage(1) }}
-          className={cn(
-            'shrink-0 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border',
-            selectedDept === 'all'
-              ? 'bg-blue-600 text-white border-blue-500 shadow-sm shadow-blue-600/20'
-              : 'bg-[var(--pz-surface-2)] border-[var(--pz-border)] text-[var(--pz-text-muted)] hover:text-[var(--pz-text-secondary)] hover:bg-[var(--pz-surface-3)]'
-          )}
-        >
-          All
-        </button>
-        {departmentsList.map(dept => (
-          <button
-            key={dept.id}
-            onClick={() => { setSelectedDept(dept.id); setPage(1) }}
-            className={cn(
-              'shrink-0 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border',
-              selectedDept === dept.id
-                ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm shadow-indigo-600/20'
-                : 'bg-[var(--pz-surface-2)] border-[var(--pz-border)] text-[var(--pz-text-muted)] hover:text-[var(--pz-text-secondary)] hover:bg-[var(--pz-surface-3)]'
-            )}
-          >
-            <Building2 size={12} className="inline mr-1.5 -mt-0.5" />
-            {dept.name}
           </button>
-        ))}
+        </div>
       </div>
 
-      {/* Employee Grid */}
-      {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Array.from({ length: 9 }).map((_, i) => (
-            <div key={i} className="p-5 rounded-2xl border border-[var(--pz-border)] bg-[var(--pz-surface-1)]">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="w-12 h-12 rounded-xl skeleton" />
-                <div className="flex-1 space-y-2">
-                  <div className="skeleton h-4 w-32 rounded" />
-                  <div className="skeleton h-3 w-20 rounded" />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="skeleton h-3 w-full rounded" />
-                <div className="skeleton h-3 w-2/3 rounded" />
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : employees.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="p-4 rounded-2xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] mb-4">
-            <Users size={32} className="text-[var(--pz-text-muted)]" />
+      {/* Summary Cards */}
+      <div style={s.summaryGrid}>
+        <SummaryCard icon={Users} label="Total Workforce" value={totalEmployees} color="blue" />
+        <SummaryCard icon={UserPlus} label="Active" value={countByStatus.active} color="emerald" />
+        <SummaryCard icon={CalendarClock} label="On Leave" value={countByStatus.on_leave} color="amber" />
+        <SummaryCard icon={Ban} label="Terminated" value={countByStatus.terminated} color="red" />
+      </div>
+
+      {/* Employee Table Section */}
+      <div style={s.section}>
+        <div style={s.sectionHeader}>
+          <div style={s.sectionTitleRow}>
+            <Users size={18} style={{ color: 'var(--pz-brand)' }} />
+            <h2 style={s.sectionTitle}>Employee Directory</h2>
           </div>
-          <p className="text-base font-semibold text-[var(--pz-text-secondary)]">No employees found</p>
-          <p className="text-sm text-[var(--pz-text-muted)] mt-1">
-            {searchValue ? 'Try adjusting your search terms' : 'Add your first employee to get started'}
-          </p>
+          <div style={s.filterBar}>
+            <button
+              style={s.filterChip(selectedDept === 'all')}
+              onClick={() => { setSelectedDept('all'); setPage(1) }}
+            >
+              All
+            </button>
+            {departmentsList.slice(0, 7).map(dept => (
+              <button
+                key={dept.id}
+                style={s.filterChip(selectedDept === dept.id)}
+                onClick={() => { setSelectedDept(dept.id); setPage(1) }}
+              >
+                {dept.name}
+              </button>
+            ))}
+          </div>
         </div>
-      ) : (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <AnimatePresence mode="popLayout">
-              {employees.map((employee, idx) => (
-                <motion.div
-                  key={employee.id}
-                  layout
-                  initial={{ opacity: 0, scale: 0.96 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.96 }}
-                  transition={{ delay: idx * 0.02, duration: 0.2 }}
-                  onClick={() => setSelectedEmployee(employee)}
-                  className="group p-5 rounded-2xl border border-[var(--pz-border)] bg-[var(--pz-surface-1)] hover:border-blue-500/30 hover:bg-blue-500/[0.02] transition-all cursor-pointer"
-                >
-                  {/* Top row: Avatar + Name */}
-                  <div className="flex items-start gap-4 mb-4">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-600/20 to-indigo-600/20 border border-blue-500/15 flex items-center justify-center flex-shrink-0 group-hover:border-blue-500/30 transition-colors">
-                      <span className="text-base font-bold text-blue-400">
-                        {employee.full_name?.[0] || '?'}
-                      </span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-[var(--pz-text)] truncate group-hover:text-blue-400 transition-colors">
-                        {employee.full_name}
+
+        {/* Table */}
+        <div style={s.tableContainer}>
+          <table style={s.table}>
+            <thead>
+              <tr>
+                <th style={s.th}>Employee</th>
+                <th style={s.th}>Department</th>
+                <th style={s.th}>Position</th>
+                <th style={s.th}>Shift</th>
+                <th style={s.th}>Type</th>
+                <th style={s.th}>Status</th>
+                <th style={s.th}>Joined</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading ? (
+                Array.from({ length: 8 }).map((_, i) => (
+                  <tr key={i}>
+                    {Array.from({ length: 7 }).map((_, j) => (
+                      <td key={j} style={s.td}>
+                        <div style={{ height: '14px', width: `${40 + (i * 7 + j) * 3}%`, maxWidth: '80%', borderRadius: '4px', background: 'var(--pz-surface-3)', animation: 'pulse 1.5s ease-in-out infinite' }} />
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              ) : employees.length === 0 ? (
+                <tr>
+                  <td colSpan={7}>
+                    <div style={s.emptyState}>
+                      <Users size={40} style={{ opacity: 0.2, margin: '0 auto 12px', display: 'block' }} />
+                      <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--pz-text-secondary)', margin: '0 0 4px' }}>
+                        {searchValue ? 'No matching employees' : 'No employees yet'}
                       </p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[11px] font-mono text-[var(--pz-text-muted)]">
-                          {employee.employee_code}
-                        </span>
-                        <StatusBadge status={employee.status as 'active' | 'inactive'} size="sm" dot={false}>
-                          {employee.status}
-                        </StatusBadge>
-                      </div>
+                      <p style={{ fontSize: '13px', margin: 0, color: 'var(--pz-text-muted)' }}>
+                        {searchValue ? 'Try adjusting your search terms' : 'Add your first employee to get started'}
+                      </p>
                     </div>
-                  </div>
+                  </td>
+                </tr>
+              ) : (
+                employees.map((employee) => (
+                  <EmployeeRow
+                    key={employee.id}
+                    employee={employee}
+                    onSelect={() => setSelectedEmployee(employee)}
+                    onHover={setHoveredRow}
+                    isHovered={hoveredRow === employee.id}
+                  />
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
 
-                  {/* Detail chips */}
-                  <div className="flex flex-wrap gap-2">
-                    {employee.department_name && (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-500/10 border border-indigo-500/15 text-[10px] font-semibold text-indigo-400">
-                        <Building2 size={11} />
-                        {employee.department_name}
-                      </span>
-                    )}
-                    {employee.position && (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-[10px] font-semibold text-[var(--pz-text-muted)]">
-                        <Briefcase size={11} />
-                        {employee.position}
-                      </span>
-                    )}
-                    {employee.employment_type && (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-500/10 border border-purple-500/15 text-[10px] font-semibold text-purple-400">
-                        {employee.employment_type.replace(/_/g, ' ')}
-                      </span>
-                    )}
-                    {employee.shift_name && (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/15 text-[10px] font-semibold text-amber-400">
-                        <Clock size={11} />
-                        {employee.shift_name}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Footer */}
-                  <div className="mt-4 pt-3 border-t border-[var(--pz-border)] flex items-center justify-between">
-                    <span className="text-[10px] text-[var(--pz-text-faint)]">
-                      Joined {format(new Date(employee.created_at), 'MMM yyyy')}
-                    </span>
-                    <span className="text-[10px] font-semibold text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                      View profile →
-                    </span>
-                  </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between pt-2">
-              <p className="text-xs text-[var(--pz-text-muted)]">
-                Page {page} of {totalPages} &middot; {totalEmployees} total
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  disabled={page <= 1}
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  className="p-2.5 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-[var(--pz-text-secondary)] hover:bg-[var(--pz-surface-3)] disabled:opacity-30 transition-colors"
-                >
-                  <ChevronLeft size={16} />
-                </button>
-                {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-                  const start = Math.max(1, Math.min(page - 2, totalPages - 4))
-                  const p = start + i
-                  if (p > totalPages) return null
-                  return (
-                    <button
-                      key={p}
-                      onClick={() => setPage(p)}
-                      className={`w-9 h-9 rounded-xl text-xs font-bold transition-all ${
-                        p === page
-                          ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
-                          : 'bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-[var(--pz-text-secondary)] hover:bg-[var(--pz-surface-3)]'
-                      }`}
-                    >
-                      {p}
-                    </button>
-                  )
-                })}
-                <button
-                  disabled={page >= totalPages}
-                  onClick={() => setPage(p => p + 1)}
-                  className="p-2.5 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-[var(--pz-text-secondary)] hover:bg-[var(--pz-surface-3)] disabled:opacity-30 transition-colors"
-                >
-                  <ChevronRight size={16} />
-                </button>
-              </div>
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div style={s.paginationBar}>
+            <span style={{ fontSize: '13px', color: 'var(--pz-text-muted)' }}>
+              Page {page} of {totalPages} &middot; {totalEmployees} total
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <button style={s.paginationBtn(page <= 1)} disabled={page <= 1} onClick={() => setPage(1)}>
+                <ChevronDown size={14} style={{ transform: 'rotate(90deg)' }} />
+              </button>
+              <button style={s.paginationBtn(page <= 1)} disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}>
+                <ChevronDown size={14} style={{ transform: 'rotate(90deg)' }} />
+              </button>
+              <span style={{ fontSize: '13px', color: 'var(--pz-text-secondary)', fontWeight: 700, margin: '0 8px', fontFamily: 'monospace' }}>
+                {page} / {totalPages}
+              </span>
+              <button style={s.paginationBtn(page >= totalPages)} disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>
+                <ChevronDown size={14} style={{ transform: 'rotate(-90deg)' }} />
+              </button>
+              <button style={s.paginationBtn(page >= totalPages)} disabled={page >= totalPages} onClick={() => setPage(totalPages)}>
+                <ChevronDown size={14} style={{ transform: 'rotate(-90deg)' }} />
+              </button>
             </div>
-          )}
-        </>
-      )}
+          </div>
+        )}
+      </div>
 
       {/* Employee Detail Drawer */}
       <AnimatePresence>
@@ -571,14 +811,20 @@ function EditEmployeeModal({
       confirmLabel="Save Changes"
       confirmLoading={updateMutation.isPending}
     >
-      <div className="space-y-4">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', padding: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'linear-gradient(135deg, var(--pz-brand), #7C3AED)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <User size={14} style={{ color: '#fff' }} />
+          </div>
+          <h3 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--pz-text)', margin: 0 }}>Personal Information</h3>
+        </div>
         <Input
           label="Full Name"
           value={fullName}
           onChange={(e) => setFullName(e.target.value)}
           placeholder="e.g. Mohamed Kamara"
         />
-        <div className="grid grid-cols-3 gap-4">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>
           <Input
             label="First Name"
             value={firstName}
@@ -598,13 +844,13 @@ function EditEmployeeModal({
             placeholder="Middle name"
           />
         </div>
-        <div className="grid grid-cols-3 gap-4">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-[var(--pz-text-secondary)] uppercase tracking-wide">Gender</label>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--pz-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Gender</label>
             <select
               value={gender}
               onChange={(e) => setGender(e.target.value)}
-              className="h-11 px-3.5 rounded-lg border border-[var(--pz-border)] bg-[var(--pz-surface-1)] text-sm text-[var(--pz-text)]"
+              style={{ height: '44px', padding: '0 14px', borderRadius: '8px', border: '1px solid var(--pz-border)', background: 'var(--pz-surface-1)', fontSize: '14px', color: 'var(--pz-text)', outline: 'none', width: '100%' }}
             >
               <option value="">Not set</option>
               <option value="male">Male</option>
@@ -626,19 +872,25 @@ function EditEmployeeModal({
             placeholder="e.g. +232 77 123456"
           />
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'linear-gradient(135deg, #F59E0B, #D97706)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Building2 size={14} style={{ color: '#fff' }} />
+          </div>
+          <h3 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--pz-text)', margin: 0 }}>Employment Details</h3>
+        </div>
         <Input
           label="Position"
           value={position}
           onChange={(e) => setPosition(e.target.value)}
           placeholder="e.g. IT Technician"
         />
-        <div className="grid grid-cols-3 gap-4">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-[var(--pz-text-secondary)] uppercase tracking-wide">Department</label>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--pz-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Department</label>
             <select
               value={departmentId}
               onChange={(e) => setDepartmentId(e.target.value)}
-              className="h-11 px-3.5 rounded-lg border border-[var(--pz-border)] bg-[var(--pz-surface-1)] text-sm text-[var(--pz-text)]"
+              style={{ height: '44px', padding: '0 14px', borderRadius: '8px', border: '1px solid var(--pz-border)', background: 'var(--pz-surface-1)', fontSize: '14px', color: 'var(--pz-text)', outline: 'none', width: '100%' }}
             >
               <option value="">No Department</option>
               {departments.map((d) => (
@@ -646,12 +898,12 @@ function EditEmployeeModal({
               ))}
             </select>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-[var(--pz-text-secondary)] uppercase tracking-wide">Employment Type</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--pz-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Employment Type</label>
             <select
               value={employmentType}
               onChange={(e) => setEmploymentType(e.target.value)}
-              className="h-11 px-3.5 rounded-lg border border-[var(--pz-border)] bg-[var(--pz-surface-1)] text-sm text-[var(--pz-text)]"
+              style={{ height: '44px', padding: '0 14px', borderRadius: '8px', border: '1px solid var(--pz-border)', background: 'var(--pz-surface-1)', fontSize: '14px', color: 'var(--pz-text)', outline: 'none', width: '100%' }}
             >
               <option value="">Not set</option>
               <option value="full_time">Full Time</option>
@@ -661,12 +913,12 @@ function EditEmployeeModal({
               <option value="temporary">Temporary</option>
             </select>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-[var(--pz-text-secondary)] uppercase tracking-wide">Status</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--pz-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Status</label>
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value)}
-              className="h-11 px-3.5 rounded-lg border border-[var(--pz-border)] bg-[var(--pz-surface-1)] text-sm text-[var(--pz-text)]"
+              style={{ height: '44px', padding: '0 14px', borderRadius: '8px', border: '1px solid var(--pz-border)', background: 'var(--pz-surface-1)', fontSize: '14px', color: 'var(--pz-text)', outline: 'none', width: '100%' }}
             >
               <option value="active">Active</option>
               <option value="inactive">On Leave</option>
@@ -921,26 +1173,26 @@ function EmployeeDevicesTab({
         description={`Select devices to assign to ${employee.full_name}`}
         size="md"
       >
-        <div className="space-y-3">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '24px' }}>
           {unassignedDevices.length === 0 ? (
-            <p className="text-sm text-[var(--pz-text-muted)] text-center py-4">All devices are already assigned</p>
+            <p style={{ fontSize: '14px', color: 'var(--pz-text-muted)', textAlign: 'center', padding: '16px 0' }}>All devices are already assigned</p>
           ) : (
             unassignedDevices.map((device: any) => (
               <label
                 key={device.id}
-                className="flex items-center gap-3 p-3 rounded-xl bg-[var(--pz-surface-2)]/50 border border-[var(--pz-border)] hover:border-blue-500/30 cursor-pointer transition-colors"
+                style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', borderRadius: '12px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', cursor: 'pointer', transition: 'all 0.12s' }}
               >
                 <input
                   type="checkbox"
-                  className="rounded border-[var(--pz-border)]"
+                  style={{ borderRadius: '4px', border: '1px solid var(--pz-border)' }}
                   data-device-id={device.id}
                 />
-                <div className={`p-1.5 rounded-lg ${device.is_online ? 'bg-emerald-500/10' : 'bg-[var(--pz-surface-3)]'}`}>
-                  <Monitor size={12} className={device.is_online ? 'text-emerald-400' : 'text-[var(--pz-text-muted)]'} />
+                <div style={{ padding: '6px', borderRadius: '8px', background: device.is_online ? 'rgba(16, 185, 129, 0.1)' : 'var(--pz-surface-3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Monitor size={12} style={{ color: device.is_online ? '#10B981' : 'var(--pz-text-muted)' }} />
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-[var(--pz-text-secondary)]">{device.name || `Device ${device.serial_number?.slice(-6)}`}</p>
-                  <p className="text-[10px] text-[var(--pz-text-muted)] font-mono">{device.ip_address}</p>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--pz-text-secondary)', margin: 0 }}>{device.name || `Device ${device.serial_number?.slice(-6)}`}</p>
+                  <p style={{ fontSize: '10px', color: 'var(--pz-text-muted)', fontFamily: 'monospace', margin: 0 }}>{device.ip_address}</p>
                 </div>
                 <StatusBadge status={device.is_online ? 'online' : 'offline'} size="xs" />
               </label>
@@ -948,7 +1200,7 @@ function EmployeeDevicesTab({
           )}
         </div>
         {unassignedDevices.length > 0 && (
-          <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-[var(--pz-border)]">
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--pz-border)' }}>
             <Button variant="outline" onClick={() => setShowAssignModal(false)}>Cancel</Button>
             <Button
               onClick={() => {
@@ -1214,30 +1466,39 @@ function EmployeeAssignmentTab({
         size="sm"
         description={assignmentType === 'auto' ? 'Revert employee to department protocol' : 'This changes how attendance is calculated for this employee'}
         footer={
-          <div className="flex gap-3 w-full">
+          <div style={{ display: 'flex', gap: '12px', width: '100%' }}>
             <button
               onClick={() => setConfirmOpen(false)}
-              className="flex-1 px-5 py-3 rounded-xl bg-[var(--pz-surface-2)] hover:bg-[var(--pz-surface-3)] border border-[var(--pz-border)] text-sm font-semibold text-[var(--pz-text-secondary)] transition-colors"
+              style={{ flex: 1, padding: '12px 20px', borderRadius: '12px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '14px', fontWeight: 600, color: 'var(--pz-text-secondary)', cursor: 'pointer', transition: 'background 0.12s' }}
             >
               Cancel
             </button>
             <button
               onClick={handleConfirm}
               disabled={assignMut.isPending}
-              className={cn(
-                'flex-1 px-5 py-3 rounded-xl text-white text-sm font-semibold transition-colors disabled:opacity-50',
-                assignmentType === 'auto' ? 'bg-red-600 hover:bg-red-500' : 'bg-amber-600 hover:bg-amber-500'
-              )}
+              style={{
+                flex: 1,
+                padding: '12px 20px',
+                borderRadius: '12px',
+                color: '#fff',
+                fontSize: '14px',
+                fontWeight: 600,
+                border: 'none',
+                cursor: assignMut.isPending ? 'default' : 'pointer',
+                transition: 'background 0.12s',
+                opacity: assignMut.isPending ? 0.5 : 1,
+                background: assignmentType === 'auto' ? '#DC2626' : '#D97706',
+              }}
             >
               {assignMut.isPending ? 'Saving...' : assignmentType === 'auto' ? 'Remove Override' : 'Confirm Override'}
             </button>
           </div>
         }
       >
-        <div className="space-y-4">
-          <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
-            <p className="text-xs font-bold text-amber-400 mb-1">⚠ Repercussions</p>
-            <ul className="text-[11px] text-amber-400/80 space-y-1 list-disc list-inside">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', padding: '16px' }}>
+          <div style={{ padding: '12px', borderRadius: '12px', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
+            <p style={{ fontSize: '12px', fontWeight: 700, color: '#F59E0B', margin: '0 0 4px 0' }}>⚠ Repercussions</p>
+            <ul style={{ fontSize: '11px', color: 'rgba(245, 158, 11, 0.8)', margin: 0, paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
               {assignmentType === 'auto' ? (
                 <li>Employee will revert to the department's default shift protocol</li>
               ) : (
@@ -1250,20 +1511,20 @@ function EmployeeAssignmentTab({
               )}
             </ul>
           </div>
-          <div className="space-y-1 text-xs">
-            <div className="flex justify-between py-2 px-3 rounded-lg bg-[var(--pz-surface-2)]/50">
-              <span className="text-[var(--pz-text-muted)]">Employee</span>
-              <span className="font-semibold text-[var(--pz-text)]">{employee.full_name}</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', borderRadius: '8px', background: 'var(--pz-surface-2)' }}>
+              <span style={{ color: 'var(--pz-text-muted)' }}>Employee</span>
+              <span style={{ fontWeight: 600, color: 'var(--pz-text)' }}>{employee.full_name}</span>
             </div>
             {assignmentType === 'protocol' && selectedProto && (
               <>
-                <div className="flex justify-between py-2 px-3 rounded-lg bg-[var(--pz-surface-2)]/50">
-                  <span className="text-[var(--pz-text-muted)]">Protocol</span>
-                  <span className="font-semibold text-[var(--pz-text)]">{selectedProto.name} ({selectedProto.protocol_type})</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', borderRadius: '8px', background: 'var(--pz-surface-2)' }}>
+                  <span style={{ color: 'var(--pz-text-muted)' }}>Protocol</span>
+                  <span style={{ fontWeight: 600, color: 'var(--pz-text)' }}>{selectedProto.name} ({selectedProto.protocol_type})</span>
                 </div>
-                <div className="flex justify-between py-2 px-3 rounded-lg bg-[var(--pz-surface-2)]/50">
-                  <span className="text-[var(--pz-text-muted)]">Pattern</span>
-                  <span className="font-semibold text-[var(--pz-text)]">
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', borderRadius: '8px', background: 'var(--pz-surface-2)' }}>
+                  <span style={{ color: 'var(--pz-text-muted)' }}>Pattern</span>
+                  <span style={{ fontWeight: 600, color: 'var(--pz-text)' }}>
                     {selectedProto.protocol_type === 'rotating'
                       ? `${selectedProto.days_on || '?'} on / ${selectedProto.days_off || '?'} off`
                       : `${selectedProto.working_hours_start || '?'}–${selectedProto.working_hours_end || '?'}`
@@ -1273,45 +1534,53 @@ function EmployeeAssignmentTab({
               </>
             )}
             {assignmentType === 'custom' && selectedTpl && (
-              <div className="flex justify-between py-2 px-3 rounded-lg bg-[var(--pz-surface-2)]/50">
-                <span className="text-[var(--pz-text-muted)]">Override Template</span>
-                <span className="font-semibold text-[var(--pz-text)]">{selectedTpl.name} ({selectedTpl.start_time}–{selectedTpl.end_time})</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', borderRadius: '8px', background: 'var(--pz-surface-2)' }}>
+                <span style={{ color: 'var(--pz-text-muted)' }}>Override Template</span>
+                <span style={{ fontWeight: 600, color: 'var(--pz-text)' }}>{selectedTpl.name} ({selectedTpl.start_time}–{selectedTpl.end_time})</span>
               </div>
             )}
             {currentAssignment && assignmentType !== 'auto' && (
-              <div className="flex justify-between py-2 px-3 rounded-lg bg-[var(--pz-surface-2)]/50">
-                <span className="text-[var(--pz-text-muted)]">Current Override</span>
-                <span className="font-semibold text-[var(--pz-text)]">Active</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', borderRadius: '8px', background: 'var(--pz-surface-2)' }}>
+                <span style={{ color: 'var(--pz-text-muted)' }}>Current Override</span>
+                <span style={{ fontWeight: 600, color: 'var(--pz-text)' }}>Active</span>
               </div>
             )}
           </div>
           {/* Working Days Selector (only for protocol/custom) */}
           {assignmentType !== 'auto' && (
-            <div className="p-3 rounded-xl bg-[var(--pz-surface-2)]/50 border border-[var(--pz-border)]">
-              <label className="text-[10px] font-semibold text-[var(--pz-text-muted)] mb-1.5 block">
+            <div style={{ padding: '12px', borderRadius: '12px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)' }}>
+              <label style={{ fontSize: '10px', fontWeight: 600, color: 'var(--pz-text-muted)', marginBottom: '6px', display: 'block' }}>
                 Apply on which days?
               </label>
-              <div className="flex gap-1.5">
+              <div style={{ display: 'flex', gap: '6px' }}>
                 {DAYS_SHORT.map((day, idx) => (
                   <button
                     key={day}
                     onClick={() => toggleDay(idx + 1)}
-                    className={cn(
-                      'flex-1 py-2 rounded-lg text-[9px] font-bold transition-all border',
-                      workingDays.includes(idx + 1)
-                        ? 'bg-blue-600 text-white border-blue-500 shadow-sm shadow-blue-600/20'
-                        : 'bg-[var(--pz-surface-2)] border-[var(--pz-border)] text-[var(--pz-text-muted)] hover:text-[var(--pz-text-secondary)]'
-                    )}
+                    style={{
+                      flex: 1,
+                      padding: '8px 0',
+                      borderRadius: '8px',
+                      fontSize: '9px',
+                      fontWeight: 700,
+                      border: '1px solid',
+                      cursor: 'pointer',
+                      transition: 'all 0.12s',
+                      ...(workingDays.includes(idx + 1)
+                        ? { background: 'var(--pz-brand)', color: '#fff', borderColor: 'var(--pz-brand)' }
+                        : { background: 'var(--pz-surface-2)', borderColor: 'var(--pz-border)', color: 'var(--pz-text-muted)' }
+                      ),
+                    }}
                   >
                     {day[0]}
                   </button>
                 ))}
               </div>
               {workingDays.length === 0 && (
-                <p className="text-[9px] text-amber-400 mt-1.5">No days selected — assignment will not apply to any day</p>
+                <p style={{ fontSize: '9px', color: '#F59E0B', margin: '6px 0 0' }}>No days selected — assignment will not apply to any day</p>
               )}
               {workingDays.length === 7 && (
-                <p className="text-[9px] text-[var(--pz-text-muted)] mt-1.5">All days — employee works every day including weekends</p>
+                <p style={{ fontSize: '9px', color: 'var(--pz-text-muted)', margin: '6px 0 0' }}>All days — employee works every day including weekends</p>
               )}
             </div>
           )}

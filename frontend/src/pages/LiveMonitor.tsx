@@ -15,7 +15,6 @@ import { DepartmentActivityPanel } from '@/components/dashboard/DepartmentActivi
 import { UnknownUserPanel } from '@/components/dashboard/UnknownUserPanel'
 import { DuplicateScanPanel } from '@/components/dashboard/DuplicateScanPanel'
 import type { AttendanceSummary, Device } from '@/types'
-import { PageHeader } from '@/components/ui/PageHeader'
 import { KPICard } from '@/components/ui/KPICard'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 
@@ -25,6 +24,39 @@ const selectLate    = (s: ReturnType<typeof useDeptSummaryStore.getState>) => s.
 const selectAbsent  = (s: ReturnType<typeof useDeptSummaryStore.getState>) => s._totals.absent
 const selectOnShift = (s: ReturnType<typeof useDeptSummaryStore.getState>) => s._totals.onShift
 const selectScanCount = (s: ReturnType<typeof useScanFeedStore.getState>) => s.scans.length
+
+const s = {
+  page: { display: 'flex', flexDirection: 'column' as const, gap: '28px', padding: '32px', flex: 1 },
+  header: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' },
+  headerLeft: { display: 'flex', flexDirection: 'column' as const, gap: '4px' },
+  headerTitle: { fontSize: '22px', fontWeight: 700, color: 'var(--pz-text)', margin: 0, letterSpacing: '-0.02em' },
+  headerSubtitle: { fontSize: '13px', color: 'var(--pz-text-muted)', margin: 0 },
+  liveBadge: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '10px', color: 'var(--pz-success)', background: 'rgba(16,185,129,0.1)', padding: '6px 14px', borderRadius: '9999px', border: '1px solid rgba(16,185,129,0.2)', fontWeight: 600 },
+  liveDot: { width: '6px', height: '6px', borderRadius: '50%', background: 'var(--pz-success)', flexShrink: 0 },
+  kpiGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' },
+  mainGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' },
+  card: { background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', borderRadius: '10px', overflow: 'hidden' },
+  cardPad: { padding: '16px' },
+  cardHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' },
+  cardTitleRow: { display: 'flex', alignItems: 'center', gap: '8px' },
+  cardSectionLabel: { fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', textTransform: 'uppercase' as const, letterSpacing: '0.05em', margin: 0 },
+  rtBadge: { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '10px', fontWeight: 600, color: 'var(--pz-success)' },
+  rightCol: { display: 'flex', flexDirection: 'column' as const, gap: '16px' },
+  scrollArea: { maxHeight: '240px', overflowY: 'auto' as const, paddingRight: '4px' },
+  deviceRow: { display: 'flex', alignItems: 'center', gap: '12px', padding: '10px', borderRadius: '8px', border: '1px solid var(--pz-border)', background: 'rgba(255,255,255,0.02)', cursor: 'pointer', transition: 'border-color 0.15s' },
+  iconOnline: { padding: '8px', borderRadius: '8px', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)' },
+  iconOffline: { padding: '8px', borderRadius: '8px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)' },
+  deviceInfo: { flex: 1, minWidth: 0 },
+  deviceName: { fontSize: '12px', fontWeight: 600, color: 'var(--pz-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis' as const, whiteSpace: 'nowrap' as const, margin: 0 },
+  deviceMeta: { fontSize: '10px', color: 'var(--pz-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis' as const, whiteSpace: 'nowrap' as const, margin: 0 },
+  activityRow: { display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '8px', borderRadius: '8px', border: '1px solid var(--pz-border)', background: 'rgba(255,255,255,0.02)' },
+  activityText: { fontSize: '10px', fontWeight: 500, color: 'var(--pz-text-secondary)', margin: 0 },
+  activityMeta: { fontSize: '10px', color: 'var(--pz-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis' as const, whiteSpace: 'nowrap' as const, margin: 0 },
+  fleetStats: { display: 'flex', alignItems: 'center', gap: '12px', fontSize: '10px', fontWeight: 600 },
+  onlineStat: { display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--pz-success)' },
+  offlineStat: { display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--pz-danger)' },
+  emptyState: { fontSize: '12px', textAlign: 'center' as const, color: 'var(--pz-text-muted)', padding: '32px 0' },
+}
 
 export default function LiveMonitor() {
   const today = format(new Date(), 'yyyy-MM-dd')
@@ -73,22 +105,23 @@ export default function LiveMonitor() {
   })
 
   return (
-    <div className="space-y-5 pz-slide-up">
+    <div style={s.page}>
       {/* ── Page Header ─────────────────────────────────────── */}
-      <PageHeader
-        title="Live Operations Monitor"
-        subtitle={`Real-time biometric scan feed · ${format(new Date(), 'EEEE, MMMM d yyyy')}`}
-        breadcrumbs={[{ label: 'Operations' }, { label: 'Live Monitor' }]}
-        badge={
-          <div className="flex items-center gap-2 text-[10px] text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20 font-semibold">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 pz-pulse-dot" />
-            Live · {scanCount} scans
-          </div>
-        }
-      />
+      <div style={s.header}>
+        <div style={s.headerLeft}>
+          <h1 style={s.headerTitle}>Live Operations Monitor</h1>
+          <p style={s.headerSubtitle}>
+            Real-time biometric scan feed · {format(new Date(), 'EEEE, MMMM d yyyy')}
+          </p>
+        </div>
+        <div style={s.liveBadge}>
+          <span className="pz-pulse-dot" style={s.liveDot} />
+          Live · {scanCount} scans
+        </div>
+      </div>
 
       {/* ── KPI Row ──────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div style={s.kpiGrid}>
         <KPICard icon={UserCheck} label="Present Today" value={present} color="#10B981" />
         <KPICard icon={Clock} label="Late Today" value={late} color="#F59E0B" />
         <KPICard icon={UserX} label="Absent Today" value={absent} color="#EF4444" />
@@ -96,20 +129,20 @@ export default function LiveMonitor() {
       </div>
 
       {/* ── Main Grid ────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div style={s.mainGrid}>
         {/* Live Scan Feed — 2 columns */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          className="pz-card p-4 lg:col-span-2"
+          style={{ ...s.card, ...s.cardPad, gridColumn: 'span 2' }}
         >
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Fingerprint size={15} className="text-blue-400" />
-              <h2 className="pz-section-label">Live Scan Feed</h2>
+          <div style={s.cardHeader}>
+            <div style={s.cardTitleRow}>
+              <Fingerprint size={15} style={{ color: 'var(--pz-accent)' }} />
+              <h2 style={s.cardSectionLabel}>Live Scan Feed</h2>
             </div>
-            <div className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-semibold">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 pz-pulse-dot" />
+            <div style={s.rtBadge}>
+              <span className="pz-pulse-dot" style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--pz-success)', flexShrink: 0 }} />
               Real-time
             </div>
           </div>
@@ -117,17 +150,17 @@ export default function LiveMonitor() {
         </motion.div>
 
         {/* Right column */}
-        <div className="space-y-4">
+        <div style={s.rightCol}>
           {/* Department Activity */}
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="pz-card p-4"
+            style={{ ...s.card, ...s.cardPad }}
           >
-            <div className="flex items-center gap-2 mb-4">
-              <Users size={15} className="text-blue-400" />
-              <h2 className="pz-section-label">Department Activity</h2>
+            <div style={{ ...s.cardTitleRow, marginBottom: '16px' }}>
+              <Users size={15} style={{ color: 'var(--pz-accent)' }} />
+              <h2 style={s.cardSectionLabel}>Department Activity</h2>
             </div>
             <DepartmentActivityPanel />
           </motion.div>
@@ -137,11 +170,11 @@ export default function LiveMonitor() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15 }}
-            className="pz-card p-4"
+            style={{ ...s.card, ...s.cardPad }}
           >
-            <div className="flex items-center gap-2 mb-4">
-              <AlertTriangle size={15} className="text-amber-500" />
-              <h2 className="pz-section-label">Unknown Users</h2>
+            <div style={{ ...s.cardTitleRow, marginBottom: '16px' }}>
+              <AlertTriangle size={15} style={{ color: '#F59E0B' }} />
+              <h2 style={s.cardSectionLabel}>Unknown Users</h2>
             </div>
             <UnknownUserPanel />
           </motion.div>
@@ -149,45 +182,45 @@ export default function LiveMonitor() {
       </div>
 
       {/* ── Bottom Row ───────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div style={s.mainGrid}>
         {/* Device Fleet Status */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="pz-card p-4"
+          style={{ ...s.card, ...s.cardPad }}
         >
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Monitor size={15} className="text-blue-400" />
-              <h2 className="pz-section-label">Device Fleet Status</h2>
+          <div style={s.cardHeader}>
+            <div style={s.cardTitleRow}>
+              <Monitor size={15} style={{ color: 'var(--pz-accent)' }} />
+              <h2 style={s.cardSectionLabel}>Device Fleet Status</h2>
             </div>
-            <div className="flex items-center gap-3 text-[10px] font-semibold">
-              <span className="flex items-center gap-1 text-emerald-400">
+            <div style={s.fleetStats}>
+              <span style={s.onlineStat}>
                 <Wifi size={10} /> {onlineDevices.length} online
               </span>
-              <span className="flex items-center gap-1 text-red-400">
+              <span style={s.offlineStat}>
                 <WifiOff size={10} /> {offlineDevices.length} offline
               </span>
             </div>
           </div>
-          <div className="space-y-2 max-h-[240px] overflow-y-auto pr-1">
+          <div style={s.scrollArea}>
             {devices.length === 0 ? (
-              <p className="text-xs text-center text-gray-500 py-8">No devices registered</p>
+              <p style={s.emptyState}>No devices registered</p>
             ) : (
               devices.map((device) => (
                 <div
                   key={device.id}
-                  className="flex items-center gap-3 p-2.5 rounded-lg border border-[var(--pz-border)] bg-[var(--pz-surface-2)]/20 hover:border-[var(--pz-border-strong)] transition-colors"
+                  style={s.deviceRow}
                 >
-                  <div className={`p-2 rounded-lg ${device.is_online ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-[var(--pz-surface-2)] border border-[var(--pz-border)]'}`}>
-                    <Monitor size={14} className={device.is_online ? 'text-emerald-400' : 'text-gray-500'} />
+                  <div style={device.is_online ? s.iconOnline : s.iconOffline}>
+                    <Monitor size={14} style={{ color: device.is_online ? 'var(--pz-success)' : 'var(--pz-text-muted)' }} />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-gray-200 truncate">
+                  <div style={s.deviceInfo}>
+                    <p style={s.deviceName}>
                       {device.name || `Device ${device.serial_number.slice(-6)}`}
                     </p>
-                    <p className="text-[10px] text-gray-500 truncate">
+                    <p style={s.deviceMeta}>
                       {device.office_name || 'Unassigned'} · {device.department_name || 'Unassigned'}
                     </p>
                   </div>
@@ -203,34 +236,39 @@ export default function LiveMonitor() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25 }}
-          className="pz-card p-4"
+          style={{ ...s.card, ...s.cardPad }}
         >
-          <div className="flex items-center gap-2 mb-4">
-            <Radio size={15} className="text-blue-400" />
-            <h2 className="pz-section-label">Device Activity Stream</h2>
+          <div style={{ ...s.cardTitleRow, marginBottom: '16px' }}>
+            <Radio size={15} style={{ color: 'var(--pz-accent)' }} />
+            <h2 style={s.cardSectionLabel}>Device Activity Stream</h2>
           </div>
-          <div className="space-y-2 max-h-[240px] overflow-y-auto pr-1">
+          <div style={s.scrollArea}>
             {!fleetActivity?.recent_activity?.length ? (
-              <p className="text-xs text-center text-gray-500 py-8">No recent activity</p>
+              <p style={s.emptyState}>No recent activity</p>
             ) : (
               fleetActivity.recent_activity.map((item: any) => (
                 <div
                   key={item.id}
-                  className="flex items-start gap-2 p-2 rounded-lg border border-[var(--pz-border)] bg-[var(--pz-surface-2)]/20"
+                  style={s.activityRow}
                 >
-                  <div className={`mt-0.5 p-1 rounded ${
-                    item.activity_type === 'attendance_push' ? 'bg-emerald-500/10 text-emerald-400' :
-                    item.activity_type === 'heartbeat' ? 'bg-blue-500/10 text-blue-400' :
-                    item.activity_type === 'device_disconnected' ? 'bg-red-500/10 text-red-400' :
-                    'bg-gray-500/10 text-gray-400'
-                  }`}>
+                  <div style={{
+                    marginTop: '2px', padding: '4px', borderRadius: '4px',
+                    background: item.activity_type === 'attendance_push' ? 'rgba(16,185,129,0.1)' :
+                      item.activity_type === 'heartbeat' ? 'rgba(59,130,246,0.1)' :
+                      item.activity_type === 'device_disconnected' ? 'rgba(239,68,68,0.1)' :
+                      'rgba(107,114,128,0.1)',
+                    color: item.activity_type === 'attendance_push' ? 'var(--pz-success)' :
+                      item.activity_type === 'heartbeat' ? 'var(--pz-accent)' :
+                      item.activity_type === 'device_disconnected' ? 'var(--pz-danger)' :
+                      'var(--pz-text-muted)',
+                  }}>
                     <Cpu size={10} />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[10px] font-medium text-gray-300">
+                  <div style={s.deviceInfo}>
+                    <p style={s.activityText}>
                       {item.activity_type.replace(/_/g, ' ')}
                     </p>
-                    <p className="text-[10px] text-gray-500 truncate">
+                    <p style={s.activityMeta}>
                       {item.ip_address || 'Unknown IP'} · {new Date(item.created_at).toLocaleTimeString()}
                     </p>
                   </div>
@@ -245,33 +283,37 @@ export default function LiveMonitor() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="pz-card p-4"
+          style={{ ...s.card, ...s.cardPad }}
         >
-          <div className="flex items-center gap-2 mb-4">
-            <Fingerprint size={15} className="text-blue-400" />
-            <h2 className="pz-section-label">Recent Enrollments</h2>
+          <div style={{ ...s.cardTitleRow, marginBottom: '16px' }}>
+            <Fingerprint size={15} style={{ color: 'var(--pz-accent)' }} />
+            <h2 style={s.cardSectionLabel}>Recent Enrollments</h2>
           </div>
-          <div className="space-y-2 max-h-[240px] overflow-y-auto pr-1">
+          <div style={s.scrollArea}>
             {!recentEnrollments?.length ? (
-              <p className="text-xs text-center text-gray-500 py-8">No recent enrollments</p>
+              <p style={s.emptyState}>No recent enrollments</p>
             ) : (
               recentEnrollments.map((item: any) => (
                 <div
                   key={item.id}
-                  className="flex items-start gap-2 p-2 rounded-lg border border-[var(--pz-border)] bg-[var(--pz-surface-2)]/20"
+                  style={s.activityRow}
                 >
-                  <div className={`mt-0.5 p-1 rounded ${
-                    item.action === 'enrolled' ? 'bg-emerald-500/10 text-emerald-400' :
-                    item.action === 'removed' ? 'bg-red-500/10 text-red-400' :
-                    'bg-blue-500/10 text-blue-400'
-                  }`}>
+                  <div style={{
+                    marginTop: '2px', padding: '4px', borderRadius: '4px',
+                    background: item.action === 'enrolled' ? 'rgba(16,185,129,0.1)' :
+                      item.action === 'removed' ? 'rgba(239,68,68,0.1)' :
+                      'rgba(59,130,246,0.1)',
+                    color: item.action === 'enrolled' ? 'var(--pz-success)' :
+                      item.action === 'removed' ? 'var(--pz-danger)' :
+                      'var(--pz-accent)',
+                  }}>
                     <Fingerprint size={10} />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[10px] font-medium text-gray-300">
+                  <div style={s.deviceInfo}>
+                    <p style={s.activityText}>
                       {item.action} · {item.enrollment_type}
                     </p>
-                    <p className="text-[10px] text-gray-500 truncate">
+                    <p style={s.activityMeta}>
                       User {item.device_user_id} · {new Date(item.created_at).toLocaleTimeString()}
                     </p>
                   </div>

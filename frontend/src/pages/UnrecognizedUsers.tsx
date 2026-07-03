@@ -3,8 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { AlertCircle, UserCheck, Trash2, Download, UserPlus, Search } from 'lucide-react'
 import { devicesAPI, employeesAPI, departmentsAPI, shiftTemplatesAPI } from '@/api/client'
 import { format } from 'date-fns'
-import { motion } from 'framer-motion'
-import { PageHeader } from '@/components/ui/PageHeader'
+import { Modal } from '@/components/ui/Modal'
 import { FilterBar } from '@/components/ui/FilterBar'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { DataTable, type ColumnDef } from '@/components/ui/data-table/DataTable'
@@ -31,10 +30,10 @@ const columns: ColumnDef<UnrecognizedUser, unknown>[] = [
     header: 'Unknown User ID',
     cell: ({ getValue }) => (
       <div className="flex items-center gap-2">
-        <div className="w-7 h-7 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
-          <AlertCircle size={12} className="text-amber-400" />
+        <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <AlertCircle size={12} style={{ color: 'var(--pz-warning-500)' }} />
         </div>
-        <span className="text-gray-200 font-mono font-semibold">{getValue() as string}</span>
+        <span style={{ color: 'var(--pz-text)', fontFamily: 'monospace', fontWeight: 600 }}>{getValue() as string}</span>
       </div>
     ),
     size: 200,
@@ -43,14 +42,14 @@ const columns: ColumnDef<UnrecognizedUser, unknown>[] = [
     accessorKey: 'device_name',
     header: 'Device',
     cell: ({ row }) => (
-      <span className="text-gray-400">{row.original.device_name || row.original.device_serial}</span>
+      <span style={{ color: 'var(--pz-text-secondary)' }}>{row.original.device_name || row.original.device_serial}</span>
     ),
   },
   {
     accessorKey: 'scan_count',
     header: 'Scans',
     cell: ({ getValue }) => (
-      <span className={`font-mono font-bold tabular-nums ${(getValue() as number) > 5 ? 'text-amber-400' : 'text-gray-400'}`}>
+      <span className="font-mono font-bold tabular-nums" style={{ color: (getValue() as number) > 5 ? 'var(--pz-warning-500)' : 'var(--pz-text-secondary)' }}>
         {getValue() as number}
       </span>
     ),
@@ -60,7 +59,7 @@ const columns: ColumnDef<UnrecognizedUser, unknown>[] = [
     accessorKey: 'first_seen',
     header: 'First Seen',
     cell: ({ getValue }) => (
-      <span className="text-gray-500 text-xs font-mono tabular-nums">
+      <span style={{ color: 'var(--pz-text-muted)', fontSize: '12px', fontFamily: 'monospace' }} className="tabular-nums">
         {format(new Date(getValue() as string), 'MMM d, HH:mm')}
       </span>
     ),
@@ -70,7 +69,7 @@ const columns: ColumnDef<UnrecognizedUser, unknown>[] = [
     accessorKey: 'last_seen',
     header: 'Last Seen',
     cell: ({ getValue }) => (
-      <span className="text-gray-400 text-xs font-mono tabular-nums">
+      <span style={{ color: 'var(--pz-text-secondary)', fontSize: '12px', fontFamily: 'monospace' }} className="tabular-nums">
         {format(new Date(getValue() as string), 'MMM d, HH:mm')}
       </span>
     ),
@@ -86,6 +85,16 @@ const columns: ColumnDef<UnrecognizedUser, unknown>[] = [
     size: 110,
   },
 ]
+
+const s = {
+  page: { display: 'flex', flexDirection: 'column' as const, gap: '28px', padding: '32px', flex: 1 },
+  header: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' },
+  headerLeft: { display: 'flex', flexDirection: 'column' as const, gap: '4px' },
+  headerTitle: { fontSize: '22px', fontWeight: 700, color: 'var(--pz-text)', margin: 0, letterSpacing: '-0.02em' },
+  headerSubtitle: { fontSize: '13px', color: 'var(--pz-text-muted)', margin: 0 },
+  headerBadge: { marginLeft: '12px', padding: '3px 10px', borderRadius: '9999px', background: 'rgba(245,158,11,0.2)', color: 'var(--pz-warning-500)', fontSize: '10px', fontWeight: 700, border: '1px solid rgba(245,158,11,0.2)' },
+  cards: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' },
+}
 
 export default function UnrecognizedUsers() {
   const queryClient = useQueryClient()
@@ -176,21 +185,20 @@ export default function UnrecognizedUsers() {
   }, [users, searchValue])
 
   return (
-    <div className="space-y-5 pz-slide-up">
-      <PageHeader
-        title="Unrecognized Users"
-        subtitle="Identity resolution center — resolve unknown biometric scans"
-        breadcrumbs={[{ label: 'Infrastructure' }, { label: 'Unrecognized Users' }]}
-        badge={
-          pendingCount > 0 ? (
-            <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-bold border border-amber-500/20">
-              {pendingCount} pending
-            </span>
-          ) : undefined
-        }
-      />
+    <div style={s.page}>
+      <div style={s.header}>
+        <div style={s.headerLeft}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <h1 style={s.headerTitle}>Unrecognized Users</h1>
+            {pendingCount > 0 && (
+              <span style={s.headerBadge}>{pendingCount} pending</span>
+            )}
+          </div>
+          <p style={s.headerSubtitle}>Identity resolution center — resolve unknown biometric scans</p>
+        </div>
+      </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+      <div style={s.cards}>
         <KPICard icon={AlertCircle} label="Total Unrecognized" value={users.length} color="#F59E0B" loading={isLoading} />
         <KPICard icon={AlertCircle} label="Pending Resolution" value={pendingCount} color="#EF4444" loading={isLoading} />
         <KPICard icon={AlertCircle} label="Total Scans" value={totalScans} color="#6366F1" loading={isLoading} />
@@ -207,7 +215,7 @@ export default function UnrecognizedUsers() {
             onSearchChange={setSearchValue}
             searchPlaceholder="Search by user ID, device..."
             actions={
-              <button className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] hover:bg-[var(--pz-surface-3)] border border-[var(--pz-border)] text-xs font-semibold text-gray-300 transition-all">
+              <button className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] hover:bg-[var(--pz-surface-3)] border border-[var(--pz-border)] text-xs font-semibold transition-all" style={{ color: 'var(--pz-text-secondary)' }}>
                 <Download size={14} />
                 Export
               </button>
@@ -227,8 +235,8 @@ export default function UnrecognizedUsers() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
             {/* Status header */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', paddingBottom: '20px', borderBottom: '1px solid var(--pz-border)' }}>
-              <div style={{ padding: '14px', borderRadius: '6px', background: 'rgba(245,158,11,0.10)', border: '1px solid rgba(245,158,11,0.25)', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '24px', paddingBottom: '20px', borderBottom: '1px solid var(--pz-border)' }}>
+              <div style={{ padding: '18px', borderRadius: '10px', background: 'rgba(245,158,11,0.10)', border: '1px solid rgba(245,158,11,0.25)', flexShrink: 0 }}>
                 <AlertCircle size={24} style={{ color: '#F59E0B' }} />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -240,9 +248,14 @@ export default function UnrecognizedUsers() {
             </div>
 
             {/* Details table */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Details</h4>
-              <div style={{ border: '1px solid var(--pz-border)', borderRadius: '6px', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '28px', height: '28px', borderRadius: '10px', background: 'rgba(245,158,11,0.10)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <AlertCircle size={14} style={{ color: '#F59E0B' }} />
+                </div>
+                <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Details</h4>
+              </div>
+              <div style={{ border: '1px solid var(--pz-border)', borderRadius: '10px', overflow: 'hidden' }}>
                 {[
                   ['User ID on Device', selectedUser.user_id_on_device],
                   ['Device', selectedUser.device_name || selectedUser.device_serial],
@@ -251,7 +264,7 @@ export default function UnrecognizedUsers() {
                   ['Last Seen', format(new Date(selectedUser.last_seen), 'MMM d, yyyy HH:mm')],
                   ['Status', selectedUser.status],
                 ].map(([label, value], i, arr) => (
-                  <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '44px', paddingInline: '14px', borderBottom: i < arr.length - 1 ? '1px solid var(--pz-border)' : 'none', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
+                  <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: '52px', paddingInline: '16px', borderBottom: i < arr.length - 1 ? '1px solid var(--pz-border)' : 'none', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
                     <span style={{ fontSize: '12px', color: 'var(--pz-text-muted)' }}>{label}</span>
                     <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--pz-text-secondary)', fontFamily: 'monospace' }}>{value}</span>
                   </div>
@@ -260,7 +273,7 @@ export default function UnrecognizedUsers() {
             </div>
 
             {/* Actions */}
-            <div style={{ display: 'flex', gap: '12px', paddingTop: '8px', borderTop: '1px solid var(--pz-border)' }}>
+            <div style={{ display: 'flex', gap: '16px', paddingTop: '16px', borderTop: '1px solid var(--pz-border)' }}>
               <Button variant="default" size="md" style={{ flex: 1 }} onClick={() => setShowLinkModal(true)}>
                 <UserCheck size={15} /> Link to Employee
               </Button>
@@ -277,40 +290,23 @@ export default function UnrecognizedUsers() {
       </DetailDrawer>
 
       {/* ── Link Employee Modal ────────────────────────────── */}
-      {showLinkModal && selectedUser && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-6"
-          style={{ background: 'rgba(17,24,39,0.55)', backdropFilter: 'blur(6px)' }}
-          onClick={e => e.target === e.currentTarget && setShowLinkModal(false)}>
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
-            style={{
-              width: '100%', maxWidth: '640px',
-              background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)',
-              boxShadow: 'var(--pz-shadow-modal)', borderRadius: '10px', overflow: 'hidden',
-              maxHeight: '90vh', display: 'flex', flexDirection: 'column',
-            }}
-          >
-            <div style={{ padding: '28px 32px 20px 32px', borderBottom: '1px solid var(--pz-border)', flexShrink: 0 }}>
-              <h3 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--pz-text)', margin: 0 }}>Resolve Unknown User</h3>
-              <p style={{ fontSize: '14px', color: 'var(--pz-text-muted)', marginTop: '4px', marginBottom: 0 }}>
-                User ID <strong style={{ color: 'var(--pz-text-secondary)', fontFamily: 'monospace' }}>{selectedUser.user_id_on_device}</strong> from{' '}
-                <strong style={{ color: 'var(--pz-text-secondary)' }}>{selectedUser.device_name || selectedUser.device_serial}</strong>
-              </p>
-            </div>
-            <div style={{ padding: '28px 32px 32px 32px', overflowY: 'auto', flex: 1 }}>
-              <ResolveForm
-                onResolve={(employeeId) => resolveMutation.mutate({ employeeId })}
-                onResolveNew={(data) => resolveNewMutation.mutate(data)}
-                onCancel={() => setShowLinkModal(false)}
-                isPending={resolveMutation.isPending || resolveNewMutation.isPending}
-                deviceUserId={selectedUser.user_id_on_device}
-              />
-            </div>
-          </motion.div>
-        </div>
-      )}
+      <Modal
+        open={showLinkModal && !!selectedUser}
+        onClose={() => setShowLinkModal(false)}
+        title="Resolve Unknown User"
+        description={selectedUser ? `User ID ${selectedUser.user_id_on_device} from ${selectedUser.device_name || selectedUser.device_serial}` : ''}
+        size="md"
+      >
+        {selectedUser && (
+          <ResolveForm
+            onResolve={(employeeId) => resolveMutation.mutate({ employeeId })}
+            onResolveNew={(data) => resolveNewMutation.mutate(data)}
+            onCancel={() => setShowLinkModal(false)}
+            isPending={resolveMutation.isPending || resolveNewMutation.isPending}
+            deviceUserId={selectedUser.user_id_on_device}
+          />
+        )}
+      </Modal>
     </div>
   )
 }
@@ -364,27 +360,33 @@ function ResolveForm({
   const templates = Array.isArray(templateData) ? templateData : templateData?.items ?? []
 
   return (
-    <div className="space-y-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {/* ── Mode Tabs ──────────────────────────────────────── */}
-      <div className="flex rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] p-0.5">
+      <div style={{ display: 'flex', borderRadius: '8px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', padding: '2px' }}>
         <button
           onClick={() => setMode('search')}
-          className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-semibold transition-all ${
-            mode === 'search'
-              ? 'bg-blue-600 text-white shadow-sm'
-              : 'text-gray-400 hover:text-gray-200'
-          }`}
+          style={{
+            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+            padding: '8px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
+            transition: 'all 0.15s', border: 'none', cursor: 'pointer',
+            background: mode === 'search' ? '#2563EB' : 'transparent',
+            color: mode === 'search' ? '#fff' : 'var(--pz-text-secondary)',
+            boxShadow: mode === 'search' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+          }}
         >
           <Search size={13} />
           Link Existing
         </button>
         <button
           onClick={() => setMode('create')}
-          className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-semibold transition-all ${
-            mode === 'create'
-              ? 'bg-blue-600 text-white shadow-sm'
-              : 'text-gray-400 hover:text-gray-200'
-          }`}
+          style={{
+            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+            padding: '8px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
+            transition: 'all 0.15s', border: 'none', cursor: 'pointer',
+            background: mode === 'create' ? '#2563EB' : 'transparent',
+            color: mode === 'create' ? '#fff' : 'var(--pz-text-secondary)',
+            boxShadow: mode === 'create' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+          }}
         >
           <UserPlus size={13} />
           Create New
@@ -393,67 +395,74 @@ function ResolveForm({
 
       {/* ── Search Existing Employee ───────────────────────── */}
       {mode === 'search' && (
-        <>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div>
             <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>Search Employee</label>
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by name or code..."
-              className="pz-input w-full"
-              style={{ height: '44px', fontSize: '14px' }}
+              className="pz-input"
+              style={{ height: '44px', fontSize: '14px', width: '100%' }}
             />
           </div>
 
-          <div className="max-h-48 overflow-y-auto space-y-1">
+          <div style={{ maxHeight: '192px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
             {employees.map((emp: any) => (
               <button
                 key={emp.id}
                 onClick={() => setSelectedEmployeeId(emp.id)}
-                className={`w-full flex items-center gap-3 p-2.5 rounded-lg text-left transition-colors ${
-                  selectedEmployeeId === emp.id
-                    ? 'bg-blue-600/20 border border-blue-500/30'
-                    : 'hover:bg-[var(--pz-surface-2)] border border-transparent'
-                }`}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: '12px',
+                  padding: '10px', borderRadius: '8px', textAlign: 'left', cursor: 'pointer',
+                  transition: 'all 0.15s', border: '1px solid',
+                  background: selectedEmployeeId === emp.id ? 'rgba(37,99,235,0.2)' : 'transparent',
+                  borderColor: selectedEmployeeId === emp.id ? 'rgba(59,130,246,0.3)' : 'transparent',
+                }}
               >
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-900/40 to-indigo-900/40 flex items-center justify-center text-[10px] font-bold text-blue-400 border border-blue-500/20 flex-shrink-0">
+                <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, rgba(37,99,235,0.25), rgba(99,102,241,0.25))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700, color: 'var(--pz-accent)', border: '1px solid rgba(59,130,246,0.25)', flexShrink: 0 }}>
                   {emp.full_name?.[0] || '?'}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-gray-200 truncate">{emp.full_name}</p>
-                  <p className="text-[10px] text-gray-500 font-mono">{emp.employee_code}</p>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--pz-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{emp.full_name}</p>
+                  <p style={{ fontSize: '10px', color: 'var(--pz-text-muted)', fontFamily: 'monospace' }}>{emp.employee_code}</p>
                 </div>
                 {emp.department_name && (
-                  <span className="text-[9px] text-gray-500 bg-[var(--pz-surface)] px-1.5 py-0.5 rounded border border-[var(--pz-border)]">
+                  <span style={{ fontSize: '9px', color: 'var(--pz-text-muted)', background: 'var(--pz-surface)', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--pz-border)', whiteSpace: 'nowrap' }}>
                     {emp.department_name}
                   </span>
                 )}
               </button>
             ))}
             {!employees.length && search && (
-              <div className="text-center py-4">
-                <p className="text-xs text-gray-500">No employees found</p>
+              <div style={{ textAlign: 'center', padding: '16px 0' }}>
+                <p style={{ fontSize: '12px', color: 'var(--pz-text-muted)' }}>No employees found</p>
                 <button
                   onClick={() => setMode('create')}
-                  className="text-[10px] text-blue-400 hover:text-blue-300 mt-1"
+                  style={{ fontSize: '10px', color: 'var(--pz-accent)', marginTop: '4px', cursor: 'pointer', background: 'none', border: 'none' }}
                 >
                   Create a new employee →
                 </button>
               </div>
             )}
             {!employees.length && !search && (
-              <p className="text-xs text-gray-500 text-center py-4">Type to search employees</p>
+              <p style={{ fontSize: '12px', color: 'var(--pz-text-muted)', textAlign: 'center', padding: '16px 0' }}>Type to search employees</p>
             )}
           </div>
-        </>
+        </div>
       )}
 
       {/* ── Create New Employee ────────────────────────────── */}
       {mode === 'create' && (
-        <>
-          <div className="p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20">
-            <p className="text-[10px] text-blue-300">
-              Creating a new employee will automatically link device user <span className="font-mono font-bold">{deviceUserId}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingBottom: '8px', borderBottom: '1px solid var(--pz-border)' }}>
+            <UserPlus size={14} style={{ color: 'var(--pz-accent)' }} />
+            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--pz-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Employee Information</span>
+          </div>
+
+          <div style={{ padding: '10px', borderRadius: '8px', background: 'rgba(37,99,235,0.1)', border: '1px solid rgba(37,99,235,0.2)' }}>
+            <p style={{ fontSize: '10px', color: 'var(--pz-accent)' }}>
+              Creating a new employee will automatically link device user <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{deviceUserId}</span>
             </p>
           </div>
 
@@ -466,8 +475,8 @@ function ResolveForm({
                 value={form.full_name}
                 onChange={(e) => setForm(p => ({ ...p, full_name: e.target.value }))}
                 placeholder="John Doe"
-                className="pz-input w-full"
-                style={{ height: '44px', fontSize: '14px' }}
+                className="pz-input"
+                style={{ height: '44px', fontSize: '14px', width: '100%' }}
               />
             </div>
             <div>
@@ -478,8 +487,8 @@ function ResolveForm({
                 value={form.employee_code}
                 onChange={(e) => setForm(p => ({ ...p, employee_code: e.target.value }))}
                 placeholder="EMP001"
-                className="pz-input w-full"
-                style={{ height: '44px', fontSize: '14px' }}
+                className="pz-input"
+                style={{ height: '44px', fontSize: '14px', width: '100%' }}
               />
             </div>
           </div>
@@ -491,8 +500,8 @@ function ResolveForm({
             <select
               value={form.department_id}
               onChange={(e) => setForm(p => ({ ...p, department_id: e.target.value }))}
-              className="pz-input w-full"
-              style={{ height: '44px', fontSize: '14px' }}
+              className="pz-input"
+              style={{ height: '44px', fontSize: '14px', width: '100%' }}
             >
               <option value="">Select department</option>
               {departments.map((d: any) => (
@@ -508,8 +517,8 @@ function ResolveForm({
             <select
               value={form.shift_template_id}
               onChange={(e) => setForm(p => ({ ...p, shift_template_id: e.target.value }))}
-              className="pz-input w-full"
-              style={{ height: '44px', fontSize: '14px' }}
+              className="pz-input"
+              style={{ height: '44px', fontSize: '14px', width: '100%' }}
             >
               <option value="">No shift assigned</option>
               {templates.map((t: any) => (
@@ -526,11 +535,11 @@ function ResolveForm({
               value={form.position}
               onChange={(e) => setForm(p => ({ ...p, position: e.target.value }))}
               placeholder="e.g. Security Officer"
-              className="pz-input w-full"
-              style={{ height: '44px', fontSize: '14px' }}
+              className="pz-input"
+              style={{ height: '44px', fontSize: '14px', width: '100%' }}
             />
           </div>
-        </>
+        </div>
       )}
 
       {/* ── Actions ────────────────────────────────────────── */}

@@ -15,14 +15,17 @@ The protocol is assigned to departments and determines:
 
 import enum
 import uuid
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import Boolean, Integer, String, Text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import BaseModel
+
+if TYPE_CHECKING:
+    from app.models.shift_protocol_step import ShiftProtocolStep
 
 
 class ProtocolType(str, enum.Enum):
@@ -130,6 +133,24 @@ class ShiftProtocol(BaseModel):
     color: Mapped[Optional[str]] = mapped_column(
         String(20), nullable=True,
         comment="Hex color for UI display"
+    )
+
+    # Cycle settings
+    cycle_length: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, default=None,
+        comment="Total cycle length in days (auto-calculated from steps)"
+    )
+    default_shift_supervisor: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True,
+        comment="Default shift supervisor name or title"
+    )
+
+    # Relationships
+    steps: Mapped[list["ShiftProtocolStep"]] = relationship(
+        "ShiftProtocolStep", back_populates="protocol",
+        order_by="ShiftProtocolStep.step_order",
+        cascade="all, delete-orphan",
+        lazy="selectin",
     )
 
     def __repr__(self) -> str:

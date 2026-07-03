@@ -45,6 +45,8 @@ const navGroups: NavGroup[] = [
       { to: '/departments', icon: Building2,  label: 'Departments',        permission: 'department:view' },
       { to: '/shifts',      icon: Clock,      label: 'Shifts & Schedules', permission: 'shift:view'      },
       { to: '/roster',      icon: Calendar,   label: 'Roster Management',  permission: 'shift:view'      },
+      { to: '/scheduling-analytics', icon: FileBarChart, label: 'Scheduling Analytics', permission: 'shift:view' },
+      { to: '/holidays',    icon: Calendar,   label: 'Holiday Calendar',   permission: 'shift:view'      },
       { to: '/leave',       icon: Calendar,   label: 'Leave Management',   permission: 'attendance:view' },
     ],
   },

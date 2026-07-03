@@ -8,7 +8,7 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import Date, DateTime, ForeignKey, String
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -151,6 +151,10 @@ class Employee(BaseModel):
         ForeignKey("shift_protocols.id", ondelete="SET NULL"),
         nullable=True,
         comment="Direct shift protocol assignment for this employee",
+    )
+    rotation_offset: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, default=0,
+        comment="Position offset in the protocol rotation cycle. 0 = start from day 1."
     )
 
     # Relationships

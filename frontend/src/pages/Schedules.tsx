@@ -4,11 +4,131 @@ import { Calendar, ChevronLeft, ChevronRight, Building2, Clock } from 'lucide-re
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, getDay } from 'date-fns'
 import { departmentsAPI, shiftProtocolsAPI } from '@/api/client'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardHeader, CardHeaderIcon, CardTitle, CardBody } from '@/components/ui/card'
-import { SkeletonCard } from '@/components/ui/skeleton'
-import { cn } from '@/lib/utils'
+import { Section, sectionIcon } from '@/components/ui/CardSection'
 import type { Department, ShiftProtocol } from '@/types'
+
+const s = {
+  page: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '28px',
+    padding: '32px',
+    flex: 1,
+  },
+  header: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  headerLeft: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '4px',
+  },
+  headerTitle: {
+    fontSize: '22px',
+    fontWeight: 700,
+    color: 'var(--pz-text)',
+    margin: 0,
+    letterSpacing: '-0.02em',
+  },
+  headerSubtitle: {
+    fontSize: '13px',
+    color: 'var(--pz-text-muted)',
+    margin: 0,
+  },
+  layout: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 280px',
+    gap: '16px',
+    alignItems: 'start',
+  },
+  dayGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(7, 1fr)',
+    gap: '1px',
+    background: 'var(--pz-border)',
+    borderRadius: '8px',
+    overflow: 'hidden',
+  },
+  dayHeader: {
+    padding: '6px',
+    textAlign: 'center' as const,
+    fontSize: '10px',
+    fontWeight: 600,
+    color: 'var(--pz-text-muted)',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.06em',
+    background: 'var(--pz-surface-2)',
+  },
+  emptyCell: {
+    background: 'var(--pz-surface-1)',
+    padding: '8px',
+    minHeight: '80px',
+  },
+  dayCell: (isSelected: boolean, isToday: boolean) => ({
+    background: 'var(--pz-surface-1)',
+    padding: '8px',
+    minHeight: '80px',
+    cursor: 'pointer',
+    transition: 'all 0.1s ease',
+    border: isSelected ? '1px solid var(--pz-accent)' : 'none',
+    borderRadius: isSelected ? '6px' : 0,
+  }),
+  dayNumber: (isToday: boolean) => ({
+    fontSize: '12px',
+    fontWeight: isToday ? 700 : 500,
+    color: isToday ? 'var(--pz-accent)' : 'var(--pz-text-secondary)',
+    marginBottom: '4px',
+  }),
+  deptChip: {
+    fontSize: '9px',
+    background: 'rgba(59,130,246,0.1)',
+    color: '#60A5FA',
+    borderRadius: '4px',
+    padding: '1px 4px',
+    marginBottom: '2px',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis' as const,
+    whiteSpace: 'nowrap' as const,
+    lineHeight: '1.4',
+  },
+  sidebarCard: {
+    background: 'var(--pz-surface-1)',
+    border: '1px solid var(--pz-border)',
+    borderRadius: '10px',
+    padding: '20px',
+  },
+  sidebarTitle: {
+    fontSize: '13px',
+    fontWeight: 600,
+    color: 'var(--pz-text)',
+    margin: 0,
+  },
+  sidebarRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '6px 10px',
+    borderRadius: '8px',
+    background: 'rgba(255,255,255,0.02)',
+  },
+  protoRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    fontSize: '12px',
+    padding: '4px 0',
+  },
+  pill: (type: string) => ({
+    fontSize: '9px',
+    fontWeight: 600,
+    padding: '2px 8px',
+    borderRadius: '20px',
+    background: type === 'off' ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)',
+    color: type === 'off' ? '#EF4444' : '#10B981',
+  }),
+}
 
 export default function Schedules() {
   const [currentMonth, setCurrentMonth] = useState(new Date())
@@ -63,135 +183,128 @@ export default function Schedules() {
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
   return (
-    <div className="page-container">
-      <div className="page-header">
-        <div className="page-header-group">
-          <h1>Workforce Schedules</h1>
-          <p>Monthly shift calendar · {format(currentMonth, 'MMMM yyyy')}</p>
+    <div style={s.page}>
+      <div style={s.header}>
+        <div style={s.headerLeft}>
+          <h1 style={s.headerTitle}>Workforce Schedules</h1>
+          <p style={s.headerSubtitle}>Monthly shift calendar · {format(currentMonth, 'MMMM yyyy')}</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={() => setCurrentMonth(new Date())}>
-            Today
-          </Button>
-        </div>
+        <Button variant="secondary" size="sm" onClick={() => setCurrentMonth(new Date())}>
+          Today
+        </Button>
       </div>
 
-      <div className="ops-grid ops-grid-4" style={{ gridTemplateColumns: '1fr 280px' }}>
-        {/* Calendar */}
-        <Card>
-          <CardHeader>
-            <CardHeaderIcon><Calendar size={16} className="text-brand-600" /></CardHeaderIcon>
-            <CardTitle>
-              <div className="flex items-center gap-2">
-                <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="p-1 rounded hover:bg-bg-subtle"><ChevronLeft size={16} /></button>
-                <span className="text-base">{format(currentMonth, 'MMMM yyyy')}</span>
-                <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="p-1 rounded hover:bg-bg-subtle"><ChevronRight size={16} /></button>
+      <div style={s.layout}>
+        <Section>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={sectionIcon('#3B82F6')}>
+                <Calendar size={16} color="#3B82F6" />
               </div>
-            </CardTitle>
-          </CardHeader>
-          <CardBody>
-            <div className="grid grid-cols-7 gap-px bg-border-subtle rounded-lg overflow-hidden">
-              {dayNames.map((d) => (
-                <div key={d} className="bg-bg-subtle p-2 text-center text-[10px] font-semibold text-fg-muted uppercase tracking-wider">
-                  {d}
-                </div>
-              ))}
-              {Array.from({ length: startDay }).map((_, i) => (
-                <div key={`e-${i}`} className="bg-surface p-2 min-h-[90px]" />
-              ))}
-              {days.map((day) => {
-                const isToday = format(day, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd')
-                const isSelected = format(day, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd')
-                const working = depts.filter(d => {
-                  const s = getDeptShiftForDate(d, day)
-                  return s && s.type !== 'off'
-                })
-                return (
-                  <div key={day.toISOString()} onClick={() => setSelectedDate(day)}
-                    className={cn(
-                      'bg-surface p-2 min-h-[90px] cursor-pointer transition-colors hover:bg-bg-subtle/50',
-                      isSelected && 'ring-2 ring-brand-500 ring-inset',
-                    )}>
-                    <div className={cn('text-xs font-medium mb-1', isToday ? 'text-brand-600 font-bold' : 'text-fg-primary')}>
-                      {format(day, 'd')}
-                    </div>
-                    {working.length > 0 && (
-                      <div className="space-y-0.5">
-                        {working.slice(0, 2).map((d) => (
-                          <div key={d.id} className="text-[9px] bg-brand-50 text-brand-700 rounded px-1 py-0.5 truncate leading-tight">
-                            {d.name}
-                          </div>
-                        ))}
-                        {working.length > 2 && (
-                          <div className="text-[9px] text-fg-muted">+{working.length - 2}</div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} style={{ padding: '4px', borderRadius: '6px', border: 'none', background: 'var(--pz-surface-2)', color: 'var(--pz-text-secondary)', cursor: 'pointer' }}>
+                  <ChevronLeft size={16} />
+                </button>
+                <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--pz-text)', minWidth: '140px', textAlign: 'center' }}>
+                  {format(currentMonth, 'MMMM yyyy')}
+                </span>
+                <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} style={{ padding: '4px', borderRadius: '6px', border: 'none', background: 'var(--pz-surface-2)', color: 'var(--pz-text-secondary)', cursor: 'pointer' }}>
+                  <ChevronRight size={16} />
+                </button>
+              </div>
             </div>
-          </CardBody>
-        </Card>
+          </div>
 
-        {/* Sidebar */}
-        <div className="space-y-4">
-          {/* Selected Day */}
-          <Card>
-            <CardHeader>
-              <CardHeaderIcon><Clock size={16} className="text-brand-600" /></CardHeaderIcon>
-              <CardTitle>{format(selectedDate, 'EEEE, MMM d')}</CardTitle>
-            </CardHeader>
-            <CardBody>
-              {workingDeptsOnSelected.length === 0 ? (
-                <p className="text-xs text-fg-muted">No departments scheduled</p>
-              ) : (
-                <div className="space-y-1.5">
-                  {workingDeptsOnSelected.map((d) => {
-                    const shift = getDeptShiftForDate(d, selectedDate)
-                    return (
-                      <div key={d.id} className="flex items-center justify-between p-2 rounded-lg bg-bg-subtle">
-                        <div className="flex items-center gap-2">
-                          <Building2 size={12} className="text-fg-muted" />
-                          <span className="text-xs text-fg-primary">{d.name}</span>
-                        </div>
-                        <Badge variant={shift?.type === 'off' ? 'danger' : 'success'} size="sm">
-                          {shift?.label || '—'}
-                        </Badge>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </CardBody>
-          </Card>
-
-          {/* Active Protocols */}
-          <Card>
-            <CardHeader>
-              <CardHeaderIcon><Calendar size={16} className="text-brand-600" /></CardHeaderIcon>
-              <CardTitle>Active Protocols ({protos.length})</CardTitle>
-            </CardHeader>
-            <CardBody>
-              {protos.length === 0 ? (
-                <p className="text-xs text-fg-muted">No protocols configured</p>
-              ) : (
-                <div className="space-y-2">
-                  {protos.slice(0, 6).map((p) => (
-                    <div key={p.id} className="flex items-center justify-between text-xs">
-                      <span className="text-fg-secondary">{p.name}</span>
-                      <span className="font-mono text-fg-muted">
-                        {p.protocol_type === 'fixed' ? `${p.working_hours_start || '—'}-${p.working_hours_end || '—'}` : `${p.days_on || '?'}on/${p.days_off || '?'}off`}
-                      </span>
+          <div style={s.dayGrid}>
+            {dayNames.map((d) => (
+              <div key={d} style={s.dayHeader}>{d}</div>
+            ))}
+            {Array.from({ length: startDay }).map((_, i) => (
+              <div key={`e-${i}`} style={s.emptyCell} />
+            ))}
+            {days.map((day) => {
+              const isToday = format(day, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd')
+              const isSelected = format(day, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd')
+              const working = depts.filter(d => {
+                const s = getDeptShiftForDate(d, day)
+                return s && s.type !== 'off'
+              })
+              return (
+                <div key={day.toISOString()} onClick={() => setSelectedDate(day)}
+                  style={s.dayCell(isSelected, isToday)}
+                  onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.03)' }}
+                  onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'var(--pz-surface-1)' }}
+                >
+                  <div style={s.dayNumber(isToday)}>{format(day, 'd')}</div>
+                  {working.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      {working.slice(0, 2).map((d) => (
+                        <div key={d.id} style={s.deptChip}>{d.name}</div>
+                      ))}
+                      {working.length > 2 && (
+                        <div style={{ fontSize: '9px', color: 'var(--pz-text-muted)' }}>+{working.length - 2}</div>
+                      )}
                     </div>
-                  ))}
-                  {protos.length > 6 && (
-                    <p className="text-xs text-fg-muted text-center pt-1">+{protos.length - 6} more</p>
                   )}
                 </div>
-              )}
-            </CardBody>
-          </Card>
+              )
+            })}
+          </div>
+        </Section>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={s.sidebarCard}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+              <div style={sectionIcon('#3B82F6')}>
+                <Clock size={16} color="#3B82F6" />
+              </div>
+              <h3 style={s.sidebarTitle}>{format(selectedDate, 'EEEE, MMM d')}</h3>
+            </div>
+            {workingDeptsOnSelected.length === 0 ? (
+              <p style={{ fontSize: '12px', color: 'var(--pz-text-muted)' }}>No departments scheduled</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {workingDeptsOnSelected.map((d) => {
+                  const shift = getDeptShiftForDate(d, selectedDate)
+                  return (
+                    <div key={d.id} style={s.sidebarRow}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Building2 size={12} color="var(--pz-text-muted)" />
+                        <span style={{ fontSize: '12px', color: 'var(--pz-text-secondary)' }}>{d.name}</span>
+                      </div>
+                      <span style={s.pill(shift?.type || '')}>{shift?.label || '—'}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          <div style={s.sidebarCard}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+              <div style={sectionIcon('#3B82F6')}>
+                <Calendar size={16} color="#3B82F6" />
+              </div>
+              <h3 style={s.sidebarTitle}>Active Protocols ({protos.length})</h3>
+            </div>
+            {protos.length === 0 ? (
+              <p style={{ fontSize: '12px', color: 'var(--pz-text-muted)' }}>No protocols configured</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {protos.slice(0, 6).map((p) => (
+                  <div key={p.id} style={s.protoRow}>
+                    <span style={{ color: 'var(--pz-text-secondary)' }}>{p.name}</span>
+                    <span style={{ fontFamily: 'monospace', color: 'var(--pz-text-muted)' }}>
+                      {p.protocol_type === 'fixed' ? `${p.working_hours_start || '—'}-${p.working_hours_end || '—'}` : `${p.days_on || '?'}on/${p.days_off || '?'}off`}
+                    </span>
+                  </div>
+                ))}
+                {protos.length > 6 && (
+                  <p style={{ fontSize: '11px', color: 'var(--pz-text-muted)', textAlign: 'center', paddingTop: '4px' }}>+{protos.length - 6} more</p>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

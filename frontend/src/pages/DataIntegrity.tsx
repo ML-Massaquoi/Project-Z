@@ -3,8 +3,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Shield, AlertTriangle, AlertCircle, Info, CheckCircle, RefreshCw, X } from 'lucide-react'
 import { integrityAPI } from '@/api/client'
 import { format } from 'date-fns'
-import { PageHeader } from '@/components/ui/PageHeader'
-import { KPICard } from '@/components/ui/KPICard'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 
@@ -40,6 +38,44 @@ interface IntegrityFinding {
   run_by: string | null
   run_id: string | null
   created_at: string
+}
+
+const s = {
+  page: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '28px',
+    padding: '32px',
+    flex: 1,
+  },
+  header: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  headerLeft: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '4px',
+  },
+  headerTitle: {
+    fontSize: '22px',
+    fontWeight: 700,
+    color: 'var(--pz-text)',
+    margin: 0,
+    letterSpacing: '-0.02em',
+  },
+  headerSubtitle: {
+    fontSize: '13px',
+    color: 'var(--pz-text-muted)',
+    margin: 0,
+  },
+  kpiCard: {
+    background: 'var(--pz-surface-1)',
+    border: '1px solid var(--pz-border)',
+    borderRadius: '12px',
+    padding: '20px',
+  },
 }
 
 export default function DataIntegrity() {
@@ -89,52 +125,82 @@ export default function DataIntegrity() {
   const resolved = findings.filter(f => f.resolved)
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Data Integrity"
-        subtitle="Automated consistency checks across attendance data"
-        breadcrumbs={[{ label: 'System' }, { label: 'Data Integrity' }]}
-        actions={
-          <Button variant="default" size="md"
-            onClick={() => runMutation.mutate()}
-            disabled={runMutation.isPending}
-            loading={runMutation.isPending}>
-            <RefreshCw size={15} className={runMutation.isPending ? 'animate-spin' : ''} />
-            Run Integrity Check
-          </Button>
-        }
-      />
+    <div style={s.page}>
+      <div style={s.header}>
+        <div style={s.headerLeft}>
+          <h1 style={s.headerTitle}>Data Integrity</h1>
+          <p style={s.headerSubtitle}>Automated consistency checks across attendance data</p>
+        </div>
+        <Button variant="default" size="md"
+          onClick={() => runMutation.mutate()}
+          disabled={runMutation.isPending}
+          loading={runMutation.isPending}>
+          <RefreshCw size={15} className={runMutation.isPending ? 'animate-spin' : ''} />
+          Run Integrity Check
+        </Button>
+      </div>
 
       {/* KPI Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
-        <KPICard
-          icon={Shield}
-          label="Total Unresolved"
-          value={stats?.total_unresolved ?? 0}
-          color={stats?.total_unresolved > 0 ? '#F59E0B' : '#10B981'}
-          loading={statsLoading}
-        />
-        <KPICard
-          icon={AlertCircle}
-          label="Errors / Critical"
-          value={(stats?.unresolved_by_severity?.error ?? 0) + (stats?.unresolved_by_severity?.critical ?? 0)}
-          color="#EF4444"
-          loading={statsLoading}
-        />
-        <KPICard
-          icon={AlertTriangle}
-          label="Warnings"
-          value={stats?.unresolved_by_severity?.warning ?? 0}
-          color="#F59E0B"
-          loading={statsLoading}
-        />
-        <KPICard
-          icon={CheckCircle}
-          label="Resolved (24h)"
-          value={stats?.resolved_last_24h ?? 0}
-          color="#10B981"
-          loading={statsLoading}
-        />
+        {/* Total Unresolved */}
+        <div style={s.kpiCard}>
+          <div style={{ width: '42px', height: '42px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: `linear-gradient(135deg, ${(stats?.total_unresolved ?? 0) > 0 ? '#F59E0B' : '#10B981'}15, ${(stats?.total_unresolved ?? 0) > 0 ? '#F59E0B' : '#10B981'}05)`, border: `1px solid ${(stats?.total_unresolved ?? 0) > 0 ? '#F59E0B' : '#10B981'}25` }}>
+            <Shield size={20} color={(stats?.total_unresolved ?? 0) > 0 ? '#F59E0B' : '#10B981'} />
+          </div>
+          <div style={{ marginTop: '12px' }}>
+            {statsLoading ? (
+              <div style={{ height: '28px', width: '60px', background: 'var(--pz-surface-3)', borderRadius: '6px' }} />
+            ) : (
+              <p style={{ fontSize: '24px', fontWeight: 700, color: 'var(--pz-text)', margin: 0 }}>{stats?.total_unresolved ?? 0}</p>
+            )}
+            <p style={{ fontSize: '12px', color: 'var(--pz-text-muted)', margin: 0, marginTop: '4px' }}>Total Unresolved</p>
+          </div>
+        </div>
+
+        {/* Errors / Critical */}
+        <div style={s.kpiCard}>
+          <div style={{ width: '42px', height: '42px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #EF444415, #EF444405)', border: '1px solid #EF444425' }}>
+            <AlertCircle size={20} color="#EF4444" />
+          </div>
+          <div style={{ marginTop: '12px' }}>
+            {statsLoading ? (
+              <div style={{ height: '28px', width: '60px', background: 'var(--pz-surface-3)', borderRadius: '6px' }} />
+            ) : (
+              <p style={{ fontSize: '24px', fontWeight: 700, color: 'var(--pz-text)', margin: 0 }}>{(stats?.unresolved_by_severity?.error ?? 0) + (stats?.unresolved_by_severity?.critical ?? 0)}</p>
+            )}
+            <p style={{ fontSize: '12px', color: 'var(--pz-text-muted)', margin: 0, marginTop: '4px' }}>Errors / Critical</p>
+          </div>
+        </div>
+
+        {/* Warnings */}
+        <div style={s.kpiCard}>
+          <div style={{ width: '42px', height: '42px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #F59E0B15, #F59E0B05)', border: '1px solid #F59E0B25' }}>
+            <AlertTriangle size={20} color="#F59E0B" />
+          </div>
+          <div style={{ marginTop: '12px' }}>
+            {statsLoading ? (
+              <div style={{ height: '28px', width: '60px', background: 'var(--pz-surface-3)', borderRadius: '6px' }} />
+            ) : (
+              <p style={{ fontSize: '24px', fontWeight: 700, color: 'var(--pz-text)', margin: 0 }}>{stats?.unresolved_by_severity?.warning ?? 0}</p>
+            )}
+            <p style={{ fontSize: '12px', color: 'var(--pz-text-muted)', margin: 0, marginTop: '4px' }}>Warnings</p>
+          </div>
+        </div>
+
+        {/* Resolved (24h) */}
+        <div style={s.kpiCard}>
+          <div style={{ width: '42px', height: '42px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #10B98115, #10B98105)', border: '1px solid #10B98125' }}>
+            <CheckCircle size={20} color="#10B981" />
+          </div>
+          <div style={{ marginTop: '12px' }}>
+            {statsLoading ? (
+              <div style={{ height: '28px', width: '60px', background: 'var(--pz-surface-3)', borderRadius: '6px' }} />
+            ) : (
+              <p style={{ fontSize: '24px', fontWeight: 700, color: 'var(--pz-text)', margin: 0 }}>{stats?.resolved_last_24h ?? 0}</p>
+            )}
+            <p style={{ fontSize: '12px', color: 'var(--pz-text-muted)', margin: 0, marginTop: '4px' }}>Resolved (24h)</p>
+          </div>
+        </div>
       </div>
 
       {/* Filters */}
@@ -162,7 +228,7 @@ export default function DataIntegrity() {
           <option value="unresolved">Unresolved</option>
           <option value="resolved">Resolved</option>
         </select>
-        <span className="text-xs text-[var(--pz-text-muted)]">
+        <span className="text-xs" style={{ color: 'var(--pz-text-muted)' }}>
           {findings.length} findings
         </span>
       </div>
@@ -176,9 +242,9 @@ export default function DataIntegrity() {
         </div>
       ) : findings.length === 0 ? (
         <div className="text-center py-16">
-          <Shield size={40} className="mx-auto text-[var(--pz-text-faint)] mb-3" />
-          <p className="text-sm text-[var(--pz-text-muted)]">No integrity findings</p>
-          <p className="text-xs text-[var(--pz-text-faint)] mt-1">Run an integrity check to scan for issues</p>
+          <Shield size={40} className="mx-auto" style={{ color: 'var(--pz-text-faint)', marginBottom: '12px' }} />
+          <p className="text-sm" style={{ color: 'var(--pz-text-muted)', margin: 0 }}>No integrity findings</p>
+          <p className="text-xs" style={{ color: 'var(--pz-text-faint)', marginTop: '4px', margin: 0 }}>Run an integrity check to scan for issues</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -196,10 +262,10 @@ export default function DataIntegrity() {
                     <span className="text-[9px] font-bold uppercase tracking-wider bg-black/30 px-1.5 py-0.5 rounded">
                       {finding.severity}
                     </span>
-                    <span className="text-[9px] font-bold uppercase tracking-wider text-[var(--pz-text-muted)]">
+                    <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--pz-text-muted)' }}>
                       {categoryLabels[finding.check_category] || finding.check_category}
                     </span>
-                    <span className="text-[9px] font-mono text-[var(--pz-text-faint)]">
+                    <span className="text-[9px] font-mono" style={{ color: 'var(--pz-text-faint)' }}>
                       {format(new Date(finding.created_at), 'MMM d, HH:mm')}
                     </span>
                     {finding.resolved && (
@@ -208,15 +274,15 @@ export default function DataIntegrity() {
                       </span>
                     )}
                   </div>
-                  <p className="text-sm font-semibold text-[var(--pz-text-secondary)]">{finding.check_name}</p>
-                  <p className="text-xs text-[var(--pz-text-tertiary)] mt-0.5">{finding.message}</p>
+                  <p className="text-sm font-semibold" style={{ color: 'var(--pz-text-secondary)', margin: 0 }}>{finding.check_name}</p>
+                  <p className="text-xs" style={{ color: 'var(--pz-text-tertiary)', margin: 0, marginTop: '2px' }}>{finding.message}</p>
                   {finding.affected_count > 0 && (
-                    <p className="text-[10px] text-[var(--pz-text-faint)] mt-1">
+                    <p className="text-[10px]" style={{ color: 'var(--pz-text-faint)', marginTop: '4px', margin: 0 }}>
                       Affected: {finding.affected_count} {finding.affected_entity_type || 'records'}
                     </p>
                   )}
                   {finding.resolved && finding.resolution_note && (
-                    <p className="text-[10px] text-emerald-400/70 mt-1">
+                    <p className="text-[10px]" style={{ color: 'rgba(52,211,153,0.7)', marginTop: '4px', margin: 0 }}>
                       Resolution: {finding.resolution_note}
                     </p>
                   )}

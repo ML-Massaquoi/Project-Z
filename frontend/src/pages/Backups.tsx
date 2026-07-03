@@ -17,7 +17,6 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { backupAPI } from '@/api/client'
-import { PageHeader } from '@/components/ui/PageHeader'
 
 interface BackupJob {
   id: string
@@ -87,6 +86,50 @@ function formatRelative(dateStr: string | null): string {
   return `${days}d ago`
 }
 
+const s = {
+  page: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '28px',
+    padding: '32px',
+    flex: 1,
+  },
+  header: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  headerLeft: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '4px',
+  },
+  headerTitle: {
+    fontSize: '22px',
+    fontWeight: 700,
+    color: 'var(--pz-text)',
+    margin: 0,
+    letterSpacing: '-0.02em',
+  },
+  headerSubtitle: {
+    fontSize: '13px',
+    color: 'var(--pz-text-muted)',
+    margin: 0,
+  },
+  card: {
+    background: 'var(--pz-surface-1)',
+    border: '1px solid var(--pz-border)',
+    borderRadius: '12px',
+    padding: '24px',
+  },
+  statCard: {
+    background: 'var(--pz-surface-1)',
+    border: '1px solid var(--pz-border)',
+    borderRadius: '12px',
+    padding: '20px',
+  },
+}
+
 export default function Backups() {
   const queryClient = useQueryClient()
   const [page, setPage] = useState(1)
@@ -126,25 +169,28 @@ export default function Backups() {
   const totalPages = Math.ceil(total / 15)
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Database Backups"
-        description="Manage automated PostgreSQL backups"
-        icon={Database}
-        iconColor="#6366F1"
-        actions={
-          <div className="flex gap-2">
-            <button
-              onClick={() => triggerMutation.mutate('full')}
-              disabled={triggerMutation.isPending}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-            >
-              <Play className="w-4 h-4" />
-              {triggerMutation.isPending ? 'Running...' : 'Run Full Backup'}
-            </button>
-          </div>
-        }
-      />
+    <div style={s.page}>
+      <div style={s.header}>
+        <div style={s.headerLeft}>
+          <h1 style={s.headerTitle}>Database Backups</h1>
+          <p style={s.headerSubtitle}>Manage automated PostgreSQL backups</p>
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={() => triggerMutation.mutate('full')}
+            disabled={triggerMutation.isPending}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px',
+              background: '#6366F1', color: '#fff', borderRadius: '8px',
+              fontSize: '14px', fontWeight: 500, border: 'none', cursor: 'pointer',
+              opacity: triggerMutation.isPending ? 0.5 : 1,
+            }}
+          >
+            <Play className="w-4 h-4" />
+            {triggerMutation.isPending ? 'Running...' : 'Run Full Backup'}
+          </button>
+        </div>
+      </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -158,14 +204,15 @@ export default function Backups() {
             key={card.label}
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-surface rounded-xl border border-border p-5 flex items-center gap-4"
+            style={s.statCard}
+            className="flex items-center gap-4"
           >
             <div className="p-3 rounded-lg" style={{ backgroundColor: `${card.color}15` }}>
               <card.icon size={22} style={{ color: card.color }} />
             </div>
             <div>
-              <p className="text-2xl font-bold text-text">{card.value}</p>
-              <p className="text-sm text-text-muted">{card.label}</p>
+              <p style={{ fontSize: '24px', fontWeight: 700, color: 'var(--pz-text)', margin: 0 }}>{card.value}</p>
+              <p style={{ fontSize: '14px', color: 'var(--pz-text-muted)', margin: 0 }}>{card.label}</p>
             </div>
           </motion.div>
         ))}
@@ -176,34 +223,34 @@ export default function Backups() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-surface rounded-xl border border-border p-6"
+          style={s.card}
         >
-          <h3 className="text-lg font-semibold text-text mb-4 flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-indigo-400" />
+          <h3 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--pz-text)', margin: 0, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Calendar className="w-5 h-5" style={{ color: '#818CF8' }} />
             Schedule
           </h3>
           <div className="space-y-3">
             <div className="flex justify-between">
-              <span className="text-sm text-text-secondary">Next Backup</span>
-              <span className="font-medium text-text">
+              <span style={{ fontSize: '14px', color: 'var(--pz-text-secondary)' }}>Next Backup</span>
+              <span style={{ fontWeight: 500, color: 'var(--pz-text)' }}>
                 {stats?.next_scheduled
                   ? new Date(stats.next_scheduled).toLocaleString()
                   : 'Disabled'}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-sm text-text-secondary">Last Backup</span>
-              <span className="font-medium text-text">
+              <span style={{ fontSize: '14px', color: 'var(--pz-text-secondary)' }}>Last Backup</span>
+              <span style={{ fontWeight: 500, color: 'var(--pz-text)' }}>
                 {stats?.last_backup_at ? formatRelative(stats.last_backup_at) : 'Never'}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-sm text-text-secondary">Avg Duration</span>
-              <span className="font-medium text-text">{formatDuration(stats?.avg_duration_seconds ?? null)}</span>
+              <span style={{ fontSize: '14px', color: 'var(--pz-text-secondary)' }}>Avg Duration</span>
+              <span style={{ fontWeight: 500, color: 'var(--pz-text)' }}>{formatDuration(stats?.avg_duration_seconds ?? null)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-sm text-text-secondary">Retention</span>
-              <span className="font-medium text-text">30 days</span>
+              <span style={{ fontSize: '14px', color: 'var(--pz-text-secondary)' }}>Retention</span>
+              <span style={{ fontWeight: 500, color: 'var(--pz-text)' }}>30 days</span>
             </div>
           </div>
         </motion.div>
@@ -212,22 +259,22 @@ export default function Backups() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="bg-surface rounded-xl border border-border p-6"
+          style={s.card}
         >
-          <h3 className="text-lg font-semibold text-text mb-4 flex items-center gap-2">
-            <HardDrive className="w-5 h-5 text-amber-400" />
+          <h3 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--pz-text)', margin: 0, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <HardDrive className="w-5 h-5" style={{ color: '#FBBF24' }} />
             Storage
           </h3>
           <div className="space-y-3">
             <div className="flex justify-between">
-              <span className="text-sm text-text-secondary">Storage Path</span>
-              <span className="font-mono text-xs text-text bg-surface-2 px-2 py-1 rounded border border-border">
+              <span style={{ fontSize: '14px', color: 'var(--pz-text-secondary)' }}>Storage Path</span>
+              <span className="font-mono text-xs" style={{ color: 'var(--pz-text)', background: 'var(--pz-surface-2)', padding: '4px 8px', borderRadius: '8px', border: '1px solid var(--pz-border)' }}>
                 {stats?.storage_path ?? 'backups/'}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-sm text-text-secondary">Total Size</span>
-              <span className="font-medium text-text">{stats?.total_size_display ?? '0 B'}</span>
+              <span style={{ fontSize: '14px', color: 'var(--pz-text-secondary)' }}>Total Size</span>
+              <span style={{ fontWeight: 500, color: 'var(--pz-text)' }}>{stats?.total_size_display ?? '0 B'}</span>
             </div>
           </div>
         </motion.div>
@@ -238,32 +285,32 @@ export default function Backups() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
-        className="bg-surface rounded-xl border border-border p-6"
+        style={s.card}
       >
-        <h3 className="text-lg font-semibold text-text mb-4 flex items-center gap-2">
-          <Shield className="w-5 h-5 text-blue-400" />
+        <h3 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--pz-text)', margin: 0, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Shield className="w-5 h-5" style={{ color: '#60A5FA' }} />
           Backup History
         </h3>
 
         {listLoading ? (
           <div className="flex justify-center py-8">
-            <RefreshCcw className="w-6 h-6 animate-spin text-blue-500" />
+            <RefreshCcw className="w-6 h-6 animate-spin" style={{ color: '#3B82F6' }} />
           </div>
         ) : items.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">No backups found</div>
+          <div className="text-center py-8" style={{ color: 'var(--pz-text-muted)' }}>No backups found</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table style={{ width: '100%', fontSize: '14px' }}>
               <thead>
-                <tr className="border-b border-border">
-                  <th className="text-left py-2 px-3 font-medium text-text-muted">Status</th>
-                  <th className="text-left py-2 px-3 font-medium text-text-muted">Type</th>
-                  <th className="text-left py-2 px-3 font-medium text-text-muted">File</th>
-                  <th className="text-right py-2 px-3 font-medium text-text-muted">Size</th>
-                  <th className="text-right py-2 px-3 font-medium text-text-muted">Duration</th>
-                  <th className="text-left py-2 px-3 font-medium text-text-muted">Initiated By</th>
-                  <th className="text-left py-2 px-3 font-medium text-text-muted">Completed</th>
-                  <th className="text-right py-2 px-3 font-medium text-text-muted">Actions</th>
+                <tr style={{ borderBottom: '1px solid var(--pz-border)' }}>
+                  <th style={{ textAlign: 'left', padding: '8px 12px', fontWeight: 500, color: 'var(--pz-text-muted)' }}>Status</th>
+                  <th style={{ textAlign: 'left', padding: '8px 12px', fontWeight: 500, color: 'var(--pz-text-muted)' }}>Type</th>
+                  <th style={{ textAlign: 'left', padding: '8px 12px', fontWeight: 500, color: 'var(--pz-text-muted)' }}>File</th>
+                  <th style={{ textAlign: 'right', padding: '8px 12px', fontWeight: 500, color: 'var(--pz-text-muted)' }}>Size</th>
+                  <th style={{ textAlign: 'right', padding: '8px 12px', fontWeight: 500, color: 'var(--pz-text-muted)' }}>Duration</th>
+                  <th style={{ textAlign: 'left', padding: '8px 12px', fontWeight: 500, color: 'var(--pz-text-muted)' }}>Initiated By</th>
+                  <th style={{ textAlign: 'left', padding: '8px 12px', fontWeight: 500, color: 'var(--pz-text-muted)' }}>Completed</th>
+                  <th style={{ textAlign: 'right', padding: '8px 12px', fontWeight: 500, color: 'var(--pz-text-muted)' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -271,38 +318,39 @@ export default function Backups() {
                   const cfg = statusConfig[job.status] || statusConfig.pending
                   const StatusIcon = cfg.icon
                   return (
-                    <tr key={job.id} className="border-b border-border hover:bg-[var(--pz-surface-3)] transition-colors">
-                      <td className="py-2 px-3">
+                    <tr key={job.id} style={{ borderBottom: '1px solid var(--pz-border)' }} className="hover:bg-[var(--pz-surface-3)] transition-colors">
+                      <td style={{ padding: '8px 12px' }}>
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${cfg.bg} ${cfg.color}`}>
                           <StatusIcon className={`w-3 h-3 ${job.status === 'running' ? 'animate-spin' : ''}`} />
                           {job.status}
                         </span>
                       </td>
-                      <td className="py-2 px-3 text-text-secondary capitalize">
+                      <td style={{ padding: '8px 12px', color: 'var(--pz-text-secondary)', textTransform: 'capitalize' }}>
                         {job.backup_type.replace('_', ' ')}
                       </td>
-                      <td className="py-2 px-3 font-mono text-xs text-text-muted max-w-[200px] truncate" title={job.file_name || ''}>
+                      <td className="font-mono text-xs" style={{ color: 'var(--pz-text-muted)', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '8px 12px' }} title={job.file_name || ''}>
                         {job.file_name || 'N/A'}
                       </td>
-                      <td className="py-2 px-3 text-right text-text-secondary">
+                      <td style={{ textAlign: 'right', color: 'var(--pz-text-secondary)', padding: '8px 12px' }}>
                         {formatBytes(job.file_size_bytes)}
                       </td>
-                      <td className="py-2 px-3 text-right text-text-secondary">
+                      <td style={{ textAlign: 'right', color: 'var(--pz-text-secondary)', padding: '8px 12px' }}>
                         {formatDuration(job.duration_seconds)}
                       </td>
-                      <td className="py-2 px-3 text-text-secondary">{job.init_by}</td>
-                      <td className="py-2 px-3 text-text-muted text-xs">
+                      <td style={{ color: 'var(--pz-text-secondary)', padding: '8px 12px' }}>{job.init_by}</td>
+                      <td style={{ color: 'var(--pz-text-muted)', fontSize: '12px', padding: '8px 12px' }}>
                         {job.completed_at ? formatRelative(job.completed_at) : 'In progress...'}
                       </td>
-                      <td className="py-2 px-3 text-right">
+                      <td style={{ textAlign: 'right', padding: '8px 12px' }}>
                         {job.status === 'failed' && job.error_message && (
                           <span title={job.error_message} className="inline mr-2 cursor-help">
-                            <AlertTriangle className="w-4 h-4 text-amber-500 inline" />
+                            <AlertTriangle className="w-4 h-4" style={{ color: '#F59E0B', display: 'inline' }} />
                           </span>
                         )}
                         <button
                           onClick={() => deleteMutation.mutate(job.id)}
-                          className="p-1 rounded hover:bg-red-500/10 text-text-muted hover:text-red-400 transition-colors"
+                          className="p-1 rounded hover:bg-red-500/10"
+                          style={{ color: 'var(--pz-text-muted)', border: 'none', cursor: 'pointer', background: 'none' }}
                           title="Delete backup"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -318,21 +366,29 @@ export default function Backups() {
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="flex justify-center gap-2 mt-4 text-text">
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '16px', color: 'var(--pz-text)' }}>
             <button
               onClick={() => setPage(Math.max(1, page - 1))}
               disabled={page === 1}
-              className="px-3 py-1 rounded border border-border bg-surface-2 text-text hover:bg-[var(--pz-surface-3)] text-sm disabled:opacity-40 transition-colors"
+              style={{
+                padding: '4px 12px', borderRadius: '8px', border: '1px solid var(--pz-border)',
+                background: 'var(--pz-surface-2)', color: 'var(--pz-text)', cursor: page === 1 ? 'not-allowed' : 'pointer',
+                fontSize: '14px', opacity: page === 1 ? 0.4 : 1,
+              }}
             >
               Previous
             </button>
-            <span className="px-3 py-1 text-sm text-text-muted">
+            <span style={{ padding: '4px 12px', fontSize: '14px', color: 'var(--pz-text-muted)' }}>
               Page {page} of {totalPages}
             </span>
             <button
               onClick={() => setPage(Math.min(totalPages, page + 1))}
               disabled={page === totalPages}
-              className="px-3 py-1 rounded border border-border bg-surface-2 text-text hover:bg-[var(--pz-surface-3)] text-sm disabled:opacity-40 transition-colors"
+              style={{
+                padding: '4px 12px', borderRadius: '8px', border: '1px solid var(--pz-border)',
+                background: 'var(--pz-surface-2)', color: 'var(--pz-text)', cursor: page === totalPages ? 'not-allowed' : 'pointer',
+                fontSize: '14px', opacity: page === totalPages ? 0.4 : 1,
+              }}
             >
               Next
             </button>

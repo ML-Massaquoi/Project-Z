@@ -35,6 +35,8 @@ class ShiftTemplateCreate(BaseModel):
     working_hours: float = 8.0
     is_overnight: bool = False
     description: Optional[str] = None
+    shift_type: Optional[str] = "day"
+    color: Optional[str] = "#3B82F6"
 
 
 class ShiftTemplateUpdate(BaseModel):
@@ -51,6 +53,8 @@ class ShiftTemplateUpdate(BaseModel):
     is_overnight: Optional[bool] = None
     description: Optional[str] = None
     is_active: Optional[bool] = None
+    shift_type: Optional[str] = None
+    color: Optional[str] = None
 
 
 def _parse_time(t: str) -> time:
@@ -75,6 +79,8 @@ def _serialize(t: ShiftTemplate) -> dict:
         "is_overnight": t.is_overnight,
         "description": t.description,
         "is_active": t.is_active,
+        "shift_type": t.shift_type or "day",
+        "color": t.color or "#3B82F6",
         "created_at": t.created_at.isoformat(),
         "updated_at": t.updated_at.isoformat(),
     }
@@ -120,6 +126,8 @@ async def create_shift_template(
         is_overnight=data.is_overnight,
         description=data.description,
         is_active=True,
+        shift_type=data.shift_type or "day",
+        color=data.color or "#3B82F6",
     )
     db.add(t)
     await db.flush()

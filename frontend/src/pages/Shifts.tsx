@@ -1,10 +1,10 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Clock, Sun, Moon, Trash2, Users, Pencil, CalendarOff } from 'lucide-react'
+import { Plus, Clock, Sun, Moon, Trash2, Users, Pencil, CalendarOff, Calendar, Settings2 } from 'lucide-react'
 import { shiftTemplatesAPI, deptShiftRulesAPI, shiftAssignmentsAPI, departmentsAPI } from '@/api/client'
 import { format } from 'date-fns'
 import type { ShiftTemplate } from '@/types'
-import { PageHeader, TabBar } from '@/components/ui/PageHeader'
+import { TabBar } from '@/components/ui/PageHeader'
 import { FilterBar } from '@/components/ui/FilterBar'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { DataTable, type ColumnDef } from '@/components/ui/data-table/DataTable'
@@ -79,6 +79,16 @@ const templateColumns: ColumnDef<ShiftTemplate, unknown>[] = [
   },
 ]
 
+const s = {
+  page: { display: 'flex', flexDirection: 'column' as const, gap: '28px', padding: '32px', flex: 1 },
+  header: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '24px' },
+  headerLeft: { display: 'flex', flexDirection: 'column' as const, gap: '4px' },
+  headerTitle: { fontSize: '22px', fontWeight: 700, color: 'var(--pz-text)', margin: 0, letterSpacing: '-0.02em' },
+  headerSubtitle: { fontSize: '13px', color: 'var(--pz-text-muted)', margin: 0 },
+  summaryGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '24px', marginBottom: '24px' },
+  card: { padding: '20px', borderRadius: '10px', border: '1px solid var(--pz-border)', background: 'var(--pz-surface-1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+}
+
 export default function Shifts() {
   const queryClient = useQueryClient()
   const [tab, setTab] = useState('templates')
@@ -122,12 +132,13 @@ export default function Shifts() {
   const assignedStaffCount = assignments.length
 
   return (
-    <div className="space-y-5 pz-slide-up">
-      <PageHeader
-        title="Shifts & Schedules"
-        subtitle={`Shift template and schedule management · ${templates.length} templates`}
-        breadcrumbs={[{ label: 'Workforce' }, { label: 'Shifts & Schedules' }]}
-        tabs={
+    <div style={s.page}>
+      <div style={s.header}>
+        <div style={s.headerLeft}>
+          <h1 style={s.headerTitle}>Shifts & Schedules</h1>
+          <p style={s.headerSubtitle}>Shift template and schedule management · {templates.length} templates</p>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <TabBar
             tabs={[
               { id: 'templates', label: 'Shift Templates', icon: <Clock size={14} /> },
@@ -138,14 +149,12 @@ export default function Shifts() {
             activeTab={tab}
             onChange={(t) => { setTab(t); setSearchValue('') }}
           />
-        }
-        actions={
           <Button variant="default" size="md" onClick={() => setShowCreateModal(true)}>
             <Plus size={15} />
             New Template
           </Button>
-        }
-      />
+        </div>
+      </div>
 
       {tab === 'templates' && (
         <>
@@ -159,7 +168,7 @@ export default function Shifts() {
             ].map((c, i) => {
               const Icon = c.icon
               return (
-                <div key={i} className="pz-card p-4 flex items-center justify-between shadow-sm hover:shadow-md transition-shadow">
+                <div key={i} style={s.card}>
                   <div className="space-y-1">
                     <p className="text-[11px] font-bold text-[var(--pz-text-muted)] uppercase tracking-wider">{c.label}</p>
                     <p className="text-2xl font-bold text-[var(--pz-text)]">{c.value}</p>
@@ -213,9 +222,9 @@ export default function Shifts() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
             {/* Status header */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', paddingBottom: '20px', borderBottom: '1px solid var(--pz-border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '24px', paddingBottom: '20px', borderBottom: '1px solid var(--pz-border)' }}>
               <div style={{
-                padding: '14px', borderRadius: '6px', flexShrink: 0,
+                padding: '18px', borderRadius: '10px', flexShrink: 0,
                 background: selectedShift.is_overnight ? 'rgba(99,102,241,0.10)' : 'rgba(245,158,11,0.10)',
                 border: `1px solid ${selectedShift.is_overnight ? 'rgba(99,102,241,0.25)' : 'rgba(245,158,11,0.25)'}`,
               }}>
@@ -232,14 +241,14 @@ export default function Shifts() {
             </div>
 
             {/* Time windows — 2-col cards */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
               <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Shift Hours</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                 {[
                   { label: 'Start Time', value: selectedShift.start_time },
                   { label: 'End Time', value: selectedShift.end_time },
                 ].map(({ label, value }) => (
-                  <div key={label} style={{ padding: '16px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', borderRadius: '6px', minHeight: '80px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                  <div key={label} style={{ padding: '20px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', borderRadius: '10px', minHeight: '80px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                     <p style={{ fontSize: '12px', color: 'var(--pz-text-muted)', margin: 0 }}>{label}</p>
                     <p style={{ fontSize: '22px', fontWeight: 700, color: 'var(--pz-text)', fontFamily: 'monospace', margin: 0 }}>{value}</p>
                   </div>
@@ -248,14 +257,14 @@ export default function Shifts() {
             </div>
 
             {/* Check-in/out windows */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
               <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Check Windows</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                 {[
                   { label: 'Check-in Window', value: `${selectedShift.checkin_window_start} — ${selectedShift.checkin_window_end}` },
                   { label: 'Check-out Window', value: `${selectedShift.checkout_window_start} — ${selectedShift.checkout_window_end}` },
                 ].map(({ label, value }) => (
-                  <div key={label} style={{ padding: '16px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', borderRadius: '6px', minHeight: '72px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                  <div key={label} style={{ padding: '20px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', borderRadius: '10px', minHeight: '72px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                     <p style={{ fontSize: '12px', color: 'var(--pz-text-muted)', margin: 0 }}>{label}</p>
                     <p style={{ fontSize: '13px', fontWeight: 500, color: 'var(--pz-text-secondary)', fontFamily: 'monospace', margin: 0 }}>{value}</p>
                   </div>
@@ -264,9 +273,9 @@ export default function Shifts() {
             </div>
 
             {/* Details table */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
               <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Details</h4>
-              <div style={{ border: '1px solid var(--pz-border)', borderRadius: '6px', overflow: 'hidden' }}>
+              <div style={{ border: '1px solid var(--pz-border)', borderRadius: '10px', overflow: 'hidden' }}>
                 {[
                   ['Working Hours', `${selectedShift.working_hours}h`],
                   ['Grace Period', `${selectedShift.grace_period_minutes}m`],
@@ -274,7 +283,7 @@ export default function Shifts() {
                   ['Description', selectedShift.description || '—'],
                   ['Created', format(new Date(selectedShift.created_at), 'MMM d, yyyy')],
                 ].map(([label, value], i, arr) => (
-                  <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '44px', paddingInline: '14px', borderBottom: i < arr.length - 1 ? '1px solid var(--pz-border)' : 'none', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
+                  <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: '52px', paddingInline: '16px', paddingBlock: '12px', borderBottom: i < arr.length - 1 ? '1px solid var(--pz-border)' : 'none', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
                     <span style={{ fontSize: '12px', color: 'var(--pz-text-muted)' }}>{label}</span>
                     <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--pz-text-secondary)' }}>{value}</span>
                   </div>
@@ -283,7 +292,7 @@ export default function Shifts() {
             </div>
 
             {/* Actions */}
-            <div style={{ display: 'flex', gap: '12px', paddingTop: '8px', borderTop: '1px solid var(--pz-border)' }}>
+            <div style={{ display: 'flex', gap: '16px', paddingTop: '8px', borderTop: '1px solid var(--pz-border)' }}>
               <Button variant="outline" size="md" style={{ flex: 1 }} onClick={() => setEditingShift(selectedShift)}>
                 <Pencil size={14} /> Edit
               </Button>
@@ -377,146 +386,164 @@ function CreateShiftTemplateForm({
   })
 
   return (
-    <div className="space-y-6">
-      {/* Row 1: Basic Info */}
-      <div className="grid grid-cols-5 gap-5">
-        <div className="col-span-3 space-y-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', padding: '4px 0' }}>
+
+      {/* Basic Information Section */}
+      <div style={{ background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', borderRadius: '12px', padding: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '24px' }}>
+          <div style={{ padding: '8px', borderRadius: '8px', background: 'rgba(37,99,235,0.12)', display: 'flex' }}>
+            <Clock size={18} color="#2563EB" />
+          </div>
+          <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--pz-text)' }}>Basic Information</span>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
           <div>
-            <label className="text-xs font-semibold text-[var(--pz-text-secondary)] mb-1.5 block">Shift Name *</label>
-            <input
-              value={form.name}
-              onChange={(e) => setForm(p => ({ ...p, name: e.target.value }))}
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>
+              Shift Name <span style={{ color: 'var(--pz-danger-500)' }}>*</span>
+            </label>
+            <input value={form.name} onChange={(e) => setForm(p => ({ ...p, name: e.target.value }))}
               placeholder="e.g. Standard Day Shift"
-              className="w-full px-4 py-2.5 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-sm text-[var(--pz-text)] placeholder:text-[var(--pz-text-muted)] focus:outline-none focus:border-blue-500/50 transition-colors"
-            />
+              style={{ width: '100%', padding: '10px 16px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '14px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }} />
           </div>
           <div>
-            <label className="text-xs font-semibold text-[var(--pz-text-secondary)] mb-1.5 block">Code *</label>
-            <input
-              value={form.code}
-              onChange={(e) => setForm(p => ({ ...p, code: e.target.value.toUpperCase() }))}
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>
+              Code <span style={{ color: 'var(--pz-danger-500)' }}>*</span>
+            </label>
+            <input value={form.code} onChange={(e) => setForm(p => ({ ...p, code: e.target.value.toUpperCase() }))}
               placeholder="e.g. DAY_STANDARD"
-              className="w-full px-4 py-2.5 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-sm text-[var(--pz-text)] placeholder:text-[var(--pz-text-muted)] focus:outline-none focus:border-blue-500/50 transition-colors"
-            />
+              style={{ width: '100%', padding: '10px 16px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '14px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }} />
           </div>
-          <div>
-            <label className="text-xs font-semibold text-[var(--pz-text-secondary)] mb-1.5 block">Description</label>
-            <textarea
-              value={form.description}
-              onChange={(e) => setForm(p => ({ ...p, description: e.target.value }))}
-              rows={2}
-              placeholder="Describe the shift purpose and guidelines..."
-              className="w-full px-4 py-2.5 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-sm text-[var(--pz-text)] placeholder:text-[var(--pz-text-muted)] focus:outline-none focus:border-blue-500/50 transition-colors resize-none"
-            />
-          </div>
-          {/* Overnight toggle */}
-          <label className="flex items-center gap-3 p-3 rounded-xl bg-[var(--pz-surface-2)]/50 border border-[var(--pz-border)] cursor-pointer hover:bg-[var(--pz-surface-2)] transition-colors">
-            <div className="relative">
-              <input
-                type="checkbox"
-                checked={form.is_overnight}
+        </div>
+
+        <div style={{ marginTop: '20px' }}>
+          <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>Description</label>
+          <textarea value={form.description} onChange={(e) => setForm(p => ({ ...p, description: e.target.value }))}
+            rows={2} placeholder="Describe the shift purpose and guidelines..."
+            style={{ width: '100%', padding: '10px 16px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '14px', color: 'var(--pz-text)', outline: 'none', resize: 'none', boxSizing: 'border-box' }} />
+        </div>
+
+        <div style={{ marginTop: '20px', display: 'flex', gap: '20px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', borderRadius: '10px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--pz-border)', cursor: 'pointer', flex: 1 }}>
+            <div style={{ position: 'relative' }}>
+              <input type="checkbox" checked={form.is_overnight}
                 onChange={(e) => setForm(p => ({ ...p, is_overnight: e.target.checked }))}
-                className="sr-only"
-              />
-              <div className={`w-9 h-5 rounded-full transition-colors ${form.is_overnight ? 'bg-indigo-600' : 'bg-[var(--pz-surface-3)]'}`}>
-                <div className={`w-3.5 h-3.5 rounded-full bg-white transition-transform mt-0.5 ${form.is_overnight ? 'translate-x-5' : 'translate-x-1'}`} />
+                style={{ position: 'absolute', width: '1px', height: '1px', opacity: 0 }} />
+              <div style={{ width: '36px', height: '20px', borderRadius: '10px', background: form.is_overnight ? '#4F46E5' : 'var(--pz-surface-3)', transition: 'background 0.2s' }}>
+                <div style={{ width: '14px', height: '14px', borderRadius: '50%', background: '#fff', transform: form.is_overnight ? 'translateX(20px)' : 'translateX(4px)', marginTop: '3px', transition: 'transform 0.2s' }} />
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              {form.is_overnight ? <Moon size={14} className="text-indigo-400" /> : <Sun size={14} className="text-amber-400" />}
-              <span className="text-xs font-semibold text-[var(--pz-text-secondary)]">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {form.is_overnight ? <Moon size={14} color="#818CF8" /> : <Sun size={14} color="#F59E0B" />}
+              <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)' }}>
                 {form.is_overnight ? 'Overnight shift (spans midnight)' : 'Day shift'}
               </span>
             </div>
           </label>
         </div>
+      </div>
 
-        {/* Right card: Time Windows */}
-        <div className="col-span-2 space-y-3">
-          <div className="p-4 rounded-xl bg-[var(--pz-surface-2)]/50 border border-[var(--pz-border)] space-y-3">
-            <h5 className="text-xs font-bold text-[var(--pz-text-secondary)] uppercase tracking-wider">Core Hours</h5>
-            <div className="grid grid-cols-2 gap-2">
+      {/* Schedule Windows Section */}
+      <div style={{ background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', borderRadius: '12px', padding: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '24px' }}>
+          <div style={{ padding: '8px', borderRadius: '8px', background: 'rgba(245,158,11,0.12)', display: 'flex' }}>
+            <Calendar size={18} color="#F59E0B" />
+          </div>
+          <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--pz-text)' }}>Schedule Windows</span>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px' }}>
+          <div style={{ padding: '16px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)' }}>
+            <h5 style={{ fontSize: '11px', fontWeight: 700, color: 'var(--pz-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px' }}>Core Hours</h5>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
-                <label className="text-[11px] font-semibold text-[var(--pz-text-muted)] mb-1 block">Start *</label>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--pz-text-muted)', marginBottom: '6px' }}>Start *</label>
                 <input type="time" value={form.start_time} onChange={(e) => setForm(p => ({ ...p, start_time: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50 transition-colors" />
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '12px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }} />
               </div>
               <div>
-                <label className="text-[11px] font-semibold text-[var(--pz-text-muted)] mb-1 block">End *</label>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--pz-text-muted)', marginBottom: '6px' }}>End *</label>
                 <input type="time" value={form.end_time} onChange={(e) => setForm(p => ({ ...p, end_time: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50 transition-colors" />
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '12px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }} />
               </div>
             </div>
           </div>
 
-          <div className="p-4 rounded-xl bg-[var(--pz-surface-2)]/50 border border-[var(--pz-border)] space-y-3">
-            <h5 className="text-xs font-bold text-[var(--pz-text-secondary)] uppercase tracking-wider">Check-in Window</h5>
-            <div className="grid grid-cols-2 gap-2">
+          <div style={{ padding: '16px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)' }}>
+            <h5 style={{ fontSize: '11px', fontWeight: 700, color: 'var(--pz-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px' }}>Check-in Window</h5>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
-                <label className="text-[11px] font-semibold text-[var(--pz-text-muted)] mb-1 block">Window Start</label>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--pz-text-muted)', marginBottom: '6px' }}>Window Start</label>
                 <input type="time" value={form.checkin_window_start} onChange={(e) => setForm(p => ({ ...p, checkin_window_start: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50 transition-colors" />
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '12px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }} />
               </div>
               <div>
-                <label className="text-[11px] font-semibold text-[var(--pz-text-muted)] mb-1 block">Window End</label>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--pz-text-muted)', marginBottom: '6px' }}>Window End</label>
                 <input type="time" value={form.checkin_window_end} onChange={(e) => setForm(p => ({ ...p, checkin_window_end: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50 transition-colors" />
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '12px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }} />
               </div>
             </div>
           </div>
 
-          <div className="p-4 rounded-xl bg-[var(--pz-surface-2)]/50 border border-[var(--pz-border)] space-y-3">
-            <h5 className="text-xs font-bold text-[var(--pz-text-secondary)] uppercase tracking-wider">Check-out Window</h5>
-            <div className="grid grid-cols-2 gap-2">
+          <div style={{ padding: '16px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)' }}>
+            <h5 style={{ fontSize: '11px', fontWeight: 700, color: 'var(--pz-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px' }}>Check-out Window</h5>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
-                <label className="text-[11px] font-semibold text-[var(--pz-text-muted)] mb-1 block">Window Start</label>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--pz-text-muted)', marginBottom: '6px' }}>Window Start</label>
                 <input type="time" value={form.checkout_window_start} onChange={(e) => setForm(p => ({ ...p, checkout_window_start: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50 transition-colors" />
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '12px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }} />
               </div>
               <div>
-                <label className="text-[11px] font-semibold text-[var(--pz-text-muted)] mb-1 block">Window End</label>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--pz-text-muted)', marginBottom: '6px' }}>Window End</label>
                 <input type="time" value={form.checkout_window_end} onChange={(e) => setForm(p => ({ ...p, checkout_window_end: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50 transition-colors" />
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '12px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }} />
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Row 2: Numeric config */}
-      <div className="grid grid-cols-3 gap-4">
-        <div>
-          <label className="text-xs font-semibold text-[var(--pz-text-secondary)] mb-1.5 block">Working Hours</label>
-          <div className="relative">
-            <input type="number" value={form.working_hours} onChange={(e) => setForm(p => ({ ...p, working_hours: +e.target.value }))}
-              className="w-full px-4 py-2.5 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-sm text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50 transition-colors" />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-[var(--pz-text-muted)] font-medium">hrs</span>
+      {/* Configuration Section */}
+      <div style={{ background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', borderRadius: '12px', padding: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '24px' }}>
+          <div style={{ padding: '8px', borderRadius: '8px', background: 'rgba(139,92,246,0.12)', display: 'flex' }}>
+            <Settings2 size={18} color="#8B5CF6" />
           </div>
+          <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--pz-text)' }}>Configuration</span>
         </div>
-        <div>
-          <label className="text-xs font-semibold text-[var(--pz-text-secondary)] mb-1.5 block">Grace Period</label>
-          <div className="relative">
-            <input type="number" value={form.grace_period_minutes} onChange={(e) => setForm(p => ({ ...p, grace_period_minutes: +e.target.value }))}
-              className="w-full px-4 py-2.5 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-sm text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50 transition-colors" />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-[var(--pz-text-muted)] font-medium">min</span>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>Working Hours</label>
+            <div style={{ position: 'relative' }}>
+              <input type="number" value={form.working_hours} onChange={(e) => setForm(p => ({ ...p, working_hours: +e.target.value }))}
+                style={{ width: '100%', padding: '10px 16px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '14px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }} />
+              <span style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '10px', color: 'var(--pz-text-muted)', fontWeight: 500 }}>hrs</span>
+            </div>
           </div>
-        </div>
-        <div>
-          <label className="text-xs font-semibold text-[var(--pz-text-secondary)] mb-1.5 block">Break Duration</label>
-          <div className="relative">
-            <input type="number" value={form.break_duration_minutes} onChange={(e) => setForm(p => ({ ...p, break_duration_minutes: +e.target.value }))}
-              className="w-full px-4 py-2.5 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-sm text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50 transition-colors" />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-[var(--pz-text-muted)] font-medium">min</span>
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>Grace Period</label>
+            <div style={{ position: 'relative' }}>
+              <input type="number" value={form.grace_period_minutes} onChange={(e) => setForm(p => ({ ...p, grace_period_minutes: +e.target.value }))}
+                style={{ width: '100%', padding: '10px 16px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '14px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }} />
+              <span style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '10px', color: 'var(--pz-text-muted)', fontWeight: 500 }}>min</span>
+            </div>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>Break Duration</label>
+            <div style={{ position: 'relative' }}>
+              <input type="number" value={form.break_duration_minutes} onChange={(e) => setForm(p => ({ ...p, break_duration_minutes: +e.target.value }))}
+                style={{ width: '100%', padding: '10px 16px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '14px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }} />
+              <span style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '10px', color: 'var(--pz-text-muted)', fontWeight: 500 }}>min</span>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Actions */}
-      <div className="flex gap-4 pt-4" style={{ borderTop: '1px solid var(--pz-border)', marginTop: '16px' }}>
-        <Button variant="outline" size="lg" className="flex-1" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button variant="default" size="lg" className="flex-1" onClick={() => createMutation.mutate(form)}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '16px', paddingTop: '16px', borderTop: '1px solid var(--pz-border)', marginTop: '4px' }}>
+        <Button variant="outline" size="md" onClick={onCancel}>Cancel</Button>
+        <Button variant="default" size="md" onClick={() => createMutation.mutate(form)}
           disabled={!form.name || !form.code || createMutation.isPending}
           loading={createMutation.isPending}>
           {createMutation.isPending ? 'Creating...' : 'Create Template'}
@@ -564,154 +591,175 @@ function EditShiftTemplateForm({
   })
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-5 gap-5">
-        <div className="col-span-3 space-y-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', padding: '4px 0' }}>
+
+      {/* Basic Information Section */}
+      <div style={{ background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', borderRadius: '12px', padding: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '24px' }}>
+          <div style={{ padding: '8px', borderRadius: '8px', background: 'rgba(37,99,235,0.12)', display: 'flex' }}>
+            <Clock size={18} color="#2563EB" />
+          </div>
+          <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--pz-text)' }}>Basic Information</span>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
           <div>
-            <label className="text-xs font-semibold text-[var(--pz-text-secondary)] mb-1.5 block">Shift Name *</label>
-            <input
-              value={form.name}
-              onChange={(e) => setForm(p => ({ ...p, name: e.target.value }))}
-              className="w-full px-4 py-2.5 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-sm text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50 transition-colors"
-            />
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>
+              Shift Name <span style={{ color: 'var(--pz-danger-500)' }}>*</span>
+            </label>
+            <input value={form.name} onChange={(e) => setForm(p => ({ ...p, name: e.target.value }))}
+              style={{ width: '100%', padding: '10px 16px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '14px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }} />
           </div>
           <div>
-            <label className="text-xs font-semibold text-[var(--pz-text-secondary)] mb-1.5 block">Code *</label>
-            <input
-              value={form.code}
-              onChange={(e) => setForm(p => ({ ...p, code: e.target.value.toUpperCase() }))}
-              className="w-full px-4 py-2.5 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-sm text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50 transition-colors"
-            />
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>
+              Code <span style={{ color: 'var(--pz-danger-500)' }}>*</span>
+            </label>
+            <input value={form.code} onChange={(e) => setForm(p => ({ ...p, code: e.target.value.toUpperCase() }))}
+              style={{ width: '100%', padding: '10px 16px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '14px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }} />
           </div>
-          <div>
-            <label className="text-xs font-semibold text-[var(--pz-text-secondary)] mb-1.5 block">Description</label>
-            <textarea
-              value={form.description}
-              onChange={(e) => setForm(p => ({ ...p, description: e.target.value }))}
-              rows={2}
-              className="w-full px-4 py-2.5 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-sm text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50 transition-colors resize-none"
-            />
-          </div>
-          <label className="flex items-center gap-3 p-3 rounded-xl bg-[var(--pz-surface-2)]/50 border border-[var(--pz-border)] cursor-pointer hover:bg-[var(--pz-surface-2)] transition-colors">
-            <div className="relative">
-              <input
-                type="checkbox"
-                checked={form.is_overnight}
+        </div>
+
+        <div style={{ marginTop: '20px' }}>
+          <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>Description</label>
+          <textarea value={form.description} onChange={(e) => setForm(p => ({ ...p, description: e.target.value }))}
+            rows={2}
+            style={{ width: '100%', padding: '10px 16px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '14px', color: 'var(--pz-text)', outline: 'none', resize: 'none', boxSizing: 'border-box' }} />
+        </div>
+
+        <div style={{ marginTop: '20px', display: 'flex', gap: '20px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', borderRadius: '10px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--pz-border)', cursor: 'pointer', flex: 1 }}>
+            <div style={{ position: 'relative' }}>
+              <input type="checkbox" checked={form.is_overnight}
                 onChange={(e) => setForm(p => ({ ...p, is_overnight: e.target.checked }))}
-                className="sr-only"
-              />
-              <div className={`w-9 h-5 rounded-full transition-colors ${form.is_overnight ? 'bg-indigo-600' : 'bg-[var(--pz-surface-3)]'}`}>
-                <div className={`w-3.5 h-3.5 rounded-full bg-white transition-transform mt-0.5 ${form.is_overnight ? 'translate-x-5' : 'translate-x-1'}`} />
+                style={{ position: 'absolute', width: '1px', height: '1px', opacity: 0 }} />
+              <div style={{ width: '36px', height: '20px', borderRadius: '10px', background: form.is_overnight ? '#4F46E5' : 'var(--pz-surface-3)', transition: 'background 0.2s' }}>
+                <div style={{ width: '14px', height: '14px', borderRadius: '50%', background: '#fff', transform: form.is_overnight ? 'translateX(20px)' : 'translateX(4px)', marginTop: '3px', transition: 'transform 0.2s' }} />
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              {form.is_overnight ? <Moon size={14} className="text-indigo-400" /> : <Sun size={14} className="text-amber-400" />}
-              <span className="text-xs font-semibold text-[var(--pz-text-secondary)]">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {form.is_overnight ? <Moon size={14} color="#818CF8" /> : <Sun size={14} color="#F59E0B" />}
+              <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)' }}>
                 {form.is_overnight ? 'Overnight shift (spans midnight)' : 'Day shift'}
               </span>
             </div>
           </label>
-          <label className="flex items-center gap-3 p-3 rounded-xl bg-[var(--pz-surface-2)]/50 border border-[var(--pz-border)] cursor-pointer hover:bg-[var(--pz-surface-2)] transition-colors">
-            <div className="relative">
-              <input
-                type="checkbox"
-                checked={form.is_active}
+          <label style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', borderRadius: '10px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--pz-border)', cursor: 'pointer', flex: 1 }}>
+            <div style={{ position: 'relative' }}>
+              <input type="checkbox" checked={form.is_active}
                 onChange={(e) => setForm(p => ({ ...p, is_active: e.target.checked }))}
-                className="sr-only"
-              />
-              <div className={`w-9 h-5 rounded-full transition-colors ${form.is_active ? 'bg-emerald-600' : 'bg-[var(--pz-surface-3)]'}`}>
-                <div className={`w-3.5 h-3.5 rounded-full bg-white transition-transform mt-0.5 ${form.is_active ? 'translate-x-5' : 'translate-x-1'}`} />
+                style={{ position: 'absolute', width: '1px', height: '1px', opacity: 0 }} />
+              <div style={{ width: '36px', height: '20px', borderRadius: '10px', background: form.is_active ? '#059669' : 'var(--pz-surface-3)', transition: 'background 0.2s' }}>
+                <div style={{ width: '14px', height: '14px', borderRadius: '50%', background: '#fff', transform: form.is_active ? 'translateX(20px)' : 'translateX(4px)', marginTop: '3px', transition: 'transform 0.2s' }} />
               </div>
             </div>
-            <span className="text-xs font-semibold text-[var(--pz-text-secondary)]">
+            <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)' }}>
               {form.is_active ? 'Active' : 'Inactive'}
             </span>
           </label>
         </div>
+      </div>
 
-        <div className="col-span-2 space-y-3">
-          <div className="p-4 rounded-xl bg-[var(--pz-surface-2)]/50 border border-[var(--pz-border)] space-y-3">
-            <h5 className="text-xs font-bold text-[var(--pz-text-secondary)] uppercase tracking-wider">Core Hours</h5>
-            <div className="grid grid-cols-2 gap-2">
+      {/* Schedule Windows Section */}
+      <div style={{ background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', borderRadius: '12px', padding: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '24px' }}>
+          <div style={{ padding: '8px', borderRadius: '8px', background: 'rgba(245,158,11,0.12)', display: 'flex' }}>
+            <Calendar size={18} color="#F59E0B" />
+          </div>
+          <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--pz-text)' }}>Schedule Windows</span>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px' }}>
+          <div style={{ padding: '16px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)' }}>
+            <h5 style={{ fontSize: '11px', fontWeight: 700, color: 'var(--pz-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px' }}>Core Hours</h5>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
-                <label className="text-[11px] font-semibold text-[var(--pz-text-muted)] mb-1 block">Start *</label>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--pz-text-muted)', marginBottom: '6px' }}>Start *</label>
                 <input type="time" value={form.start_time} onChange={(e) => setForm(p => ({ ...p, start_time: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50 transition-colors" />
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '12px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }} />
               </div>
               <div>
-                <label className="text-[11px] font-semibold text-[var(--pz-text-muted)] mb-1 block">End *</label>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--pz-text-muted)', marginBottom: '6px' }}>End *</label>
                 <input type="time" value={form.end_time} onChange={(e) => setForm(p => ({ ...p, end_time: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50 transition-colors" />
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '12px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }} />
               </div>
             </div>
           </div>
 
-          <div className="p-4 rounded-xl bg-[var(--pz-surface-2)]/50 border border-[var(--pz-border)] space-y-3">
-            <h5 className="text-xs font-bold text-[var(--pz-text-secondary)] uppercase tracking-wider">Check-in Window</h5>
-            <div className="grid grid-cols-2 gap-2">
+          <div style={{ padding: '16px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)' }}>
+            <h5 style={{ fontSize: '11px', fontWeight: 700, color: 'var(--pz-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px' }}>Check-in Window</h5>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
-                <label className="text-[11px] font-semibold text-[var(--pz-text-muted)] mb-1 block">Window Start</label>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--pz-text-muted)', marginBottom: '6px' }}>Window Start</label>
                 <input type="time" value={form.checkin_window_start} onChange={(e) => setForm(p => ({ ...p, checkin_window_start: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50 transition-colors" />
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '12px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }} />
               </div>
               <div>
-                <label className="text-[11px] font-semibold text-[var(--pz-text-muted)] mb-1 block">Window End</label>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--pz-text-muted)', marginBottom: '6px' }}>Window End</label>
                 <input type="time" value={form.checkin_window_end} onChange={(e) => setForm(p => ({ ...p, checkin_window_end: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50 transition-colors" />
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '12px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }} />
               </div>
             </div>
           </div>
 
-          <div className="p-4 rounded-xl bg-[var(--pz-surface-2)]/50 border border-[var(--pz-border)] space-y-3">
-            <h5 className="text-xs font-bold text-[var(--pz-text-secondary)] uppercase tracking-wider">Check-out Window</h5>
-            <div className="grid grid-cols-2 gap-2">
+          <div style={{ padding: '16px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)' }}>
+            <h5 style={{ fontSize: '11px', fontWeight: 700, color: 'var(--pz-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px' }}>Check-out Window</h5>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div>
-                <label className="text-[11px] font-semibold text-[var(--pz-text-muted)] mb-1 block">Window Start</label>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--pz-text-muted)', marginBottom: '6px' }}>Window Start</label>
                 <input type="time" value={form.checkout_window_start} onChange={(e) => setForm(p => ({ ...p, checkout_window_start: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50 transition-colors" />
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '12px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }} />
               </div>
               <div>
-                <label className="text-[11px] font-semibold text-[var(--pz-text-muted)] mb-1 block">Window End</label>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--pz-text-muted)', marginBottom: '6px' }}>Window End</label>
                 <input type="time" value={form.checkout_window_end} onChange={(e) => setForm(p => ({ ...p, checkout_window_end: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50 transition-colors" />
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '8px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '12px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }} />
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
-        <div>
-          <label className="text-xs font-semibold text-[var(--pz-text-secondary)] mb-1.5 block">Working Hours</label>
-          <div className="relative">
-            <input type="number" value={form.working_hours} onChange={(e) => setForm(p => ({ ...p, working_hours: +e.target.value }))}
-              className="w-full px-4 py-2.5 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-sm text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50 transition-colors" />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-[var(--pz-text-muted)] font-medium">hrs</span>
+      {/* Configuration Section */}
+      <div style={{ background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', borderRadius: '12px', padding: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '24px' }}>
+          <div style={{ padding: '8px', borderRadius: '8px', background: 'rgba(139,92,246,0.12)', display: 'flex' }}>
+            <Settings2 size={18} color="#8B5CF6" />
           </div>
+          <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--pz-text)' }}>Configuration</span>
         </div>
-        <div>
-          <label className="text-xs font-semibold text-[var(--pz-text-secondary)] mb-1.5 block">Grace Period</label>
-          <div className="relative">
-            <input type="number" value={form.grace_period_minutes} onChange={(e) => setForm(p => ({ ...p, grace_period_minutes: +e.target.value }))}
-              className="w-full px-4 py-2.5 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-sm text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50 transition-colors" />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-[var(--pz-text-muted)] font-medium">min</span>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>Working Hours</label>
+            <div style={{ position: 'relative' }}>
+              <input type="number" value={form.working_hours} onChange={(e) => setForm(p => ({ ...p, working_hours: +e.target.value }))}
+                style={{ width: '100%', padding: '10px 16px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '14px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }} />
+              <span style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '10px', color: 'var(--pz-text-muted)', fontWeight: 500 }}>hrs</span>
+            </div>
           </div>
-        </div>
-        <div>
-          <label className="text-xs font-semibold text-[var(--pz-text-secondary)] mb-1.5 block">Break Duration</label>
-          <div className="relative">
-            <input type="number" value={form.break_duration_minutes} onChange={(e) => setForm(p => ({ ...p, break_duration_minutes: +e.target.value }))}
-              className="w-full px-4 py-2.5 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-sm text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50 transition-colors" />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-[var(--pz-text-muted)] font-medium">min</span>
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>Grace Period</label>
+            <div style={{ position: 'relative' }}>
+              <input type="number" value={form.grace_period_minutes} onChange={(e) => setForm(p => ({ ...p, grace_period_minutes: +e.target.value }))}
+                style={{ width: '100%', padding: '10px 16px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '14px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }} />
+              <span style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '10px', color: 'var(--pz-text-muted)', fontWeight: 500 }}>min</span>
+            </div>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>Break Duration</label>
+            <div style={{ position: 'relative' }}>
+              <input type="number" value={form.break_duration_minutes} onChange={(e) => setForm(p => ({ ...p, break_duration_minutes: +e.target.value }))}
+                style={{ width: '100%', padding: '10px 16px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '14px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }} />
+              <span style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '10px', color: 'var(--pz-text-muted)', fontWeight: 500 }}>min</span>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="flex gap-4 pt-4" style={{ borderTop: '1px solid var(--pz-border)', marginTop: '16px' }}>
-        <Button variant="outline" size="lg" className="flex-1" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button variant="default" size="lg" className="flex-1" onClick={() => updateMutation.mutate(form)}
+      {/* Actions */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '16px', paddingTop: '16px', borderTop: '1px solid var(--pz-border)', marginTop: '4px' }}>
+        <Button variant="outline" size="md" onClick={onCancel}>Cancel</Button>
+        <Button variant="default" size="md" onClick={() => updateMutation.mutate(form)}
           disabled={!form.name || !form.code || updateMutation.isPending}
           loading={updateMutation.isPending}>
           {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
@@ -757,7 +805,7 @@ function DeptShiftRulesTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-gray-400">
+        <p className="text-xs" style={{ color: 'var(--pz-text-muted)' }}>
           Default shift rules per department — determines which shift template applies to unscheduled employees
         </p>
         <button
@@ -771,7 +819,7 @@ function DeptShiftRulesTab() {
       {isLoading ? (
         <div className="space-y-2">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="pz-card p-4">
+            <div key={i} className="p-4" style={{ background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', borderRadius: '10px' }}>
               <div className="pz-skeleton h-4 w-48 rounded" />
             </div>
           ))}
@@ -784,7 +832,7 @@ function DeptShiftRulesTab() {
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.03 }}
-              className="pz-card p-4 flex items-center justify-between"
+              className="p-4 flex items-center justify-between" style={{ background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', borderRadius: '10px' }}
             >
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
@@ -815,7 +863,7 @@ function DeptShiftRulesTab() {
             </motion.div>
           ))}
           {!rules.length && (
-            <div className="pz-card p-8 text-center text-gray-500">
+            <div className="p-8 text-center" style={{ background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', borderRadius: '10px', color: 'var(--pz-text-muted)' }}>
               <p className="text-sm">No department shift rules configured</p>
               <p className="text-xs mt-1">Create a rule to set default shifts per department</p>
             </div>
@@ -823,62 +871,44 @@ function DeptShiftRulesTab() {
         </div>
       )}
 
-      {showCreateModal && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-6"
-          style={{ background: 'rgba(17,24,39,0.55)', backdropFilter: 'blur(6px)' }}
-          onClick={e => e.target === e.currentTarget && setShowCreateModal(false)}>
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
-            style={{ width: '100%', maxWidth: '720px', background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', boxShadow: 'var(--pz-shadow-modal)', borderRadius: '10px', overflow: 'hidden' }}
-          >
-            <div style={{ padding: '32px 36px 24px 36px', borderBottom: '1px solid var(--pz-border)' }}>
-              <h3 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--pz-text)', margin: 0 }}>Add Department Shift Rule</h3>
-              <p style={{ fontSize: '14px', color: 'var(--pz-text-muted)', marginTop: '4px', marginBottom: 0 }}>Set a default shift template for a department.</p>
-            </div>
-            <div style={{ padding: '32px 36px 36px 36px' }}>
-              <CreateDeptRuleForm
-                departments={departments}
-                templates={templates}
-                onSuccess={() => {
-                  queryClient.invalidateQueries({ queryKey: ['dept-shift-rules'] })
-                  setShowCreateModal(false)
-                }}
-                onCancel={() => setShowCreateModal(false)}
-              />
-            </div>
-          </motion.div>
-        </div>
-      )}
+      <Modal
+        open={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        title="Add Department Shift Rule"
+        description="Set a default shift template for a department."
+        size="md"
+      >
+        <CreateDeptRuleForm
+          departments={departments}
+          templates={templates}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['dept-shift-rules'] })
+            setShowCreateModal(false)
+          }}
+          onCancel={() => setShowCreateModal(false)}
+        />
+      </Modal>
 
-      {editingRule && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-6"
-          style={{ background: 'rgba(17,24,39,0.55)', backdropFilter: 'blur(6px)' }}
-          onClick={e => e.target === e.currentTarget && setEditingRule(null)}>
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
-            style={{ width: '100%', maxWidth: '720px', background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', boxShadow: 'var(--pz-shadow-modal)', borderRadius: '10px', overflow: 'hidden' }}
-          >
-            <div style={{ padding: '32px 36px 24px 36px', borderBottom: '1px solid var(--pz-border)' }}>
-              <h3 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--pz-text)', margin: 0 }}>Edit Department Shift Rule</h3>
-              <p style={{ fontSize: '14px', color: 'var(--pz-text-muted)', marginTop: '4px', marginBottom: 0 }}>Update the default shift for this department.</p>
-            </div>
-            <div style={{ padding: '32px 36px 36px 36px' }}>
-              <EditDeptRuleForm
-                rule={editingRule}
-                departments={departments}
-                templates={templates}
-                onSuccess={() => {
-                  queryClient.invalidateQueries({ queryKey: ['dept-shift-rules'] })
-                  setEditingRule(null)
-                }}
-                onCancel={() => setEditingRule(null)}
-              />
-            </div>
-          </motion.div>
-        </div>
-      )}
+      <Modal
+        open={!!editingRule}
+        onClose={() => setEditingRule(null)}
+        title="Edit Department Shift Rule"
+        description="Update the default shift for this department."
+        size="md"
+      >
+        {editingRule && (
+          <EditDeptRuleForm
+            rule={editingRule}
+            departments={departments}
+            templates={templates}
+            onSuccess={() => {
+              queryClient.invalidateQueries({ queryKey: ['dept-shift-rules'] })
+              setEditingRule(null)
+            }}
+            onCancel={() => setEditingRule(null)}
+          />
+        )}
+      </Modal>
     </div>
   )
 }
@@ -1182,7 +1212,7 @@ function ShiftAssignmentsTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-gray-400">
+        <p className="text-xs" style={{ color: 'var(--pz-text-muted)' }}>
           Individual employee shift assignments — overrides department rules
         </p>
         <button
@@ -1196,7 +1226,7 @@ function ShiftAssignmentsTab() {
       {isLoading ? (
         <div className="space-y-2">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="pz-card p-4">
+            <div key={i} className="p-4" style={{ background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', borderRadius: '10px' }}>
               <div className="pz-skeleton h-4 w-48 rounded" />
             </div>
           ))}
@@ -1209,7 +1239,7 @@ function ShiftAssignmentsTab() {
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.03 }}
-              className="pz-card p-4 flex items-center justify-between"
+              className="p-4 flex items-center justify-between" style={{ background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', borderRadius: '10px' }}
             >
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-900/40 to-indigo-900/40 flex items-center justify-center text-[10px] font-bold text-blue-400 border border-blue-500/20">
@@ -1240,7 +1270,7 @@ function ShiftAssignmentsTab() {
             </motion.div>
           ))}
           {!assignments.length && (
-            <div className="pz-card p-8 text-center text-gray-500">
+            <div className="p-8 text-center" style={{ background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', borderRadius: '10px', color: 'var(--pz-text-muted)' }}>
               <p className="text-sm">No shift assignments configured</p>
               <p className="text-xs mt-1">Assign individual employees to specific shifts</p>
             </div>
@@ -1248,62 +1278,44 @@ function ShiftAssignmentsTab() {
         </div>
       )}
 
-      {showCreateModal && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-6"
-          style={{ background: 'rgba(17,24,39,0.55)', backdropFilter: 'blur(6px)' }}
-          onClick={e => e.target === e.currentTarget && setShowCreateModal(false)}>
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
-            style={{ width: '100%', maxWidth: '720px', background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', boxShadow: 'var(--pz-shadow-modal)', borderRadius: '10px', overflow: 'hidden' }}
-          >
-            <div style={{ padding: '32px 36px 24px 36px', borderBottom: '1px solid var(--pz-border)' }}>
-              <h3 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--pz-text)', margin: 0 }}>Add Shift Assignment</h3>
-              <p style={{ fontSize: '14px', color: 'var(--pz-text-muted)', marginTop: '4px', marginBottom: 0 }}>Assign an individual employee to a specific shift template.</p>
-            </div>
-            <div style={{ padding: '32px 36px 36px 36px' }}>
-              <CreateAssignmentForm
-                employees={employees}
-                templates={templates}
-                onSuccess={() => {
-                  queryClient.invalidateQueries({ queryKey: ['shift-assignments'] })
-                  setShowCreateModal(false)
-                }}
-                onCancel={() => setShowCreateModal(false)}
-              />
-            </div>
-          </motion.div>
-        </div>
-      )}
+      <Modal
+        open={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        title="Add Shift Assignment"
+        description="Assign an individual employee to a specific shift template."
+        size="md"
+      >
+        <CreateAssignmentForm
+          employees={employees}
+          templates={templates}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['shift-assignments'] })
+            setShowCreateModal(false)
+          }}
+          onCancel={() => setShowCreateModal(false)}
+        />
+      </Modal>
 
-      {editingAssignment && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-6"
-          style={{ background: 'rgba(17,24,39,0.55)', backdropFilter: 'blur(6px)' }}
-          onClick={e => e.target === e.currentTarget && setEditingAssignment(null)}>
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
-            style={{ width: '100%', maxWidth: '720px', background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', boxShadow: 'var(--pz-shadow-modal)', borderRadius: '10px', overflow: 'hidden' }}
-          >
-            <div style={{ padding: '32px 36px 24px 36px', borderBottom: '1px solid var(--pz-border)' }}>
-              <h3 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--pz-text)', margin: 0 }}>Edit Shift Assignment</h3>
-              <p style={{ fontSize: '14px', color: 'var(--pz-text-muted)', marginTop: '4px', marginBottom: 0 }}>Update the shift assignment for this employee.</p>
-            </div>
-            <div style={{ padding: '32px 36px 36px 36px' }}>
-              <EditAssignmentForm
-                assignment={editingAssignment}
-                employees={employees}
-                templates={templates}
-                onSuccess={() => {
-                  queryClient.invalidateQueries({ queryKey: ['shift-assignments'] })
-                  setEditingAssignment(null)
-                }}
-                onCancel={() => setEditingAssignment(null)}
-              />
-            </div>
-          </motion.div>
-        </div>
-      )}
+      <Modal
+        open={!!editingAssignment}
+        onClose={() => setEditingAssignment(null)}
+        title="Edit Shift Assignment"
+        description="Update the shift assignment for this employee."
+        size="md"
+      >
+        {editingAssignment && (
+          <EditAssignmentForm
+            assignment={editingAssignment}
+            employees={employees}
+            templates={templates}
+            onSuccess={() => {
+              queryClient.invalidateQueries({ queryKey: ['shift-assignments'] })
+              setEditingAssignment(null)
+            }}
+            onCancel={() => setEditingAssignment(null)}
+          />
+        )}
+      </Modal>
     </div>
   )
 }
@@ -1371,7 +1383,7 @@ function ShiftOverridesTab() {
       {isLoading ? (
         <div className="space-y-2">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="pz-card p-4">
+            <div key={i} className="p-4" style={{ background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', borderRadius: '10px' }}>
               <div className="pz-skeleton h-4 w-48 rounded" />
             </div>
           ))}
@@ -1393,11 +1405,11 @@ function ShiftOverridesTab() {
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.03 }}
-                className="pz-card p-4 flex items-center justify-between"
+                className="p-4 flex items-center justify-between" style={{ background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', borderRadius: '10px' }}
               >
                 <div className="flex items-center gap-3">
                   <div className={`p-2 rounded-lg ${isActive ? 'bg-amber-500/10 border border-amber-500/20' : isPast ? 'bg-gray-500/10 border border-gray-500/20' : 'bg-emerald-500/10 border border-emerald-500/20'}`}>
-                    <CalendarOff size={14} className={isActive ? 'text-amber-400' : isPast ? 'text-gray-400' : 'text-emerald-400'} />
+                    <CalendarOff size={14} style={{ color: isActive ? '#F59E0B' : isPast ? 'var(--pz-text-muted)' : '#10B981' }} />
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-[var(--pz-text)]">
@@ -1406,7 +1418,7 @@ function ShiftOverridesTab() {
                     <p className="text-[10px] text-[var(--pz-text-muted)]">
                       {tmpl?.name || 'Unknown Shift'} · {o.start_date} → {o.end_date}
                       {isActive && <span className="ml-2 text-amber-400">Active</span>}
-                      {isPast && <span className="ml-2 text-gray-500">Expired</span>}
+                      {isPast && <span className="ml-2" style={{ color: 'var(--pz-text-muted)' }}>Expired</span>}
                     </p>
                     {o.reason && (
                       <p className="text-[10px] text-[var(--pz-text-muted)] mt-0.5">Reason: {o.reason}</p>
@@ -1431,7 +1443,7 @@ function ShiftOverridesTab() {
             )
           })}
           {!overrides.length && (
-            <div className="pz-card p-8 text-center text-gray-500">
+            <div className="p-8 text-center" style={{ background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', borderRadius: '10px', color: 'var(--pz-text-muted)' }}>
               <p className="text-sm">No shift overrides configured</p>
               <p className="text-xs mt-1">Create overrides for temporary shift changes</p>
             </div>
@@ -1439,62 +1451,44 @@ function ShiftOverridesTab() {
         </div>
       )}
 
-      {showCreateModal && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-6"
-          style={{ background: 'rgba(17,24,39,0.55)', backdropFilter: 'blur(6px)' }}
-          onClick={e => e.target === e.currentTarget && setShowCreateModal(false)}>
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
-            style={{ width: '100%', maxWidth: '720px', background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', boxShadow: 'var(--pz-shadow-modal)', borderRadius: '10px', overflow: 'hidden' }}
-          >
-            <div style={{ padding: '32px 36px 24px 36px', borderBottom: '1px solid var(--pz-border)' }}>
-              <h3 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--pz-text)', margin: 0 }}>Add Shift Override</h3>
-              <p style={{ fontSize: '14px', color: 'var(--pz-text-muted)', marginTop: '4px', marginBottom: 0 }}>Apply a temporary shift change for a specific date range.</p>
-            </div>
-            <div style={{ padding: '32px 36px 36px 36px' }}>
-              <CreateOverrideForm
-                employees={employees}
-                templates={templates}
-                onSuccess={() => {
-                  queryClient.invalidateQueries({ queryKey: ['shift-overrides'] })
-                  setShowCreateModal(false)
-                }}
-                onCancel={() => setShowCreateModal(false)}
-              />
-            </div>
-          </motion.div>
-        </div>
-      )}
+      <Modal
+        open={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        title="Add Shift Override"
+        description="Apply a temporary shift change for a specific date range."
+        size="md"
+      >
+        <CreateOverrideForm
+          employees={employees}
+          templates={templates}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['shift-overrides'] })
+            setShowCreateModal(false)
+          }}
+          onCancel={() => setShowCreateModal(false)}
+        />
+      </Modal>
 
-      {editingOverride && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-6"
-          style={{ background: 'rgba(17,24,39,0.55)', backdropFilter: 'blur(6px)' }}
-          onClick={e => e.target === e.currentTarget && setEditingOverride(null)}>
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 8 }} animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
-            style={{ width: '100%', maxWidth: '720px', background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', boxShadow: 'var(--pz-shadow-modal)', borderRadius: '10px', overflow: 'hidden' }}
-          >
-            <div style={{ padding: '32px 36px 24px 36px', borderBottom: '1px solid var(--pz-border)' }}>
-              <h3 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--pz-text)', margin: 0 }}>Edit Shift Override</h3>
-              <p style={{ fontSize: '14px', color: 'var(--pz-text-muted)', marginTop: '4px', marginBottom: 0 }}>Modify the temporary shift change.</p>
-            </div>
-            <div style={{ padding: '32px 36px 36px 36px' }}>
-              <EditOverrideForm
-                override={editingOverride}
-                employees={employees}
-                templates={templates}
-                onSuccess={() => {
-                  queryClient.invalidateQueries({ queryKey: ['shift-overrides'] })
-                  setEditingOverride(null)
-                }}
-                onCancel={() => setEditingOverride(null)}
-              />
-            </div>
-          </motion.div>
-        </div>
-      )}
+      <Modal
+        open={!!editingOverride}
+        onClose={() => setEditingOverride(null)}
+        title="Edit Shift Override"
+        description="Modify the temporary shift change."
+        size="md"
+      >
+        {editingOverride && (
+          <EditOverrideForm
+            override={editingOverride}
+            employees={employees}
+            templates={templates}
+            onSuccess={() => {
+              queryClient.invalidateQueries({ queryKey: ['shift-overrides'] })
+              setEditingOverride(null)
+            }}
+            onCancel={() => setEditingOverride(null)}
+          />
+        )}
+      </Modal>
     </div>
   )
 }

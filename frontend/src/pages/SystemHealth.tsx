@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
@@ -20,8 +20,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import api from '@/api/client'
-import { PageHeader } from '@/components/ui/PageHeader'
-import { StatsCard } from '@/components/dashboard/StatsCard'
+import { Section } from '@/components/ui/CardSection'
 
 interface MetricsSnapshot {
   uptime_seconds: number
@@ -75,8 +74,259 @@ function formatRelativeTime(isoString: string | null): string {
   return `${hours}h ago`
 }
 
+const s = {
+  page: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '24px',
+  },
+  headerRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  title: {
+    fontSize: '24px',
+    fontWeight: 700,
+    color: 'var(--pz-text)',
+    margin: 0,
+  },
+  subtitle: {
+    fontSize: '14px',
+    color: 'var(--pz-text-muted)',
+    marginTop: '4px',
+    marginBottom: 0,
+  },
+  headerActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+  },
+  summaryGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, 1fr)',
+    gap: '16px',
+  },
+  summaryCard: {
+    background: 'var(--pz-surface-1)',
+    border: '1px solid var(--pz-border)',
+    borderRadius: '10px',
+    padding: '16px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '14px',
+  },
+  iconBox: (gradient: string): React.CSSProperties => ({
+    width: '42px',
+    height: '42px',
+    borderRadius: '10px',
+    background: gradient,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  }),
+  statValue: {
+    fontSize: '24px',
+    fontWeight: 700,
+    color: 'var(--pz-text)',
+    margin: 0,
+    lineHeight: 1,
+  },
+  statLabel: {
+    fontSize: '12px',
+    color: 'var(--pz-text-muted)',
+    margin: '4px 0 0',
+  },
+  sectionHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    marginBottom: '16px',
+  },
+  sectionTitle: {
+    fontSize: '15px',
+    fontWeight: 600,
+    color: 'var(--pz-text)',
+    margin: 0,
+  },
+  statusList: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '12px',
+  },
+  statusRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+  },
+  statusCode: (is5xx: boolean, is4xx: boolean): React.CSSProperties => ({
+    width: '48px',
+    textAlign: 'center' as const,
+    fontFamily: 'monospace',
+    fontSize: '14px',
+    fontWeight: 700,
+    color: is5xx ? '#EF4444' : is4xx ? '#F59E0B' : '#10B981',
+  }),
+  barBg: {
+    flex: 1,
+    height: '16px',
+    background: 'var(--pz-surface-2)',
+    border: '1px solid var(--pz-border)',
+    borderRadius: '9999px',
+    overflow: 'hidden',
+  },
+  barFill: (is5xx: boolean, is4xx: boolean): React.CSSProperties => ({
+    height: '100%',
+    borderRadius: '9999px',
+    background: is5xx ? '#EF4444' : is4xx ? '#F59E0B' : '#10B981',
+    transition: 'width 0.5s',
+  }),
+  barCount: {
+    width: '64px',
+    textAlign: 'right' as const,
+    fontSize: '14px',
+    fontWeight: 500,
+    color: 'var(--pz-text-secondary)',
+  },
+  emptyState: {
+    textAlign: 'center' as const,
+    padding: '16px 0',
+  },
+  emptyText: {
+    fontSize: '14px',
+    color: 'var(--pz-text-muted)',
+    margin: 0,
+  },
+  workerList: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+  },
+  workerRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '8px 0',
+    borderBottom: '1px solid var(--pz-border)',
+  },
+  workerInfo: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  workerName: {
+    fontSize: '14px',
+    fontWeight: 500,
+    color: 'var(--pz-text-secondary)',
+  },
+  workerBeat: (isStale: boolean): React.CSSProperties => ({
+    fontSize: '12px',
+    color: isStale ? '#EF4444' : 'var(--pz-text-muted)',
+    fontWeight: isStale ? 500 : 400,
+  }),
+  overflowX: {
+    overflowX: 'auto' as const,
+  },
+  table: {
+    width: '100%',
+    fontSize: '14px',
+    borderCollapse: 'collapse' as const,
+  },
+  tableHeadCell: {
+    textAlign: 'left' as const,
+    padding: '8px 12px',
+    fontWeight: 500,
+    color: 'var(--pz-text-muted)',
+    fontSize: '12px',
+    borderBottom: '1px solid var(--pz-border)',
+  },
+  tableHeadCellRight: {
+    textAlign: 'right' as const,
+    padding: '8px 12px',
+    fontWeight: 500,
+    color: 'var(--pz-text-muted)',
+    fontSize: '12px',
+    borderBottom: '1px solid var(--pz-border)',
+  },
+  endpointCell: {
+    padding: '8px 12px',
+    fontFamily: 'monospace',
+    fontSize: '12px',
+    color: 'var(--pz-text-secondary)',
+    maxWidth: '240px',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap' as const,
+    borderBottom: '1px solid var(--pz-border)',
+  },
+  tdRight: {
+    padding: '8px 12px',
+    textAlign: 'right' as const,
+    borderBottom: '1px solid var(--pz-border)',
+    fontWeight: 500,
+    color: 'var(--pz-text)',
+  },
+  tdRightSecondary: {
+    padding: '8px 12px',
+    textAlign: 'right' as const,
+    borderBottom: '1px solid var(--pz-border)',
+    color: 'var(--pz-text-secondary)',
+  },
+  tdRightMuted: {
+    padding: '8px 12px',
+    textAlign: 'right' as const,
+    borderBottom: '1px solid var(--pz-border)',
+    fontSize: '12px',
+    color: 'var(--pz-text-muted)',
+  },
+  detailGroup: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '12px',
+  },
+  detailRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  detailLabel: {
+    fontSize: '14px',
+    color: 'var(--pz-text-muted)',
+  },
+  detailValue: {
+    fontSize: '14px',
+    fontWeight: 500,
+    color: 'var(--pz-text)',
+  },
+  lastUpdated: {
+    fontSize: '12px',
+    color: 'var(--pz-text-muted)',
+    textAlign: 'center' as const,
+    margin: 0,
+  },
+  loadingContainer: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '256px',
+  },
+  grid2col: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: '24px',
+  },
+  grid3col: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: '24px',
+  },
+}
+
 export default function SystemHealth() {
   const [autoRefresh, setAutoRefresh] = useState(true)
+  const [hoveredToggle, setHoveredToggle] = useState(false)
+  const [hoveredRefresh, setHoveredRefresh] = useState(false)
+  const [hoveredEndpoint, setHoveredEndpoint] = useState<string | null>(null)
 
   const { data: metrics, isLoading, refetch, dataUpdatedAt } = useQuery<SystemMetrics>({
     queryKey: ['system-metrics'],
@@ -117,8 +367,8 @@ export default function SystemHealth() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <RefreshCcw className="w-6 h-6 animate-spin text-blue-500" />
+      <div style={s.loadingContainer}>
+        <RefreshCcw size={24} style={{ animation: 'spin 1s linear infinite', color: '#3B82F6' }} />
       </div>
     )
   }
@@ -129,76 +379,115 @@ export default function SystemHealth() {
     .sort(([, a], [, b]) => b.count - a.count)
     .slice(0, 10)
 
+  const errorRateHigh = (requests?.error_rate_percent ?? 0) > 5
+
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="System Health"
-        description="Real-time observability dashboard for Project Z"
-        icon={Activity}
-        iconColor="#10B981"
-        actions={
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setAutoRefresh(!autoRefresh)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                autoRefresh
-                  ? 'bg-green-500/10 text-green-400 border border-green-500/20'
-                  : 'bg-surface-2 text-text-secondary border border-border hover:bg-[var(--pz-surface-3)]'
-              }`}
-            >
-              {autoRefresh ? '● Live' : '○ Paused'}
-            </button>
-            <button
-              onClick={() => refetch()}
-              className="p-2 rounded-lg border border-border bg-surface-2 hover:bg-[var(--pz-surface-3)] text-text-secondary transition-colors"
-            >
-              <RefreshCcw className="w-4 h-4 text-text-secondary" />
-            </button>
-          </div>
-        }
-      />
+    <div style={s.page}>
+      {/* Header */}
+      <div style={s.headerRow}>
+        <div>
+          <h1 style={s.title}>System Health</h1>
+          <p style={s.subtitle}>Real-time observability dashboard for Project Z</p>
+        </div>
+        <div style={s.headerActions}>
+          <button
+            onClick={() => setAutoRefresh(!autoRefresh)}
+            style={{
+              padding: '6px 14px',
+              borderRadius: '20px',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.12s',
+              border: autoRefresh ? '1px solid rgba(16,185,129,0.2)' : '1px solid var(--pz-border)',
+              background: hoveredToggle
+                ? (autoRefresh ? 'rgba(16,185,129,0.15)' : 'var(--pz-surface-3)')
+                : (autoRefresh ? 'rgba(16,185,129,0.08)' : 'var(--pz-surface-2)'),
+              color: autoRefresh ? '#10B981' : 'var(--pz-text-secondary)',
+            }}
+            onMouseEnter={() => setHoveredToggle(true)}
+            onMouseLeave={() => setHoveredToggle(false)}
+          >
+            {autoRefresh ? '● Live' : '○ Paused'}
+          </button>
+          <button
+            onClick={() => refetch()}
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '10px',
+              border: '1px solid var(--pz-border)',
+              background: hoveredRefresh ? 'var(--pz-surface-3)' : 'var(--pz-surface-2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'background 0.12s',
+            }}
+            onMouseEnter={() => setHoveredRefresh(true)}
+            onMouseLeave={() => setHoveredRefresh(false)}
+          >
+            <RefreshCcw size={16} style={{ color: 'var(--pz-text-secondary)' }} />
+          </button>
+        </div>
+      </div>
 
       {/* System Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatsCard
-          title="Uptime"
-          value={formatUptime(requests?.uptime_seconds || 0)}
-          icon={Clock}
-          color="#10B981"
-        />
-        <StatsCard
-          title="Total Requests"
-          value={requests?.total_requests?.toLocaleString() || '0'}
-          icon={Globe}
-          color="#3B82F6"
-        />
-        <StatsCard
-          title="Error Rate"
-          value={`${(requests?.error_rate_percent ?? 0).toFixed(2)}%`}
-          icon={(requests?.error_rate_percent ?? 0) > 5 ? AlertTriangle : CheckCircle2}
-          color={(requests?.error_rate_percent ?? 0) > 5 ? '#EF4444' : '#10B981'}
-        />
-        <StatsCard
-          title="Active WebSockets"
-          value={String(requests?.websocket?.active_connections || 0)}
-          icon={Wifi}
-          color="#8B5CF6"
-        />
+      <div style={s.summaryGrid}>
+        <div style={s.summaryCard}>
+          <div style={s.iconBox('linear-gradient(135deg, #10B981, #059669)')}>
+            <Clock size={18} style={{ color: '#fff' }} />
+          </div>
+          <div>
+            <p style={s.statValue}>{formatUptime(requests?.uptime_seconds || 0)}</p>
+            <p style={s.statLabel}>Uptime</p>
+          </div>
+        </div>
+        <div style={s.summaryCard}>
+          <div style={s.iconBox('linear-gradient(135deg, #3B82F6, #2563EB)')}>
+            <Globe size={18} style={{ color: '#fff' }} />
+          </div>
+          <div>
+            <p style={s.statValue}>{requests?.total_requests?.toLocaleString() || '0'}</p>
+            <p style={s.statLabel}>Total Requests</p>
+          </div>
+        </div>
+        <div style={s.summaryCard}>
+          <div style={s.iconBox(
+            errorRateHigh
+              ? 'linear-gradient(135deg, #EF4444, #DC2626)'
+              : 'linear-gradient(135deg, #10B981, #059669)'
+          )}>
+            {errorRateHigh
+              ? <AlertTriangle size={18} style={{ color: '#fff' }} />
+              : <CheckCircle2 size={18} style={{ color: '#fff' }} />
+            }
+          </div>
+          <div>
+            <p style={s.statValue}>{`${(requests?.error_rate_percent ?? 0).toFixed(2)}%`}</p>
+            <p style={s.statLabel}>Error Rate</p>
+          </div>
+        </div>
+        <div style={s.summaryCard}>
+          <div style={s.iconBox('linear-gradient(135deg, #8B5CF6, #6D28D9)')}>
+            <Wifi size={18} style={{ color: '#fff' }} />
+          </div>
+          <div>
+            <p style={s.statValue}>{String(requests?.websocket?.active_connections || 0)}</p>
+            <p style={s.statLabel}>Active WebSockets</p>
+          </div>
+        </div>
       </div>
 
       {/* Status Codes & Workers */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div style={s.grid2col}>
         {/* Status Code Distribution */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-surface rounded-xl border border-border p-6"
-        >
-          <h3 className="text-lg font-semibold text-text mb-4 flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-blue-400" />
-            Status Code Distribution
-          </h3>
-          <div className="space-y-3">
+        <Section delay={0}>
+          <div style={s.sectionHeader}>
+            <BarChart3 size={20} style={{ color: '#60A5FA' }} />
+            <h3 style={s.sectionTitle}>Status Code Distribution</h3>
+          </div>
+          <div style={s.statusList}>
             {Object.entries(requests?.status_codes || {}).map(([code, count]) => {
               const numericCode = parseInt(code)
               const is4xx = numericCode >= 400 && numericCode < 500
@@ -207,123 +496,126 @@ export default function SystemHealth() {
               const pct = total > 0 ? (count / total) * 100 : 0
 
               return (
-                <div key={code} className="flex items-center gap-3">
-                  <span
-                    className={`w-12 text-center font-mono text-sm font-bold ${
-                      is5xx ? 'text-red-400' : is4xx ? 'text-amber-400' : 'text-green-400'
-                    }`}
-                  >
+                <div key={code} style={s.statusRow}>
+                  <span style={s.statusCode(is5xx, is4xx)}>
                     {code}
                   </span>
-                  <div className="flex-1 h-4 bg-surface-2 border border-border rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        is5xx ? 'bg-red-500' : is4xx ? 'bg-amber-500' : 'bg-green-500'
-                      }`}
-                      style={{ width: `${pct}%` }}
-                    />
+                  <div style={s.barBg}>
+                    <div style={{ ...s.barFill(is5xx, is4xx), width: `${pct}%` }} />
                   </div>
-                  <span className="w-16 text-right text-sm font-medium text-text-secondary">
+                  <span style={s.barCount}>
                     {count.toLocaleString()}
                   </span>
                 </div>
               )
             })}
             {Object.keys(requests?.status_codes || {}).length === 0 && (
-              <p className="text-sm text-text-muted text-center py-4">No data yet</p>
+              <div style={s.emptyState}>
+                <p style={s.emptyText}>No data yet</p>
+              </div>
             )}
           </div>
-        </motion.div>
+        </Section>
 
         {/* Worker Heartbeats */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="bg-surface rounded-xl border border-border p-6"
-        >
-          <h3 className="text-lg font-semibold text-text mb-4 flex items-center gap-2">
-            <Cpu className="w-5 h-5 text-purple-400" />
-            Worker Heartbeats
-          </h3>
-          <div className="space-y-2">
-            {Object.entries(workerStatuses).map(([worker, lastBeat]) => {
+        <Section delay={0.1}>
+          <div style={s.sectionHeader}>
+            <Cpu size={20} style={{ color: '#A78BFA' }} />
+            <h3 style={s.sectionTitle}>Worker Heartbeats</h3>
+          </div>
+          <div style={s.workerList}>
+            {Object.entries(workerStatuses).map(([worker, lastBeat], idx, arr) => {
               const lastBeatTime = new Date(lastBeat).getTime()
               const ageSeconds = (Date.now() - lastBeatTime) / 1000
-              const isStale = ageSeconds > 600 // 10 minutes
+              const isStale = ageSeconds > 600
+              const isLast = idx === arr.length - 1
 
               return (
-                <div key={worker} className="flex items-center justify-between py-2 border-b border-border last:border-0">
-                  <div className="flex items-center gap-2">
+                <div key={worker} style={isLast ? {
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '8px 0',
+                } : s.workerRow}>
+                  <div style={s.workerInfo}>
                     {isStale ? (
-                      <WifiOff className="w-4 h-4 text-red-400" />
+                      <WifiOff size={16} style={{ color: '#EF4444', flexShrink: 0 }} />
                     ) : (
-                      <Wifi className="w-4 h-4 text-green-400" />
+                      <Wifi size={16} style={{ color: '#10B981', flexShrink: 0 }} />
                     )}
-                    <span className="text-sm font-medium text-text-secondary">{worker}</span>
+                    <span style={s.workerName}>{worker}</span>
                   </div>
-                  <span className={`text-xs ${isStale ? 'text-red-400 font-medium' : 'text-text-muted'}`}>
+                  <span style={s.workerBeat(isStale)}>
                     {formatRelativeTime(lastBeat)}
                   </span>
                 </div>
               )
             })}
             {Object.keys(workerStatuses).length === 0 && (
-              <p className="text-sm text-text-muted text-center py-4">No worker heartbeats recorded</p>
+              <div style={s.emptyState}>
+                <p style={s.emptyText}>No worker heartbeats recorded</p>
+              </div>
             )}
           </div>
-        </motion.div>
+        </Section>
       </div>
 
       {/* Top Endpoints */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-        className="bg-surface rounded-xl border border-border p-6"
-      >
-        <h3 className="text-lg font-semibold text-text mb-4 flex items-center gap-2">
-          <Zap className="w-5 h-5 text-amber-400" />
-          Top Endpoints by Request Count
-        </h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+      <Section delay={0.2}>
+        <div style={s.sectionHeader}>
+          <Zap size={20} style={{ color: '#FBBF24' }} />
+          <h3 style={s.sectionTitle}>Top Endpoints by Request Count</h3>
+        </div>
+        <div style={s.overflowX}>
+          <table style={s.table}>
             <thead>
-              <tr className="border-b border-border">
-                <th className="text-left py-2 px-3 font-medium text-text-muted">Endpoint</th>
-                <th className="text-right py-2 px-3 font-medium text-text-muted">Requests</th>
-                <th className="text-right py-2 px-3 font-medium text-text-muted">Errors</th>
-                <th className="text-right py-2 px-3 font-medium text-text-muted">Avg Latency</th>
-                <th className="text-right py-2 px-3 font-medium text-text-muted">P95 Latency</th>
-                <th className="text-right py-2 px-3 font-medium text-text-muted">Last Seen</th>
+              <tr>
+                <th style={s.tableHeadCell}>Endpoint</th>
+                <th style={s.tableHeadCellRight}>Requests</th>
+                <th style={s.tableHeadCellRight}>Errors</th>
+                <th style={s.tableHeadCellRight}>Avg Latency</th>
+                <th style={s.tableHeadCellRight}>P95 Latency</th>
+                <th style={s.tableHeadCellRight}>Last Seen</th>
               </tr>
             </thead>
             <tbody>
               {topEndpoints.map(([endpoint, stats]) => (
-                <tr key={endpoint} className="border-b border-border hover:bg-[var(--pz-surface-3)] transition-colors">
-                  <td className="py-2 px-3 font-mono text-xs text-text-secondary max-w-xs truncate">{endpoint}</td>
-                  <td className="py-2 px-3 text-right font-medium text-text">{stats.count.toLocaleString()}</td>
-                  <td className="py-2 px-3 text-right">
-                    <span className={stats.error_count > 0 ? 'text-red-400 font-medium' : 'text-text-muted'}>
-                      {stats.error_count.toLocaleString()}
-                    </span>
+                <tr
+                  key={endpoint}
+                  style={{
+                    background: hoveredEndpoint === endpoint ? 'var(--pz-surface-3)' : 'transparent',
+                    transition: 'background 0.12s',
+                  }}
+                  onMouseEnter={() => setHoveredEndpoint(endpoint)}
+                  onMouseLeave={() => setHoveredEndpoint(null)}
+                >
+                  <td style={s.endpointCell}>{endpoint}</td>
+                  <td style={s.tdRight}>{stats.count.toLocaleString()}</td>
+                  <td style={{
+                    ...s.tdRight,
+                    color: stats.error_count > 0 ? '#EF4444' : 'var(--pz-text-muted)',
+                    fontWeight: stats.error_count > 0 ? 500 : 400,
+                  }}>
+                    {stats.error_count.toLocaleString()}
                   </td>
-                  <td className="py-2 px-3 text-right">
-                    <span className={stats.avg_latency_ms > 1000 ? 'text-amber-400 font-medium' : 'text-text-secondary'}>
-                      {stats.avg_latency_ms.toFixed(1)}ms
-                    </span>
+                  <td style={{
+                    ...s.tdRight,
+                    color: stats.avg_latency_ms > 1000 ? '#F59E0B' : 'var(--pz-text-secondary)',
+                    fontWeight: stats.avg_latency_ms > 1000 ? 500 : 400,
+                  }}>
+                    {stats.avg_latency_ms.toFixed(1)}ms
                   </td>
-                  <td className="py-2 px-3 text-right text-text-secondary">
+                  <td style={s.tdRightSecondary}>
                     {stats.max_latency_ms.toFixed(1)}ms
                   </td>
-                  <td className="py-2 px-3 text-right text-xs text-text-muted">
+                  <td style={s.tdRightMuted}>
                     {formatRelativeTime(stats.last_request_at)}
                   </td>
                 </tr>
               ))}
               {topEndpoints.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-text-muted">
+                  <td colSpan={6} style={{ padding: '32px 12px', textAlign: 'center', color: 'var(--pz-text-muted)' }}>
                     No endpoint data recorded yet
                   </td>
                 </tr>
@@ -331,107 +623,92 @@ export default function SystemHealth() {
             </tbody>
           </table>
         </div>
-      </motion.div>
+      </Section>
 
       {/* Audit & Alert Stats Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div style={s.grid3col}>
         {/* Audit Stats */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="bg-surface rounded-xl border border-border p-6"
-        >
-          <h3 className="text-lg font-semibold text-text mb-4 flex items-center gap-2">
-            <CheckCircle2 className="w-5 h-5 text-green-400" />
-            Audit Activity
-          </h3>
-          <div className="space-y-3 text-text-secondary">
-            <div className="flex justify-between">
-              <span className="text-sm text-text-muted">Last 24h Events</span>
-              <span className="font-medium text-text">{auditStats?.last_24h?.total ?? 'N/A'}</span>
+        <Section delay={0.3}>
+          <div style={s.sectionHeader}>
+            <CheckCircle2 size={20} style={{ color: '#34D399' }} />
+            <h3 style={s.sectionTitle}>Audit Activity</h3>
+          </div>
+          <div style={s.detailGroup}>
+            <div style={s.detailRow}>
+              <span style={s.detailLabel}>Last 24h Events</span>
+              <span style={s.detailValue}>{auditStats?.last_24h?.total ?? 'N/A'}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-text-muted">Total Events</span>
-              <span className="font-medium text-text">{auditStats?.total_events?.toLocaleString() ?? 'N/A'}</span>
+            <div style={s.detailRow}>
+              <span style={s.detailLabel}>Total Events</span>
+              <span style={s.detailValue}>{auditStats?.total_events?.toLocaleString() ?? 'N/A'}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-text-muted">Unique Users (24h)</span>
-              <span className="font-medium text-text">{auditStats?.last_24h?.unique_users ?? 'N/A'}</span>
+            <div style={s.detailRow}>
+              <span style={s.detailLabel}>Unique Users (24h)</span>
+              <span style={s.detailValue}>{auditStats?.last_24h?.unique_users ?? 'N/A'}</span>
             </div>
           </div>
-        </motion.div>
+        </Section>
 
         {/* Alert Stats */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.35 }}
-          className="bg-surface rounded-xl border border-border p-6"
-        >
-          <h3 className="text-lg font-semibold text-text mb-4 flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5 text-amber-400" />
-            Active Alerts
-          </h3>
-          <div className="space-y-3 text-text-secondary">
-            <div className="flex justify-between">
-              <span className="text-sm text-text-muted">Active (Unread)</span>
-              <span className="font-medium text-amber-400">{alertStats?.active_count ?? 'N/A'}</span>
+        <Section delay={0.35}>
+          <div style={s.sectionHeader}>
+            <AlertTriangle size={20} style={{ color: '#FBBF24' }} />
+            <h3 style={s.sectionTitle}>Active Alerts</h3>
+          </div>
+          <div style={s.detailGroup}>
+            <div style={s.detailRow}>
+              <span style={s.detailLabel}>Active (Unread)</span>
+              <span style={{ ...s.detailValue, color: '#F59E0B' }}>{alertStats?.active_count ?? 'N/A'}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-text-muted">Critical</span>
-              <span className="font-medium text-red-400">{alertStats?.by_severity?.critical ?? 0}</span>
+            <div style={s.detailRow}>
+              <span style={s.detailLabel}>Critical</span>
+              <span style={{ ...s.detailValue, color: '#EF4444' }}>{alertStats?.by_severity?.critical ?? 0}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-text-muted">Warning</span>
-              <span className="font-medium text-amber-400">{alertStats?.by_severity?.warning ?? 0}</span>
+            <div style={s.detailRow}>
+              <span style={s.detailLabel}>Warning</span>
+              <span style={{ ...s.detailValue, color: '#F59E0B' }}>{alertStats?.by_severity?.warning ?? 0}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-text-muted">Acknowledged (24h)</span>
-              <span className="font-medium text-green-400">{alertStats?.acknowledged_count ?? 0}</span>
+            <div style={s.detailRow}>
+              <span style={s.detailLabel}>Acknowledged (24h)</span>
+              <span style={{ ...s.detailValue, color: '#10B981' }}>{alertStats?.acknowledged_count ?? 0}</span>
             </div>
           </div>
-        </motion.div>
+        </Section>
 
         {/* Device Fleet Health */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="bg-surface rounded-xl border border-border p-6"
-        >
-          <h3 className="text-lg font-semibold text-text mb-4 flex items-center gap-2">
-            <Server className="w-5 h-5 text-blue-400" />
-            Device Fleet Health
-          </h3>
-          <div className="space-y-3 text-text-secondary">
-            <div className="flex justify-between">
-              <span className="text-sm text-text-muted">Healthy</span>
-              <span className="font-medium text-green-400">
+        <Section delay={0.4}>
+          <div style={s.sectionHeader}>
+            <Server size={20} style={{ color: '#60A5FA' }} />
+            <h3 style={s.sectionTitle}>Device Fleet Health</h3>
+          </div>
+          <div style={s.detailGroup}>
+            <div style={s.detailRow}>
+              <span style={s.detailLabel}>Healthy</span>
+              <span style={{ ...s.detailValue, color: '#10B981' }}>
                 {deviceHealth?.summary?.healthy ?? metrics?.devices?.online ?? 0}
               </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-text-muted">Degraded</span>
-              <span className="font-medium text-amber-400">{deviceHealth?.summary?.degraded ?? 0}</span>
+            <div style={s.detailRow}>
+              <span style={s.detailLabel}>Degraded</span>
+              <span style={{ ...s.detailValue, color: '#F59E0B' }}>{deviceHealth?.summary?.degraded ?? 0}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-text-muted">Critical</span>
-              <span className="font-medium text-red-400">{deviceHealth?.summary?.critical ?? 0}</span>
+            <div style={s.detailRow}>
+              <span style={s.detailLabel}>Critical</span>
+              <span style={{ ...s.detailValue, color: '#EF4444' }}>{deviceHealth?.summary?.critical ?? 0}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-text-muted">Offline</span>
-              <span className="font-medium text-text-muted">
+            <div style={s.detailRow}>
+              <span style={s.detailLabel}>Offline</span>
+              <span style={{ ...s.detailValue, color: 'var(--pz-text-muted)' }}>
                 {deviceHealth?.summary?.offline ?? metrics?.devices?.offline ?? 0}
               </span>
             </div>
           </div>
-        </motion.div>
+        </Section>
       </div>
 
       {/* Last Updated */}
       {dataUpdatedAt && (
-        <p className="text-xs text-text-muted text-center">
+        <p style={s.lastUpdated}>
           Last updated: {new Date(dataUpdatedAt).toLocaleTimeString()}
         </p>
       )}

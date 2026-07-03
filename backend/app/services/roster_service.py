@@ -70,6 +70,10 @@ class RosterService:
         )
         old_snap = existing.scalar_one_or_none()
         if old_snap:
+            # Explicitly delete entries first (belt-and-suspenders with cascade)
+            await self.session.execute(
+                delete(RosterEntry).where(RosterEntry.snapshot_id == old_snap.id)
+            )
             await self.session.delete(old_snap)
             await self.session.flush()
 
@@ -120,6 +124,9 @@ class RosterService:
             )
         )
         pairs = pairs_result.scalars().all()
+
+        if not pairs:
+            logger.warning(f"[Roster] No active shift pairs for dept '{dept.name}' — generating admin schedules only")
 
         for pair in pairs:
             # Load protocol
@@ -245,6 +252,7 @@ class RosterService:
                 assignment=AssignmentType(final_assignment),
                 pair_id=UUID(e.pair_id) if e.pair_id else None,
                 pair_name=e.pair_name,
+                slot_index=e.slot_index,
                 shift_start=e.shift_start,
                 shift_end=e.shift_end,
                 is_overridden=(final_assignment != e.assignment),

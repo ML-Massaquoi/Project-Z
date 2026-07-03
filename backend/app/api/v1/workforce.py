@@ -465,6 +465,7 @@ async def department_detail(
             "code": dept.code,
             "office_name": dept.office.name if dept.office else None,
             "shift_protocol_name": dept.shift_protocol.name if dept.shift_protocol else None,
+            "protocol_type": dept.shift_protocol.protocol_type.value if dept.shift_protocol else "fixed",
             "head_name": dept.head_name,
         },
         "employees": employee_rows,

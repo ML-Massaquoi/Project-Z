@@ -340,6 +340,92 @@ export const shiftProtocolsAPI = {
   update: (id: string, data: Record<string, unknown>) => api.put(`/shift-protocols/${id}`, data),
   delete: (id: string) => api.delete(`/shift-protocols/${id}`),
   seedPresets: () => api.post('/shift-protocols/seed'),
+  // Phase 5: Protocol Steps
+  listSteps: (protocolId: string) => api.get(`/scheduling/protocols/${protocolId}/steps`),
+  createStep: (protocolId: string, data: Record<string, unknown>) => api.post(`/scheduling/protocols/${protocolId}/steps`, data),
+  updateStep: (protocolId: string, stepId: string, data: Record<string, unknown>) => api.put(`/scheduling/protocols/${protocolId}/steps/${stepId}`, data),
+  deleteStep: (protocolId: string, stepId: string) => api.delete(`/scheduling/protocols/${protocolId}/steps/${stepId}`),
+  reorderSteps: (protocolId: string, data: Record<string, unknown>[]) => api.post(`/scheduling/protocols/${protocolId}/steps/reorder`, data),
+}
+
+/* ── Holiday Calendar API ──────────────────────────── */
+export const holidaysAPI = {
+  list: (params?: Record<string, unknown>) =>
+    api.get('/holidays', { params }),
+  get: (id: string) => api.get(`/holidays/${id}`),
+  create: (data: Record<string, unknown>) => api.post('/holidays', data),
+  update: (id: string, data: Record<string, unknown>) => api.put(`/holidays/${id}`, data),
+  delete: (id: string) => api.delete(`/holidays/${id}`),
+}
+
+/* ── Roster Export API ─────────────────────────────── */
+export const rosterExportsAPI = {
+  csv: (deptId: string, year: number, month: number) =>
+    api.get(`/roster-exports/csv/${deptId}`, { params: { year, month }, responseType: 'blob' }),
+  excel: (deptId: string, year: number, month: number) =>
+    api.get(`/roster-exports/excel/${deptId}`, { params: { year, month }, responseType: 'blob' }),
+  pdf: (deptId: string, year: number, month: number) =>
+    api.get(`/roster-exports/pdf/${deptId}`, { params: { year, month }, responseType: 'blob' }),
+}
+
+/* ── Scheduling API (Phase 5) ───────────────────────── */
+export const schedulingAPI = {
+  // Department-Protocol assignments
+  deptProtocols: (deptId: string) => api.get(`/scheduling/departments/${deptId}/protocols`),
+  assignProtocol: (deptId: string, data: Record<string, unknown>) => api.post(`/scheduling/departments/${deptId}/protocols`, data),
+  updateDeptProtocol: (deptId: string, assignId: string, data: Record<string, unknown>) => api.put(`/scheduling/departments/${deptId}/protocols/${assignId}`, data),
+  removeDeptProtocol: (deptId: string, assignId: string) => api.delete(`/scheduling/departments/${deptId}/protocols/${assignId}`),
+  activeProtocol: (deptId: string) => api.get(`/scheduling/departments/${deptId}/active-protocol`),
+
+  // Employee rotation offsets
+  getOffset: (empId: string) => api.get(`/scheduling/employees/${empId}/offset`),
+  updateOffset: (empId: string, data: Record<string, unknown>) => api.put(`/scheduling/employees/${empId}/offset`, data),
+  batchOffsets: (data: Record<string, unknown>[]) => api.post('/scheduling/employees/batch-offset', data),
+  deptOffsets: (deptId: string) => api.get(`/scheduling/employees/by-department/${deptId}/offsets`),
+
+  // Roster generation
+  generateDepartment: (deptId: string, data: { year: number; month: number }) => api.post(`/scheduling/generate/department/${deptId}`, data),
+  generateDepartments: (data: { department_ids: string[]; year: number; month: number }) => api.post('/scheduling/generate/departments', data),
+  generateOrganization: (data: { year: number; month: number }) => api.post('/scheduling/generate/organization', data),
+
+  // Publications
+  publish: (deptId: string, data: { year: number; month: number }) => api.post(`/scheduling/publish/${deptId}`, data),
+  lock: (deptId: string, data: { year: number; month: number }) => api.post(`/scheduling/lock/${deptId}`, data),
+  publications: (deptId: string) => api.get(`/scheduling/publications/${deptId}`),
+  deletePublication: (deptId: string, pubId: string) => api.delete(`/scheduling/publications/${deptId}/${pubId}`),
+
+  // Shift swaps
+  createSwap: (data: Record<string, unknown>) => api.post('/scheduling/swap-requests', data),
+  listSwaps: (params?: Record<string, unknown>) => api.get('/scheduling/swap-requests', { params }),
+  updateSwap: (id: string, data: Record<string, unknown>) => api.put(`/scheduling/swap-requests/${id}`, data),
+  deleteSwap: (id: string) => api.delete(`/scheduling/swap-requests/${id}`),
+
+  // Calendar views
+  departmentCalendar: (deptId: string, params: { year: number; month: number }) => api.get(`/scheduling/calendar/${deptId}`, { params }),
+  departmentGrid: (deptId: string, params: { year: number; month: number }) => api.get(`/scheduling/calendar/${deptId}/grid`, { params }),
+  employeeCalendar: (empId: string, params: { year: number; month: number }) => api.get(`/scheduling/calendar/employee/${empId}`, { params }),
+  daySchedule: (deptId: string, date: string) => api.get(`/scheduling/calendar/${deptId}/day/${date}`),
+
+  // Clear calendar (destructive)
+  clearCalendar: (deptId: string, params: { year: number; month: number }) => api.delete(`/scheduling/calendar/${deptId}/clear`, { params }),
+  clearOrganizationCalendar: (params: { year: number; month: number }) => api.delete('/scheduling/calendar/clear/organization', { params }),
+
+  // Attendance comparison
+  comparison: (empId: string, params: { start_date: string; end_date: string }) => api.get(`/scheduling/comparison/${empId}`, { params }),
+  dayComparison: (empId: string, date: string) => api.get(`/scheduling/comparison/${empId}/day/${date}`),
+
+  // Multi-month generation
+  generateMultiMonth: (deptId: string, data: { year: number; start_month: number; num_months: number }) =>
+    api.post(`/scheduling/generate/department/${deptId}/multi-month`, data),
+  generateOrgMultiMonth: (data: { year: number; start_month: number; num_months: number }) =>
+    api.post('/scheduling/generate/organization/multi-month', data),
+
+  // Snapshot deletion
+  deleteSnapshot: (deptId: string, year: number, month: number) =>
+    api.delete(`/scheduling/snapshot/${deptId}`, { params: { year, month } }),
+
+  // Analytics
+  analytics: (deptId: string, params: { year: number; month: number }) => api.get(`/scheduling/analytics/${deptId}`, { params }),
 }
 
 /* ── Daily Reports API ───────────────────────────────── */

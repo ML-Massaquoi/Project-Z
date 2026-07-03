@@ -47,6 +47,9 @@ from app.api.v1.device_groups import router as device_groups_router
 from app.api.v1.offline_sync import router as offline_sync_router
 from app.api.v1.enrollment import router as enrollment_router
 from app.api.v1.employee_status import router as employee_status_router
+from app.api.v1.scheduling import router as scheduling_router
+from app.api.v1.holidays import router as holidays_router
+from app.api.v1.roster_exports import router as roster_exports_router
 from app.core.dependencies import get_current_user
 from app.database.session import get_db
 
@@ -93,6 +96,9 @@ api_router.include_router(device_groups_router)
 api_router.include_router(offline_sync_router)
 api_router.include_router(enrollment_router)
 api_router.include_router(employee_status_router)
+api_router.include_router(scheduling_router)
+api_router.include_router(holidays_router)
+api_router.include_router(roster_exports_router)
 
 
 @api_router.get("/health", tags=["Health"])

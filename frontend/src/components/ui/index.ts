@@ -60,6 +60,9 @@ export type { ModalProps } from './Modal'
 // ── Motion ──────────────────────────────────────────────────
 export { PageTransition } from './page-transition'
 
+// ── Layout ──────────────────────────────────────────────────
+export { Section, SectionHeader, sectionIcon, cardStyle } from './CardSection'
+
 // ── Re-export existing components ────────────────────────────
 export { DataTable, createColumnHelper } from './data-table/DataTable'
 export type { ColumnDef } from './data-table/DataTable'

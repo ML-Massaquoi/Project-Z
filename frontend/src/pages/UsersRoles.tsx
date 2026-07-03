@@ -3,12 +3,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { UserCog, Shield, Plus, Download } from 'lucide-react'
 import { usersAPI, rolesAPI } from '@/api/client'
 import { format } from 'date-fns'
-import { PageHeader, TabBar } from '@/components/ui/PageHeader'
 import { FilterBar } from '@/components/ui/FilterBar'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { DataTable, type ColumnDef } from '@/components/ui/data-table/DataTable'
 import { DetailDrawer } from '@/components/ui/DetailDrawer'
 import { motion } from 'framer-motion'
+import { Modal } from '@/components/ui/Modal'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 
@@ -42,12 +42,12 @@ const userColumns: ColumnDef<SystemUser, unknown>[] = [
     header: 'User',
     cell: ({ row }) => (
       <div className="flex items-center gap-2.5">
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-900/40 to-indigo-900/40 text-blue-400 border border-blue-500/20 flex items-center justify-center flex-shrink-0">
-          <span className="text-[10px] font-bold">{row.original.full_name?.[0] || row.original.username[0]}</span>
+        <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, rgba(37,99,235,0.25), rgba(99,102,241,0.25))', color: 'var(--pz-accent)', border: '1px solid rgba(59,130,246,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <span style={{ fontSize: '10px', fontWeight: 700 }}>{row.original.full_name?.[0] || row.original.username[0]}</span>
         </div>
         <div>
-          <p className="font-semibold text-gray-200 text-sm">{row.original.full_name || row.original.username}</p>
-          <p className="text-[10px] text-gray-500">@{row.original.username}</p>
+          <p style={{ fontWeight: 600, color: 'var(--pz-text)', fontSize: '14px' }}>{row.original.full_name || row.original.username}</p>
+          <p style={{ fontSize: '10px', color: 'var(--pz-text-muted)' }}>@{row.original.username}</p>
         </div>
       </div>
     ),
@@ -56,14 +56,14 @@ const userColumns: ColumnDef<SystemUser, unknown>[] = [
   {
     accessorKey: 'email',
     header: 'Email',
-    cell: ({ getValue }) => <span className="text-gray-400 text-xs">{(getValue() as string) || '—'}</span>,
+    cell: ({ getValue }) => <span style={{ color: 'var(--pz-text-secondary)', fontSize: '12px' }}>{(getValue() as string) || '—'}</span>,
     size: 200,
   },
   {
     accessorKey: 'role',
     header: 'Role',
     cell: ({ row }) => (
-      <span className="text-xs font-medium px-2 py-0.5 rounded-md bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
+      <span style={{ fontSize: '12px', fontWeight: 500, padding: '2px 8px', borderRadius: '6px', background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.2)', color: 'var(--pz-accent)' }}>
         {row.original.role || row.original.role_type}
       </span>
     ),
@@ -80,7 +80,7 @@ const userColumns: ColumnDef<SystemUser, unknown>[] = [
     header: 'Last Login',
     cell: ({ getValue }) => {
       const val = getValue() as string | null
-      return <span className="text-gray-500 text-xs font-mono">{val ? format(new Date(val), 'MMM d, HH:mm') : 'Never'}</span>
+      return <span style={{ color: 'var(--pz-text-muted)', fontSize: '12px', fontFamily: 'monospace' }}>{val ? format(new Date(val), 'MMM d, HH:mm') : 'Never'}</span>
     },
     size: 130,
   },
@@ -88,11 +88,26 @@ const userColumns: ColumnDef<SystemUser, unknown>[] = [
     accessorKey: 'created_at',
     header: 'Created',
     cell: ({ getValue }) => (
-      <span className="text-gray-500 text-xs font-mono">{format(new Date(getValue() as string), 'MMM d, yyyy')}</span>
+      <span style={{ color: 'var(--pz-text-muted)', fontSize: '12px', fontFamily: 'monospace' }}>{format(new Date(getValue() as string), 'MMM d, yyyy')}</span>
     ),
     size: 110,
   },
 ]
+
+const s = {
+  page: { display: 'flex', flexDirection: 'column' as const, gap: '28px', padding: '32px', flex: 1 },
+  header: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' },
+  headerLeft: { display: 'flex', flexDirection: 'column' as const, gap: '4px' },
+  headerTitle: { fontSize: '22px', fontWeight: 700, color: 'var(--pz-text)', margin: 0, letterSpacing: '-0.02em' },
+  headerSubtitle: { fontSize: '13px', color: 'var(--pz-text-muted)', margin: 0 },
+  headerActions: { display: 'flex', alignItems: 'center', gap: '8px' },
+  tabsRow: { display: 'flex', gap: '4px', padding: '4px', background: 'var(--pz-surface-2)', borderRadius: '10px', border: '1px solid var(--pz-border)', width: 'fit-content', marginTop: '16px' },
+  tab: { display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', border: 'none', transition: 'all 0.15s' },
+  tabActive: { background: 'var(--pz-accent)', color: '#fff' as const },
+  tabInactive: { background: 'transparent', color: 'var(--pz-text-muted)' },
+  rolesGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' },
+  roleCard: { background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', borderRadius: '10px', boxShadow: 'var(--pz-shadow-sm)', padding: '20px', cursor: 'pointer', transition: 'all 0.15s' },
+}
 
 export default function UsersRoles() {
   const queryClient = useQueryClient()
@@ -134,22 +149,13 @@ export default function UsersRoles() {
   }, [roles, searchValue])
 
   return (
-    <div className="space-y-5 pz-slide-up">
-      <PageHeader
-        title="Users & Roles"
-        subtitle="Access management and role-based permissions"
-        breadcrumbs={[{ label: 'Administration' }, { label: 'Users & Roles' }]}
-        tabs={
-          <TabBar
-            tabs={[
-              { id: 'users', label: 'Users', icon: <UserCog size={14} />, badge: users.length },
-              { id: 'roles', label: 'Roles', icon: <Shield size={14} />, badge: roles.length },
-            ]}
-            activeTab={tab}
-            onChange={(t) => { setTab(t); setSearchValue('') }}
-          />
-        }
-        actions={
+    <div style={s.page}>
+      <div style={s.header}>
+        <div style={s.headerLeft}>
+          <h1 style={s.headerTitle}>Users & Roles</h1>
+          <p style={s.headerSubtitle}>Access management and role-based permissions</p>
+        </div>
+        <div>
           <Button variant="default" size="md"
             onClick={() => {
               setSelectedUser(null)
@@ -159,8 +165,27 @@ export default function UsersRoles() {
             <Plus size={15} />
             {tab === 'users' ? 'Add User' : 'Create Role'}
           </Button>
-        }
-      />
+        </div>
+      </div>
+
+      <div style={s.tabsRow}>
+        <button
+          style={{ ...s.tab, ...(tab === 'users' ? s.tabActive : s.tabInactive) }}
+          onClick={() => { setTab('users'); setSearchValue('') }}
+        >
+          <UserCog size={14} />
+          Users
+          {users.length > 0 && <span style={{ marginLeft: '4px', fontSize: '11px', opacity: 0.7 }}>({users.length})</span>}
+        </button>
+        <button
+          style={{ ...s.tab, ...(tab === 'roles' ? s.tabActive : s.tabInactive) }}
+          onClick={() => { setTab('roles'); setSearchValue('') }}
+        >
+          <Shield size={14} />
+          Roles
+          {roles.length > 0 && <span style={{ marginLeft: '4px', fontSize: '11px', opacity: 0.7 }}>({roles.length})</span>}
+        </button>
+      </div>
 
       {tab === 'users' ? (
         <DataTable
@@ -183,10 +208,10 @@ export default function UsersRoles() {
             onSearchChange={setSearchValue}
             searchPlaceholder="Search roles..."
           />
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div style={s.rolesGrid}>
             {rolesLoading ? (
               Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="pz-card p-5 space-y-3">
+                <div key={i} style={s.roleCard}>
                   <div className="pz-skeleton h-5 w-24 rounded" />
                   <div className="pz-skeleton h-4 w-40 rounded" />
                 </div>
@@ -198,33 +223,33 @@ export default function UsersRoles() {
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.05 }}
-                  className="pz-card pz-card--interactive p-5"
+                  style={s.roleCard}
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-2.5">
-                      <div className="p-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
-                        <Shield size={16} className="text-indigo-400" />
+                      <div style={{ padding: '8px', borderRadius: '8px', background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.2)' }}>
+                        <Shield size={16} style={{ color: 'var(--pz-accent)' }} />
                       </div>
                       <div>
-                        <h3 className="text-sm font-bold text-white">{role.name}</h3>
-                        <p className="text-[10px] text-gray-500 capitalize">{role.role_type.replace(/_/g, ' ')}</p>
+                        <h3 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--pz-text)' }}>{role.name}</h3>
+                        <p style={{ fontSize: '10px', color: 'var(--pz-text-muted)', textTransform: 'capitalize' }}>{role.role_type.replace(/_/g, ' ')}</p>
                       </div>
                     </div>
-                    <span className="text-xs text-gray-500 bg-[var(--pz-surface-2)] px-2 py-0.5 rounded border border-[var(--pz-border)]">
+                    <span style={{ fontSize: '12px', color: 'var(--pz-text-muted)', background: 'var(--pz-surface-2)', padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--pz-border)' }}>
                       {role.user_count} user{role.user_count !== 1 ? 's' : ''}
                     </span>
                   </div>
                   {role.description && (
-                    <p className="text-xs text-gray-500 mb-3">{role.description}</p>
+                    <p style={{ fontSize: '12px', color: 'var(--pz-text-muted)', marginBottom: '12px' }}>{role.description}</p>
                   )}
                   <div className="flex flex-wrap gap-1">
                     {role.permissions.slice(0, 4).map(perm => (
-                      <span key={perm} className="text-[9px] text-gray-500 bg-[var(--pz-surface-2)] px-1.5 py-0.5 rounded border border-[var(--pz-border)]">
+                      <span key={perm} style={{ fontSize: '9px', color: 'var(--pz-text-muted)', background: 'var(--pz-surface-2)', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--pz-border)' }}>
                         {perm}
                       </span>
                     ))}
                     {role.permissions.length > 4 && (
-                      <span className="text-[9px] text-gray-600 px-1.5 py-0.5">
+                      <span style={{ fontSize: '9px', color: 'var(--pz-text-faint)', padding: '2px 6px' }}>
                         +{role.permissions.length - 4} more
                       </span>
                     )}
@@ -248,7 +273,7 @@ export default function UsersRoles() {
 
             {/* User avatar + role header */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '18px', paddingBottom: '20px', borderBottom: '1px solid var(--pz-border)' }}>
-              <div style={{ width: '56px', height: '56px', borderRadius: '6px', background: 'linear-gradient(135deg, rgba(37,99,235,0.2), rgba(99,102,241,0.2))', border: '1px solid rgba(99,102,241,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <div style={{ width: '56px', height: '56px', borderRadius: '10px', background: 'linear-gradient(135deg, rgba(37,99,235,0.2), rgba(99,102,241,0.2))', border: '1px solid rgba(99,102,241,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <span style={{ fontSize: '22px', fontWeight: 700, color: '#818CF8' }}>{selectedUser.full_name?.[0] || selectedUser.username[0]}</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -260,9 +285,9 @@ export default function UsersRoles() {
             </div>
 
             {/* Account details table */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
               <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Account Details</h4>
-              <div style={{ border: '1px solid var(--pz-border)', borderRadius: '6px', overflow: 'hidden' }}>
+              <div style={{ border: '1px solid var(--pz-border)', borderRadius: '10px', overflow: 'hidden' }}>
                 {[
                   ['Username', selectedUser.username],
                   ['Email', selectedUser.email || '—'],
@@ -271,7 +296,7 @@ export default function UsersRoles() {
                   ['Last Login', selectedUser.last_login ? format(new Date(selectedUser.last_login), 'MMM d, yyyy HH:mm') : 'Never'],
                   ['Created', format(new Date(selectedUser.created_at), 'MMM d, yyyy')],
                 ].map(([label, value], i, arr) => (
-                  <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '44px', paddingInline: '14px', borderBottom: i < arr.length - 1 ? '1px solid var(--pz-border)' : 'none', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
+                  <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: '52px', paddingInline: '16px', paddingBlock: '12px', borderBottom: i < arr.length - 1 ? '1px solid var(--pz-border)' : 'none', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
                     <span style={{ fontSize: '12px', color: 'var(--pz-text-muted)' }}>{label}</span>
                     <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--pz-text-secondary)', fontFamily: 'monospace' }}>{value}</span>
                   </div>
@@ -284,69 +309,39 @@ export default function UsersRoles() {
       </DetailDrawer>
 
       {/* ── Add User Modal ────────────────────────────── */}
-      {showAddUserModal && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-6"
-          style={{ background: 'rgba(17,24,39,0.55)', backdropFilter: 'blur(6px)' }}
-          onClick={e => e.target === e.currentTarget && setShowAddUserModal(false)}>
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
-            style={{
-              width: '100%', maxWidth: '680px',
-              background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)',
-              boxShadow: 'var(--pz-shadow-modal)', borderRadius: '10px', overflow: 'hidden',
-            }}
-          >
-            <div style={{ padding: '28px 32px 20px 32px', borderBottom: '1px solid var(--pz-border)' }}>
-              <h3 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--pz-text)', margin: 0 }}>Add New User</h3>
-              <p style={{ fontSize: '14px', color: 'var(--pz-text-muted)', marginTop: '4px', marginBottom: 0 }}>Create a system access account with role-based permissions.</p>
-            </div>
-            <div style={{ padding: '28px 32px 32px 32px' }}>
-              <AddUserForm
-                roles={roles}
-                onSuccess={() => {
-                  queryClient.invalidateQueries({ queryKey: ['system-users'] })
-                  setShowAddUserModal(false)
-                }}
-                onCancel={() => setShowAddUserModal(false)}
-              />
-            </div>
-          </motion.div>
-        </div>
-      )}
+      <Modal
+        open={showAddUserModal}
+        onClose={() => setShowAddUserModal(false)}
+        title="Add New User"
+        description="Create a system access account with role-based permissions."
+        size="md"
+      >
+        <AddUserForm
+          roles={roles}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['system-users'] })
+            setShowAddUserModal(false)
+          }}
+          onCancel={() => setShowAddUserModal(false)}
+        />
+      </Modal>
 
       {/* ── Create Role Modal ────────────────────────────── */}
-      {showCreateRoleModal && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-6"
-          style={{ background: 'rgba(17,24,39,0.55)', backdropFilter: 'blur(6px)' }}
-          onClick={e => e.target === e.currentTarget && setShowCreateRoleModal(false)}>
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
-            style={{
-              width: '100%', maxWidth: '680px',
-              background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)',
-              boxShadow: 'var(--pz-shadow-modal)', borderRadius: '10px', overflow: 'hidden',
-            }}
-          >
-            <div style={{ padding: '28px 32px 20px 32px', borderBottom: '1px solid var(--pz-border)' }}>
-              <h3 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--pz-text)', margin: 0 }}>Create New Role</h3>
-              <p style={{ fontSize: '14px', color: 'var(--pz-text-muted)', marginTop: '4px', marginBottom: 0 }}>Define permissions for a new access role.</p>
-            </div>
-            <div style={{ padding: '28px 32px 32px 32px' }}>
-              <CreateRoleForm
-                onSuccess={() => {
-                  queryClient.invalidateQueries({ queryKey: ['roles'] })
-                  setShowCreateRoleModal(false)
-                }}
-                onCancel={() => setShowCreateRoleModal(false)}
-              />
-            </div>
-          </motion.div>
-        </div>
-      )}
+      <Modal
+        open={showCreateRoleModal}
+        onClose={() => setShowCreateRoleModal(false)}
+        title="Create New Role"
+        description="Define permissions for a new access role."
+        size="md"
+      >
+        <CreateRoleForm
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['roles'] })
+            setShowCreateRoleModal(false)
+          }}
+          onCancel={() => setShowCreateRoleModal(false)}
+        />
+      </Modal>
     </div>
   )
 }
@@ -380,7 +375,11 @@ function AddUserForm({
   })
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingBottom: '8px', borderBottom: '1px solid var(--pz-border)' }}>
+        <UserCog size={14} style={{ color: 'var(--pz-accent)' }} />
+        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--pz-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Account Details</span>
+      </div>
       <div>
         <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>
           Username <span style={{ color: 'var(--pz-danger-500)' }}>*</span>
@@ -389,8 +388,8 @@ function AddUserForm({
           value={form.username}
           onChange={(e) => setForm(p => ({ ...p, username: e.target.value }))}
           placeholder="jdoe"
-          className="pz-input w-full"
-          style={{ height: '44px', fontSize: '14px' }}
+          className="pz-input"
+          style={{ height: '44px', fontSize: '14px', width: '100%' }}
         />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
@@ -402,8 +401,8 @@ function AddUserForm({
             value={form.full_name}
             onChange={(e) => setForm(p => ({ ...p, full_name: e.target.value }))}
             placeholder="John Doe"
-            className="pz-input w-full"
-            style={{ height: '44px', fontSize: '14px' }}
+            className="pz-input"
+            style={{ height: '44px', fontSize: '14px', width: '100%' }}
           />
         </div>
         <div>
@@ -415,8 +414,8 @@ function AddUserForm({
             value={form.email}
             onChange={(e) => setForm(p => ({ ...p, email: e.target.value }))}
             placeholder="john@airport.sl"
-            className="pz-input w-full"
-            style={{ height: '44px', fontSize: '14px' }}
+            className="pz-input"
+            style={{ height: '44px', fontSize: '14px', width: '100%' }}
           />
         </div>
       </div>
@@ -429,8 +428,8 @@ function AddUserForm({
           value={form.password}
           onChange={(e) => setForm(p => ({ ...p, password: e.target.value }))}
           placeholder="Min 8 characters"
-          className="pz-input w-full"
-          style={{ height: '44px', fontSize: '14px' }}
+          className="pz-input"
+          style={{ height: '44px', fontSize: '14px', width: '100%' }}
         />
       </div>
       <div>
@@ -440,8 +439,8 @@ function AddUserForm({
         <select
           value={form.role_id}
           onChange={(e) => setForm(p => ({ ...p, role_id: e.target.value }))}
-          className="pz-input w-full"
-          style={{ height: '44px', fontSize: '14px' }}
+          className="pz-input"
+          style={{ height: '44px', fontSize: '14px', width: '100%' }}
         >
           <option value="">Select role</option>
           {roles.map(r => (
@@ -449,7 +448,7 @@ function AddUserForm({
           ))}
         </select>
       </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '16px', paddingTop: '16px', borderTop: '1px solid var(--pz-border)', marginTop: '20px' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '16px', paddingTop: '16px', borderTop: '1px solid var(--pz-border)' }}>
         <Button variant="outline" size="md" onClick={onCancel}>Cancel</Button>
         <Button variant="default" size="md" loading={createMutation.isPending} disabled={!form.username || !form.full_name || !form.password || createMutation.isPending} onClick={() => createMutation.mutate(form)}>
           {createMutation.isPending ? 'Creating...' : 'Create User'}
@@ -501,7 +500,11 @@ function CreateRoleForm({
   })
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingBottom: '8px', borderBottom: '1px solid var(--pz-border)' }}>
+        <Shield size={14} style={{ color: 'var(--pz-accent)' }} />
+        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--pz-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Role Details</span>
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
         <div>
           <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>
@@ -511,8 +514,8 @@ function CreateRoleForm({
             value={form.name}
             onChange={(e) => setForm(p => ({ ...p, name: e.target.value }))}
             placeholder="e.g. HR Manager"
-            className="pz-input w-full"
-            style={{ height: '44px', fontSize: '14px' }}
+            className="pz-input"
+            style={{ height: '44px', fontSize: '14px', width: '100%' }}
           />
         </div>
         <div>
@@ -522,8 +525,8 @@ function CreateRoleForm({
           <select
             value={form.role_type}
             onChange={(e) => setForm(p => ({ ...p, role_type: e.target.value }))}
-            className="pz-input w-full"
-            style={{ height: '44px', fontSize: '14px' }}
+            className="pz-input"
+            style={{ height: '44px', fontSize: '14px', width: '100%' }}
           >
             <option value="custom">Custom</option>
             <option value="admin">Admin</option>
@@ -541,15 +544,16 @@ function CreateRoleForm({
           value={form.description}
           onChange={(e) => setForm(p => ({ ...p, description: e.target.value }))}
           placeholder="What this role can do..."
-          className="pz-input w-full"
-          style={{ height: '44px', fontSize: '14px' }}
+          className="pz-input"
+          style={{ height: '44px', fontSize: '14px', width: '100%' }}
         />
       </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingBottom: '8px', borderBottom: '1px solid var(--pz-border)' }}>
+        <Shield size={14} style={{ color: 'var(--pz-accent)' }} />
+        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--pz-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Permissions</span>
+      </div>
       <div>
-        <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>
-          Permissions
-        </label>
-        <div className="flex flex-wrap gap-1.5">
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
           {allPermissions.map(perm => (
             <button
               key={perm}
@@ -567,7 +571,7 @@ function CreateRoleForm({
           ))}
         </div>
       </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '16px', paddingTop: '16px', borderTop: '1px solid var(--pz-border)', marginTop: '20px' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '16px', paddingTop: '16px', borderTop: '1px solid var(--pz-border)' }}>
         <Button variant="outline" size="md" onClick={onCancel}>Cancel</Button>
         <Button variant="default" size="md" loading={createMutation.isPending} disabled={!form.name || createMutation.isPending} onClick={() => createMutation.mutate(form)}>
           {createMutation.isPending ? 'Creating...' : 'Create Role'}

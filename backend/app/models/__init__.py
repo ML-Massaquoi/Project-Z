@@ -55,6 +55,12 @@ from app.models.device_group import DeviceGroup
 from app.models.offline_sync_queue import OfflineSyncQueue, QueueStatus, SyncOperation
 from app.models.employee_device_assignment import EmployeeDeviceAssignment, EmployeeDeviceGroupAssignment
 
+# ── Phase 5: Workforce Scheduling Engine ────────────────────
+from app.models.shift_protocol_step import ShiftProtocolStep
+from app.models.department_protocol import DepartmentProtocol
+from app.models.shift_swap_request import ShiftSwapRequest
+from app.models.roster_publication import RosterPublication
+
 # ── Employee Enrollment & Lifecycle ──────────────────────────
 from app.models.enrollment_session import EnrollmentSession
 from app.models.enrollment_event import EnrollmentEvent
@@ -133,6 +139,11 @@ __all__ = [
     "SyncOperation",
     "EmployeeDeviceAssignment",
     "EmployeeDeviceGroupAssignment",
+    # Phase 5: Workforce Scheduling Engine
+    "ShiftProtocolStep",
+    "DepartmentProtocol",
+    "ShiftSwapRequest",
+    "RosterPublication",
     # Employee Enrollment & Lifecycle
     "EnrollmentSession",
     "EnrollmentEvent",

@@ -114,6 +114,9 @@ class RosterEntry(BaseModel):
     )
     pair_name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
+    # Rotation slot within the pair (0 or 1; null for admin/unpaired staff)
+    slot_index: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
+
     # Shift times (denormalized for fast display, copied from protocol)
     shift_start: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)  # HH:MM
     shift_end:   Mapped[Optional[str]] = mapped_column(String(5), nullable=True)  # HH:MM

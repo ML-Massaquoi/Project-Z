@@ -16,12 +16,12 @@ import {
   RefreshCw,
   CheckCircle2,
   Copy,
+  Info,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/empty-state'
 import { SkeletonCard } from '@/components/ui/skeleton'
-import { PageHeader } from '@/components/ui/PageHeader'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { cn } from '@/lib/utils'
 import type { ShiftProtocol } from '@/types'
@@ -34,6 +34,8 @@ type FormData = {
   day_shift_start: string; day_shift_end: string;
   night_shift_start: string; night_shift_end: string;
   color: string;
+  cycle_length: number;
+  default_shift_supervisor: string;
 }
 
 function defaultForm(): FormData {
@@ -46,6 +48,8 @@ function defaultForm(): FormData {
     day_shift_start: '08:00', day_shift_end: '20:00',
     night_shift_start: '20:00', night_shift_end: '08:00',
     color: '#3b82f6',
+    cycle_length: 14,
+    default_shift_supervisor: '',
   }
 }
 
@@ -61,6 +65,19 @@ const ROTATION_LABELS: Record<string, { label: string; color: string }> = {
   day: { label: 'Day', color: 'bg-amber-500/15 text-amber-400 border-amber-500/20' },
   night: { label: 'Night', color: 'bg-indigo-500/15 text-indigo-400 border-indigo-500/20' },
   off: { label: 'Off', color: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/20' },
+}
+
+const s = {
+  page: { display: 'flex', flexDirection: 'column' as const, gap: '24px', padding: '32px', flex: 1 },
+  header: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' },
+  headerLeft: { display: 'flex', flexDirection: 'column' as const, gap: '4px' },
+  headerTitle: { fontSize: '22px', fontWeight: 700, color: 'var(--pz-text)', margin: 0, letterSpacing: '-0.02em' },
+  headerSubtitle: { fontSize: '13px', color: 'var(--pz-text-muted)', margin: 0 },
+  headerActions: { display: 'flex', alignItems: 'center', gap: '12px' },
+  card: { background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', borderRadius: '10px', boxShadow: 'var(--pz-shadow-sm)' },
+  protocolCard: { background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', borderRadius: '10px', boxShadow: 'var(--pz-shadow-sm)', padding: '20px', position: 'relative' as const },
+  grid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' },
+  skeletonGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' },
 }
 
 export default function ShiftProtocols() {
@@ -115,38 +132,37 @@ export default function ShiftProtocols() {
   const protocols = data || []
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Shift Protocols"
-        subtitle="Define shift patterns and scheduling rules"
-        breadcrumbs={[{ label: 'Operations' }, { label: 'Shift Protocols' }]}
-        actions={
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => seedMut.mutate()}
-              disabled={seedMut.isPending}
-              className="px-4 py-2.5 rounded-xl bg-[var(--pz-surface-2)] hover:bg-[var(--pz-surface-3)] border border-[var(--pz-border)] text-sm font-semibold text-[var(--pz-text-secondary)] transition-colors disabled:opacity-50 flex items-center gap-2"
-            >
-              <RefreshCw size={15} className={seedMut.isPending ? 'animate-spin' : ''} />
-              Seed Presets
-            </button>
-            <button
-              onClick={() => { setForm(defaultForm()); setEditId(null); setModalOpen(true) }}
-              className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors flex items-center gap-2"
-            >
-              <Plus size={15} />
-              Add Protocol
-            </button>
-          </div>
-        }
-      />
+    <div style={s.page}>
+      <div style={s.header}>
+        <div style={s.headerLeft}>
+          <h1 style={s.headerTitle}>Shift Protocols</h1>
+          <p style={s.headerSubtitle}>Define shift patterns and scheduling rules</p>
+        </div>
+        <div style={s.headerActions}>
+          <button
+            onClick={() => seedMut.mutate()}
+            disabled={seedMut.isPending}
+            style={{ padding: '10px 16px', borderRadius: '12px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '14px', fontWeight: 600, color: 'var(--pz-text-secondary)', cursor: 'pointer', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: '8px', opacity: seedMut.isPending ? 0.5 : 1 }}
+          >
+            <RefreshCw size={15} className={seedMut.isPending ? 'animate-spin' : ''} />
+            Seed Presets
+          </button>
+          <button
+            onClick={() => { setForm(defaultForm()); setEditId(null); setModalOpen(true) }}
+            style={{ padding: '10px 16px', borderRadius: '12px', background: 'var(--pz-accent)', border: 'none', fontSize: '14px', fontWeight: 600, color: '#fff', cursor: 'pointer', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: '8px' }}
+          >
+            <Plus size={15} />
+            Add Protocol
+          </button>
+        </div>
+      </div>
 
       {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div style={s.skeletonGrid}>
           {Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
       ) : protocols.length === 0 ? (
-        <div className="pz-card p-12">
+        <div style={{ ...s.card, padding: '48px' }}>
           <EmptyState
             icon={<Layers size={28} />}
             title="No shift protocols"
@@ -173,14 +189,14 @@ export default function ShiftProtocols() {
           />
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div style={s.grid}>
           {protocols.map((protocol: ShiftProtocol, i: number) => (
             <motion.div
               key={protocol.id}
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.03 }}
-              className="pz-card p-5 relative group hover:border-[var(--pz-border)]/80 transition-all"
+              style={s.protocolCard}
             >
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
@@ -206,19 +222,19 @@ export default function ShiftProtocols() {
                   <>
                     {protocol.day_shift_start && (
                       <div className="flex items-center gap-1.5">
-                        <Sun size={13} className="text-amber-400" />
+                        <Sun size={13} style={{ color: 'var(--pz-warning-500)' }} />
                         <span className="font-medium">Day:</span> {protocol.day_shift_start} &ndash; {protocol.day_shift_end}
                       </div>
                     )}
                     {protocol.night_shift_start && (
                       <div className="flex items-center gap-1.5">
-                        <Moon size={13} className="text-indigo-400" />
+                        <Moon size={13} style={{ color: 'var(--pz-accent)' }} />
                         <span className="font-medium">Night:</span> {protocol.night_shift_start} &ndash; {protocol.night_shift_end}
                       </div>
                     )}
                     {protocol.days_on != null && (
                       <span className="flex items-center gap-1">
-                        <RefreshCw size={12} className="text-purple-400" />
+                        <RefreshCw size={12} style={{ color: 'var(--pz-accent)' }} />
                         {protocol.days_on}on/{protocol.days_off}off
                       </span>
                     )}
@@ -232,7 +248,19 @@ export default function ShiftProtocols() {
                 {protocol.grace_period_minutes != null && protocol.grace_period_minutes > 0 && (
                   <span>Grace: {protocol.grace_period_minutes}m</span>
                 )}
+                {protocol.cycle_length != null && (
+                  <span className="flex items-center gap-1">
+                    <RefreshCw size={12} />
+                    Cycle: {protocol.cycle_length}d
+                  </span>
+                )}
               </div>
+
+              {protocol.default_shift_supervisor && (
+                <div className="text-xs text-[var(--pz-text-secondary)] mt-1">
+                  Supervisor: {protocol.default_shift_supervisor}
+                </div>
+              )}
 
               <div className="flex gap-1 mt-2">
                 {protocol.protocol_type === 'rotating' && protocol.days_on != null ? (
@@ -248,9 +276,9 @@ export default function ShiftProtocols() {
                         {seq.map((s, i) => (
                           <span key={i} className={cn(
                             'w-6 h-6 flex items-center justify-center rounded-md text-[9px] font-bold border',
-                            s.type === 'day' ? 'bg-amber-500/15 text-amber-400 border-amber-500/20' :
-                            s.type === 'night' ? 'bg-indigo-500/15 text-indigo-400 border-indigo-500/20' :
-                            'bg-zinc-500/15 text-zinc-400 border-zinc-500/20'
+                            s.type === 'day' ? 'bg-amber-500/15 text-[var(--pz-warning-500)] border-amber-500/20' :
+                            s.type === 'night' ? 'bg-indigo-500/15 text-[var(--pz-accent)] border-indigo-500/20' :
+                            'bg-zinc-500/15 text-[var(--pz-text-secondary)] border-zinc-500/20'
                           )}>{s.label}</span>
                         ))}
                         <span className="text-[11px] text-[var(--pz-text-muted)] self-center ml-0.5">↻</span>
@@ -262,7 +290,7 @@ export default function ShiftProtocols() {
                     <span key={day} className={cn(
                       'w-7 h-7 flex items-center justify-center rounded-md text-[10px] font-semibold',
                       protocol.working_days?.includes(idx + 1)
-                        ? 'bg-blue-500/15 text-blue-400'
+                        ? 'bg-blue-500/15 text-[var(--pz-accent)]'
                         : 'bg-[var(--pz-surface-2)] text-[var(--pz-text-faint)]'
                     )}>
                       {day[0]}
@@ -285,6 +313,8 @@ export default function ShiftProtocols() {
                       day_shift_start: protocol.day_shift_start ?? '08:00', day_shift_end: protocol.day_shift_end ?? '20:00',
                       night_shift_start: protocol.night_shift_start ?? '20:00', night_shift_end: protocol.night_shift_end ?? '08:00',
                       color: protocol.color ?? '#3b82f6',
+                      cycle_length: protocol.cycle_length ?? 14,
+                      default_shift_supervisor: protocol.default_shift_supervisor ?? '',
                     })
                     setModalOpen(true)
                   }} className="p-1.5 rounded-lg hover:bg-[var(--pz-surface-2)] text-[var(--pz-text-muted)] hover:text-[var(--pz-text-secondary)] transition-colors">
@@ -308,10 +338,10 @@ export default function ShiftProtocols() {
         description="Define the shift rules and schedule pattern for this protocol"
         size="md"
         footer={
-          <div className="flex gap-3 w-full">
+          <div style={{ display: 'flex', gap: '12px', width: '100%' }}>
             <button
               onClick={() => setModalOpen(false)}
-              className="flex-1 px-5 py-3 rounded-xl bg-[var(--pz-surface-2)] hover:bg-[var(--pz-surface-3)] border border-[var(--pz-border)] text-sm font-semibold text-[var(--pz-text-secondary)] transition-colors"
+              style={{ flex: 1, padding: '12px 20px', borderRadius: '12px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '14px', fontWeight: 600, color: 'var(--pz-text-secondary)', cursor: 'pointer', transition: 'all 0.15s' }}
             >
               Cancel
             </button>
@@ -330,6 +360,8 @@ export default function ShiftProtocols() {
                   color: form.color,
                   grace_period_minutes: form.grace_period_minutes,
                   include_weekends: form.include_weekends,
+                  cycle_length: form.cycle_length,
+                  default_shift_supervisor: form.default_shift_supervisor || null,
                 }
                 if (isRotating) {
                   payload.days_on = form.days_on
@@ -354,275 +386,154 @@ export default function ShiftProtocols() {
                 else createMut.mutate(payload)
               }}
               disabled={createMut.isPending || updateMut.isPending}
-              className="flex-1 px-5 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white text-sm font-semibold transition-all shadow-lg shadow-blue-600/20 disabled:opacity-50"
+              style={{ flex: 1, padding: '12px 20px', borderRadius: '12px', background: 'linear-gradient(135deg, var(--pz-accent), rgba(37,99,235,0.8))', color: '#fff', fontSize: '14px', fontWeight: 600, border: 'none', cursor: 'pointer', opacity: createMut.isPending || updateMut.isPending ? 0.5 : 1, transition: 'all 0.15s' }}
             >
               {createMut.isPending || updateMut.isPending ? 'Saving...' : editId ? 'Update Protocol' : 'Create Protocol'}
             </button>
           </div>
         }
       >
-        {/* Basic Info — full width */}
-        <div className="grid grid-cols-2 gap-4 mb-5">
-          <div>
-            <label className="text-xs font-semibold text-[var(--pz-text-secondary)] mb-1.5 block">Protocol Name *</label>
-            <input
-              value={form.name}
-              onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
-              placeholder="e.g. Standard Day Shift"
-              className="w-full px-4 py-2.5 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-sm text-[var(--pz-text)] placeholder:text-[var(--pz-text-muted)] focus:outline-none focus:border-blue-500/50 transition-colors"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-[var(--pz-text-secondary)] mb-1.5 block">Code *</label>
-            <input
-              value={form.code}
-              onChange={(e) => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))}
-              placeholder="e.g. DAY_STANDARD"
-              className="w-full px-4 py-2.5 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-sm text-[var(--pz-text)] placeholder:text-[var(--pz-text-muted)] focus:outline-none focus:border-blue-500/50 transition-colors"
-            />
-          </div>
-          <div className="col-span-2">
-            <label className="text-xs font-semibold text-[var(--pz-text-secondary)] mb-1.5 block">Description</label>
-            <textarea
-              value={form.description}
-              onChange={(e) => setForm(f => ({ ...f, description: e.target.value }))}
-              rows={2}
-              placeholder="Describe when and how this shift protocol is used..."
-              className="w-full px-4 py-2.5 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-sm text-[var(--pz-text)] placeholder:text-[var(--pz-text-muted)] focus:outline-none focus:border-blue-500/50 transition-colors resize-none"
-            />
-          </div>
-        </div>
-
-        {/* Protocol Type Selector */}
-        <div className="mb-5">
-          <label className="text-xs font-semibold text-[var(--pz-text-secondary)] mb-2 block">Schedule Type</label>
-          <div className="grid grid-cols-3 gap-2">
-            {(['fixed', 'rotating', 'custom'] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => {
-                  const f = defaultForm()
-                  setForm(p => ({ ...f, name: p.name, code: p.code, description: p.description, protocol_type: t, color: p.color }))
-                }}
-                className={cn(
-                  'px-3 py-2.5 rounded-xl text-xs font-bold transition-all border',
-                  form.protocol_type === t
-                    ? t === 'fixed' ? 'bg-blue-600 text-white border-blue-500 shadow-sm shadow-blue-600/20'
-                      : t === 'rotating' ? 'bg-purple-600 text-white border-purple-500 shadow-sm shadow-purple-600/20'
-                        : 'bg-cyan-600 text-white border-cyan-500 shadow-sm shadow-cyan-600/20'
-                    : 'bg-[var(--pz-surface-2)] border-[var(--pz-border)] text-[var(--pz-text-muted)] hover:text-[var(--pz-text-secondary)]'
-                )}
-              >
-                {t === 'fixed' ? 'Fixed' : t === 'rotating' ? 'Rotating' : 'Custom'}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Fixed / Custom Schedule Rules */}
-        {(form.protocol_type === 'fixed' || form.protocol_type === 'custom') && (
-          <div className="grid grid-cols-2 gap-4">
-            <div className="p-4 rounded-xl bg-[var(--pz-surface-2)]/50 border border-[var(--pz-border)] space-y-3">
-              <h5 className="text-xs font-bold text-[var(--pz-text-secondary)] uppercase tracking-wider">Working Hours</h5>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[11px] font-semibold text-[var(--pz-text-muted)] mb-1 block">Start</label>
-                  <input
-                    type="time"
-                    value={form.working_hours_start || ''}
-                    onChange={(e) => setForm(f => ({ ...f, working_hours_start: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50"
-                  />
-                </div>
-                <div>
-                  <label className="text-[11px] font-semibold text-[var(--pz-text-muted)] mb-1 block">End</label>
-                  <input
-                    type="time"
-                    value={form.working_hours_end || ''}
-                    onChange={(e) => setForm(f => ({ ...f, working_hours_end: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50"
-                  />
-                </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* ── Section: Details ── */}
+          <div style={{ padding: '24px', borderRadius: '12px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '18px' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(37,99,235,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Info size={15} color="#3B82F6" />
+              </div>
+              <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--pz-text-secondary)', margin: 0 }}>Details</p>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '6px', display: 'block' }}>Protocol Name *</label>
+                <input
+                  value={form.name}
+                  onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="e.g. Standard Day Shift"
+                  style={{ width: '100%', padding: '10px 16px', borderRadius: '12px', background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', fontSize: '14px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }}
+                />
               </div>
               <div>
-                <label className="text-[11px] font-semibold text-[var(--pz-text-muted)] mb-1 block">Grace Period</label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    value={form.grace_period_minutes}
-                    onChange={(e) => setForm(f => ({ ...f, grace_period_minutes: parseInt(e.target.value) || 0 }))}
-                    className="w-full px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50"
-                  />
-                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[9px] text-[var(--pz-text-muted)] font-medium">min</span>
-                </div>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '6px', display: 'block' }}>Code *</label>
+                <input
+                  value={form.code}
+                  onChange={(e) => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))}
+                  placeholder="e.g. DAY_STANDARD"
+                  style={{ width: '100%', padding: '10px 16px', borderRadius: '12px', background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', fontSize: '14px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }}
+                />
               </div>
             </div>
-            <div className="p-4 rounded-xl bg-[var(--pz-surface-2)]/50 border border-[var(--pz-border)] space-y-3">
-              <h5 className="text-xs font-bold text-[var(--pz-text-secondary)] uppercase tracking-wider">Working Days</h5>
-              <p className="text-[10px] text-[var(--pz-text-muted)] -mt-1">Days employee is expected to work</p>
-              <div className="flex gap-1.5">
-                {DAYS_SHORT.map((day, idx) => (
+            <div style={{ marginTop: '20px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '6px', display: 'block' }}>Description</label>
+              <textarea
+                value={form.description}
+                onChange={(e) => setForm(f => ({ ...f, description: e.target.value }))}
+                rows={2}
+                placeholder="Describe when and how this shift protocol is used..."
+                style={{ width: '100%', padding: '10px 16px', borderRadius: '12px', background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', fontSize: '14px', color: 'var(--pz-text)', outline: 'none', resize: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+            <div style={{ marginTop: '20px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px', display: 'block' }}>Schedule Type</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                {(['fixed', 'rotating', 'custom'] as const).map((t) => (
                   <button
-                    key={day}
-                    onClick={() => toggleDay(idx + 1)}
-                    className={cn(
-                      'flex-1 py-2.5 rounded-lg text-[10px] font-bold transition-all',
-                      form.working_days.includes(idx + 1)
-                        ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/20'
-                        : 'bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-[var(--pz-text-muted)] hover:text-[var(--pz-text-secondary)] hover:bg-[var(--pz-surface-3)]'
-                    )}
+                    key={t}
+                    onClick={() => {
+                      const f = defaultForm()
+                      setForm(p => ({ ...f, name: p.name, code: p.code, description: p.description, protocol_type: t, color: p.color }))
+                    }}
+                    style={{
+                      padding: '10px 16px',
+                      borderRadius: '12px',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      border: form.protocol_type !== t ? '1px solid var(--pz-border)' : 'none',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s',
+                      ...(form.protocol_type === t
+                        ? t === 'fixed' ? { background: 'linear-gradient(135deg, #2563EB, #1D4ED8)', color: '#fff', boxShadow: '0 1px 3px rgba(37,99,235,0.3)' }
+                          : t === 'rotating' ? { background: 'linear-gradient(135deg, #9333EA, #7E22CE)', color: '#fff', boxShadow: '0 1px 3px rgba(147,51,234,0.3)' }
+                            : { background: 'linear-gradient(135deg, #06B6D4, #0891B2)', color: '#fff', boxShadow: '0 1px 3px rgba(6,182,212,0.3)' }
+                        : { background: 'var(--pz-surface-1)', color: 'var(--pz-text-muted)' }
+                      )
+                    }}
                   >
-                    {day[0]}
+                    {t === 'fixed' ? 'Fixed' : t === 'rotating' ? 'Rotating' : 'Custom'}
                   </button>
                 ))}
               </div>
             </div>
           </div>
-        )}
 
-        {/* Rotating Schedule Rules */}
-        {form.protocol_type === 'rotating' && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 rounded-xl bg-[var(--pz-surface-2)]/50 border border-[var(--pz-border)] space-y-3">
-                <h5 className="text-xs font-bold text-[var(--pz-text-secondary)] uppercase tracking-wider">Day Shift</h5>
-                <div className="flex items-center gap-2">
-                  <Sun size={16} className="text-amber-400 shrink-0" />
-                  <div className="grid grid-cols-2 gap-2 flex-1">
-                    <div>
-                      <label className="text-[10px] font-semibold text-[var(--pz-text-muted)] mb-1 block">Start</label>
-                      <input
-                        type="time"
-                        value={form.day_shift_start || ''}
-                        onChange={(e) => setForm(f => ({ ...f, day_shift_start: e.target.value }))}
-                        className="w-full px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-semibold text-[var(--pz-text-muted)] mb-1 block">End</label>
-                      <input
-                        type="time"
-                        value={form.day_shift_end || ''}
-                        onChange={(e) => setForm(f => ({ ...f, day_shift_end: e.target.value }))}
-                        className="w-full px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50"
-                      />
-                    </div>
-                  </div>
-                </div>
+          {/* ── Section: Schedule ── */}
+          <div style={{ padding: '24px', borderRadius: '12px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '18px' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(245,158,11,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Clock size={15} color="#F59E0B" />
               </div>
-              <div className="p-4 rounded-xl bg-[var(--pz-surface-2)]/50 border border-[var(--pz-border)] space-y-3">
-                <h5 className="text-xs font-bold text-[var(--pz-text-secondary)] uppercase tracking-wider">Night Shift</h5>
-                <div className="flex items-center gap-2">
-                  <Moon size={16} className="text-indigo-400 shrink-0" />
-                  <div className="grid grid-cols-2 gap-2 flex-1">
-                    <div>
-                      <label className="text-[10px] font-semibold text-[var(--pz-text-muted)] mb-1 block">Start</label>
-                      <input
-                        type="time"
-                        value={form.night_shift_start || ''}
-                        onChange={(e) => setForm(f => ({ ...f, night_shift_start: e.target.value }))}
-                        className="w-full px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-semibold text-[var(--pz-text-muted)] mb-1 block">End</label>
-                      <input
-                        type="time"
-                        value={form.night_shift_end || ''}
-                        onChange={(e) => setForm(f => ({ ...f, night_shift_end: e.target.value }))}
-                        className="w-full px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--pz-text-secondary)', margin: 0 }}>Schedule</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 rounded-xl bg-[var(--pz-surface-2)]/50 border border-[var(--pz-border)] space-y-3">
-                <h5 className="text-xs font-bold text-[var(--pz-text-secondary)] uppercase tracking-wider">Rotation Pattern</h5>
-                <p className="text-[10px] text-[var(--pz-text-muted)] -mt-1">Days worked before switching shift type</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[10px] font-semibold text-[var(--pz-text-muted)] mb-1 block">Days On</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={7}
-                      value={form.days_on}
-                      onChange={(e) => setForm(f => ({ ...f, days_on: parseInt(e.target.value) || 1 }))}
-                      className="w-full px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50"
-                    />
+            {/* Fixed / Custom Schedule Rules */}
+            {(form.protocol_type === 'fixed' || form.protocol_type === 'custom') && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                <div style={{ padding: '16px', borderRadius: '12px', background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <h5 style={{ fontSize: '12px', fontWeight: 700, color: 'var(--pz-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>Working Hours</h5>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <div>
+                      <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--pz-text-muted)', marginBottom: '4px', display: 'block' }}>Start</label>
+                      <input
+                        type="time"
+                        value={form.working_hours_start || ''}
+                        onChange={(e) => setForm(f => ({ ...f, working_hours_start: e.target.value }))}
+                        style={{ width: '100%', padding: '8px 12px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '12px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--pz-text-muted)', marginBottom: '4px', display: 'block' }}>End</label>
+                      <input
+                        type="time"
+                        value={form.working_hours_end || ''}
+                        onChange={(e) => setForm(f => ({ ...f, working_hours_end: e.target.value }))}
+                        style={{ width: '100%', padding: '8px 12px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '12px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }}
+                      />
+                    </div>
                   </div>
                   <div>
-                    <label className="text-[10px] font-semibold text-[var(--pz-text-muted)] mb-1 block">Days Off</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={7}
-                      value={form.days_off}
-                      onChange={(e) => setForm(f => ({ ...f, days_off: parseInt(e.target.value) || 1 }))}
-                      className="w-full px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50"
-                    />
+                    <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--pz-text-muted)', marginBottom: '4px', display: 'block' }}>Grace Period</label>
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type="number"
+                        value={form.grace_period_minutes}
+                        onChange={(e) => setForm(f => ({ ...f, grace_period_minutes: parseInt(e.target.value) || 0 }))}
+                        style={{ width: '100%', padding: '8px 12px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '12px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }}
+                      />
+                      <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '9px', color: 'var(--pz-text-muted)', fontWeight: 500 }}>min</span>
+                    </div>
                   </div>
                 </div>
-
-                {/* Preview rotation sequence */}
-                <div className="mt-2">
-                  <label className="text-[10px] font-semibold text-[var(--pz-text-muted)] mb-1.5 block">Sequence Preview</label>
-                  <div className="flex gap-1 flex-wrap">
-                    {(() => {
-                      const seq: { label: string; type: string }[] = []
-                      for (let i = 0; i < form.days_on; i++) seq.push({ label: 'D', type: 'day' })
-                      for (let i = 0; i < form.days_off; i++) seq.push({ label: 'O', type: 'off' })
-                      for (let i = 0; i < form.days_on; i++) seq.push({ label: 'N', type: 'night' })
-                      for (let i = 0; i < form.days_off; i++) seq.push({ label: 'O', type: 'off' })
-                      return seq.map((s, i) => (
-                        <span
-                          key={i}
-                          className={cn(
-                            'w-7 h-7 flex items-center justify-center rounded-md text-[10px] font-bold border',
-                            s.type === 'day' ? 'bg-amber-500/15 text-amber-400 border-amber-500/20' :
-                            s.type === 'night' ? 'bg-indigo-500/15 text-indigo-400 border-indigo-500/20' :
-                            'bg-zinc-500/15 text-zinc-400 border-zinc-500/20'
-                          )}
-                        >
-                          {s.label}
-                        </span>
-                      ))
-                    })()}
-                    <span className="text-xs text-[var(--pz-text-muted)] self-center ml-1">↻</span>
-                  </div>
-                </div>
-              </div>
-              <div className="p-4 rounded-xl bg-[var(--pz-surface-2)]/50 border border-[var(--pz-border)] space-y-3">
-                <h5 className="text-xs font-bold text-[var(--pz-text-secondary)] uppercase tracking-wider">Grace & Coverage</h5>
-                <div>
-                  <label className="text-[10px] font-semibold text-[var(--pz-text-muted)] mb-1 block">Grace Period</label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      value={form.grace_period_minutes}
-                      onChange={(e) => setForm(f => ({ ...f, grace_period_minutes: parseInt(e.target.value) || 0 }))}
-                      className="w-full px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50"
-                    />
-                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[9px] text-[var(--pz-text-muted)] font-medium">min</span>
-                  </div>
-                </div>
-                <div className="pt-1">
-                  <label className="text-[10px] font-semibold text-[var(--pz-text-muted)] mb-1 block">Working Days</label>
-                  <p className="text-[10px] text-[var(--pz-text-muted)] mb-1.5">Days per week the rotation covers</p>
-                  <div className="flex gap-1.5">
+                <div style={{ padding: '16px', borderRadius: '12px', background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <h5 style={{ fontSize: '12px', fontWeight: 700, color: 'var(--pz-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>Working Days</h5>
+                  <p style={{ fontSize: '10px', color: 'var(--pz-text-muted)', margin: 0 }}>Days employee is expected to work</p>
+                  <div style={{ display: 'flex', gap: '6px' }}>
                     {DAYS_SHORT.map((day, idx) => (
                       <button
                         key={day}
                         onClick={() => toggleDay(idx + 1)}
-                        className={cn(
-                          'flex-1 py-2 rounded-lg text-[9px] font-bold transition-all',
-                          form.working_days.includes(idx + 1)
-                            ? 'bg-purple-600 text-white shadow-sm shadow-purple-600/20'
-                            : 'bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-[var(--pz-text-muted)] hover:text-[var(--pz-text-secondary)]'
-                        )}
+                        style={{
+                          flex: 1,
+                          padding: '10px 0',
+                          borderRadius: '10px',
+                          fontSize: '10px',
+                          fontWeight: 700,
+                          border: 'none',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s',
+                          ...(form.working_days.includes(idx + 1)
+                            ? { background: 'linear-gradient(135deg, #2563EB, #1D4ED8)', color: '#fff', boxShadow: '0 1px 3px rgba(37,99,235,0.3)' }
+                            : { background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', color: 'var(--pz-text-muted)' }
+                          )
+                        }}
                       >
                         {day[0]}
                       </button>
@@ -630,9 +541,221 @@ export default function ShiftProtocols() {
                   </div>
                 </div>
               </div>
+            )}
+
+            {/* Rotating Schedule Rules */}
+            {form.protocol_type === 'rotating' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                  <div style={{ padding: '16px', borderRadius: '12px', background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <h5 style={{ fontSize: '12px', fontWeight: 700, color: 'var(--pz-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>Day Shift</h5>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Sun size={16} style={{ color: 'var(--pz-warning-500)', flexShrink: 0 }} />
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', flex: 1 }}>
+                        <div>
+                          <label style={{ fontSize: '10px', fontWeight: 600, color: 'var(--pz-text-muted)', marginBottom: '4px', display: 'block' }}>Start</label>
+                          <input
+                            type="time"
+                            value={form.day_shift_start || ''}
+                            onChange={(e) => setForm(f => ({ ...f, day_shift_start: e.target.value }))}
+                            style={{ width: '100%', padding: '8px 12px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '12px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '10px', fontWeight: 600, color: 'var(--pz-text-muted)', marginBottom: '4px', display: 'block' }}>End</label>
+                          <input
+                            type="time"
+                            value={form.day_shift_end || ''}
+                            onChange={(e) => setForm(f => ({ ...f, day_shift_end: e.target.value }))}
+                            style={{ width: '100%', padding: '8px 12px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '12px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ padding: '16px', borderRadius: '12px', background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <h5 style={{ fontSize: '12px', fontWeight: 700, color: 'var(--pz-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>Night Shift</h5>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Moon size={16} style={{ color: 'var(--pz-accent)', flexShrink: 0 }} />
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', flex: 1 }}>
+                        <div>
+                          <label style={{ fontSize: '10px', fontWeight: 600, color: 'var(--pz-text-muted)', marginBottom: '4px', display: 'block' }}>Start</label>
+                          <input
+                            type="time"
+                            value={form.night_shift_start || ''}
+                            onChange={(e) => setForm(f => ({ ...f, night_shift_start: e.target.value }))}
+                            style={{ width: '100%', padding: '8px 12px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '12px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '10px', fontWeight: 600, color: 'var(--pz-text-muted)', marginBottom: '4px', display: 'block' }}>End</label>
+                          <input
+                            type="time"
+                            value={form.night_shift_end || ''}
+                            onChange={(e) => setForm(f => ({ ...f, night_shift_end: e.target.value }))}
+                            style={{ width: '100%', padding: '8px 12px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '12px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                  <div style={{ padding: '16px', borderRadius: '12px', background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <h5 style={{ fontSize: '12px', fontWeight: 700, color: 'var(--pz-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>Rotation Pattern</h5>
+                    <p style={{ fontSize: '10px', color: 'var(--pz-text-muted)', margin: 0 }}>Days worked before switching shift type</p>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                      <div>
+                        <label style={{ fontSize: '10px', fontWeight: 600, color: 'var(--pz-text-muted)', marginBottom: '4px', display: 'block' }}>Days On</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={7}
+                          value={form.days_on}
+                          onChange={(e) => setForm(f => ({ ...f, days_on: parseInt(e.target.value) || 1 }))}
+                          style={{ width: '100%', padding: '8px 12px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '12px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '10px', fontWeight: 600, color: 'var(--pz-text-muted)', marginBottom: '4px', display: 'block' }}>Days Off</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={7}
+                          value={form.days_off}
+                          onChange={(e) => setForm(f => ({ ...f, days_off: parseInt(e.target.value) || 1 }))}
+                          style={{ width: '100%', padding: '8px 12px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '12px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ marginTop: '4px' }}>
+                      <label style={{ fontSize: '10px', fontWeight: 600, color: 'var(--pz-text-muted)', marginBottom: '6px', display: 'block' }}>Sequence Preview</label>
+                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                        {(() => {
+                          const seq: { label: string; type: string }[] = []
+                          for (let i = 0; i < form.days_on; i++) seq.push({ label: 'D', type: 'day' })
+                          for (let i = 0; i < form.days_off; i++) seq.push({ label: 'O', type: 'off' })
+                          for (let i = 0; i < form.days_on; i++) seq.push({ label: 'N', type: 'night' })
+                          for (let i = 0; i < form.days_off; i++) seq.push({ label: 'O', type: 'off' })
+                          return seq.map((s, i) => (
+                            <span
+                              key={i}
+                              style={{
+                                width: '28px',
+                                height: '28px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                borderRadius: '6px',
+                                fontSize: '10px',
+                                fontWeight: 700,
+                                border: '1px solid',
+                                ...(s.type === 'day' ? { background: 'rgba(245,158,11,0.15)', color: 'var(--pz-warning-500)', borderColor: 'rgba(245,158,11,0.2)' } :
+                                  s.type === 'night' ? { background: 'rgba(99,102,241,0.15)', color: 'var(--pz-accent)', borderColor: 'rgba(99,102,241,0.2)' } :
+                                  { background: 'rgba(113,113,122,0.15)', color: 'var(--pz-text-secondary)', borderColor: 'rgba(113,113,122,0.2)' })
+                              }}
+                            >
+                              {s.label}
+                            </span>
+                          ))
+                        })()}
+                        <span style={{ fontSize: '12px', color: 'var(--pz-text-muted)', alignSelf: 'center', marginLeft: '4px' }}>↻</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ padding: '16px', borderRadius: '12px', background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <h5 style={{ fontSize: '12px', fontWeight: 700, color: 'var(--pz-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>Grace & Coverage</h5>
+                    <div>
+                      <label style={{ fontSize: '10px', fontWeight: 600, color: 'var(--pz-text-muted)', marginBottom: '4px', display: 'block' }}>Grace Period</label>
+                      <div style={{ position: 'relative' }}>
+                        <input
+                          type="number"
+                          value={form.grace_period_minutes}
+                          onChange={(e) => setForm(f => ({ ...f, grace_period_minutes: parseInt(e.target.value) || 0 }))}
+                          style={{ width: '100%', padding: '8px 12px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '12px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }}
+                        />
+                        <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '9px', color: 'var(--pz-text-muted)', fontWeight: 500 }}>min</span>
+                      </div>
+                    </div>
+                    <div style={{ paddingTop: '4px' }}>
+                      <label style={{ fontSize: '10px', fontWeight: 600, color: 'var(--pz-text-muted)', marginBottom: '4px', display: 'block' }}>Working Days</label>
+                      <p style={{ fontSize: '10px', color: 'var(--pz-text-muted)', margin: '0 0 6px 0' }}>Days per week the rotation covers</p>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        {DAYS_SHORT.map((day, idx) => (
+                          <button
+                            key={day}
+                            onClick={() => toggleDay(idx + 1)}
+                            style={{
+                              flex: 1,
+                              padding: '8px 0',
+                              borderRadius: '8px',
+                              fontSize: '9px',
+                              fontWeight: 700,
+                              border: 'none',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s',
+                              ...(form.working_days.includes(idx + 1)
+                                ? { background: 'linear-gradient(135deg, #9333EA, #7E22CE)', color: '#fff', boxShadow: '0 1px 3px rgba(147,51,234,0.3)' }
+                                : { background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', color: 'var(--pz-text-muted)' }
+                              )
+                            }}
+                          >
+                            {day[0]}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── Section: Configuration ── */}
+          <div style={{ padding: '24px', borderRadius: '12px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '18px' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(99,102,241,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Info size={15} color="#6366F1" />
+              </div>
+              <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--pz-text-secondary)', margin: 0 }}>Configuration</p>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px' }}>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '6px', display: 'block' }}>Accent Color</label>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input
+                    type="color"
+                    value={form.color}
+                    onChange={(e) => setForm(f => ({ ...f, color: e.target.value }))}
+                    style={{ width: '40px', height: '40px', borderRadius: '10px', border: '1px solid var(--pz-border)', cursor: 'pointer', padding: '2px', background: 'var(--pz-surface-1)' }}
+                  />
+                  <span style={{ fontSize: '11px', color: 'var(--pz-text-muted)', fontFamily: 'monospace' }}>{form.color}</span>
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '6px', display: 'block' }}>Cycle Length (days)</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={90}
+                  value={form.cycle_length}
+                  onChange={(e) => setForm(f => ({ ...f, cycle_length: parseInt(e.target.value) || 14 }))}
+                  style={{ width: '100%', padding: '10px 16px', borderRadius: '12px', background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', fontSize: '14px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '6px', display: 'block' }}>Default Shift Supervisor</label>
+                <input
+                  value={form.default_shift_supervisor}
+                  onChange={(e) => setForm(f => ({ ...f, default_shift_supervisor: e.target.value }))}
+                  placeholder="Employee name (optional)"
+                  style={{ width: '100%', padding: '10px 16px', borderRadius: '12px', background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', fontSize: '14px', color: 'var(--pz-text)', outline: 'none', boxSizing: 'border-box' }}
+                />
+              </div>
             </div>
           </div>
-        )}
+        </div>
       </Modal>
 
       {/* Delete Confirmation */}
@@ -642,24 +765,24 @@ export default function ShiftProtocols() {
         title="Remove Protocol"
         size="sm"
         footer={
-          <div className="flex gap-3 w-full">
+          <div style={{ display: 'flex', gap: '12px', width: '100%' }}>
             <button
               onClick={() => setDeleteId(null)}
-              className="flex-1 px-5 py-3 rounded-xl bg-[var(--pz-surface-2)] hover:bg-[var(--pz-surface-3)] border border-[var(--pz-border)] text-sm font-semibold text-[var(--pz-text-secondary)] transition-colors"
+              style={{ flex: 1, padding: '12px 20px', borderRadius: '12px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '14px', fontWeight: 600, color: 'var(--pz-text-secondary)', cursor: 'pointer', transition: 'all 0.15s' }}
             >
               Cancel
             </button>
             <button
               onClick={() => deleteId && deleteMut.mutate(deleteId)}
               disabled={deleteMut.isPending}
-              className="flex-1 px-5 py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white text-sm font-semibold transition-colors disabled:opacity-50"
+              style={{ flex: 1, padding: '12px 20px', borderRadius: '12px', background: 'var(--pz-danger-500)', color: '#fff', fontSize: '14px', fontWeight: 600, border: 'none', cursor: 'pointer', opacity: deleteMut.isPending ? 0.5 : 1, transition: 'all 0.15s' }}
             >
               {deleteMut.isPending ? 'Removing...' : 'Remove'}
             </button>
           </div>
         }
       >
-        <p className="text-sm text-[var(--pz-text-muted)]">
+        <p style={{ fontSize: '14px', color: 'var(--pz-text-muted)' }}>
           This will permanently delete this shift protocol. This action cannot be undone.
         </p>
       </Modal>

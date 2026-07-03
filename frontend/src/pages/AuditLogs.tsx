@@ -1,9 +1,8 @@
 ﻿import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ScrollText, Download, ArrowRight, User, Globe, Server } from 'lucide-react'
+import { ScrollText, Download, ArrowRight, Info, FileText, User, Globe, Server } from 'lucide-react'
 import { auditAPI } from '@/api/client'
 import { format } from 'date-fns'
-import { PageHeader } from '@/components/ui/PageHeader'
 import { FilterBar } from '@/components/ui/FilterBar'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { DataTable, type ColumnDef } from '@/components/ui/data-table/DataTable'
@@ -48,11 +47,11 @@ const methodColors: Record<string, string> = {
   POST: 'text-[var(--pz-success-500)]',
   PUT: 'text-[var(--pz-warning-500)]',
   DELETE: 'text-[var(--pz-danger-500)]',
-  PATCH: 'text-purple-400',
+  PATCH: '#A78BFA',
 }
 
 function ValueDiff({ previous, current }: { previous: Record<string, unknown> | null | undefined; current: Record<string, unknown> | null | undefined }) {
-  if (!previous && !current) return <span className="text-[var(--pz-text-muted)] text-xs">No data</span>
+  if (!previous && !current) return <span style={{ fontSize: '12px', color: 'var(--pz-text-muted)' }}>No data</span>
 
   const allKeys = new Set([
     ...Object.keys(previous || {}),
@@ -66,20 +65,20 @@ function ValueDiff({ previous, current }: { previous: Record<string, unknown> | 
   })
 
   if (changedKeys.length === 0) {
-    return <span className="text-[var(--pz-text-muted)] text-xs">No changes detected</span>
+    return <span style={{ fontSize: '12px', color: 'var(--pz-text-muted)' }}>No changes detected</span>
   }
 
   return (
-    <div className="space-y-1">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
       {changedKeys.map(key => {
         const pVal = previous?.[key]
         const cVal = current?.[key]
         return (
-          <div key={key} className="flex items-start gap-2 text-xs">
-            <span className="text-[var(--pz-text-muted)] font-mono min-w-[100px] shrink-0 pt-0.5">{key}</span>
-            <span className="text-[var(--pz-danger-500)] line-through break-all">{String(pVal ?? '—')}</span>
-            <ArrowRight size={10} className="text-[var(--pz-text-muted)] mt-0.5 shrink-0" />
-            <span className="text-[var(--pz-success-500)] break-all">{String(cVal ?? '—')}</span>
+          <div key={key} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '12px' }}>
+            <span style={{ color: 'var(--pz-text-muted)', fontFamily: 'monospace', minWidth: '100px', flexShrink: 0, paddingTop: '2px' }}>{key}</span>
+            <span style={{ color: 'var(--pz-danger-500)', textDecoration: 'line-through', wordBreak: 'break-all' }}>{String(pVal ?? '—')}</span>
+            <ArrowRight size={10} style={{ color: 'var(--pz-text-muted)', marginTop: '2px', flexShrink: 0 }} />
+            <span style={{ color: 'var(--pz-success-500)', wordBreak: 'break-all' }}>{String(cVal ?? '—')}</span>
           </div>
         )
       })}
@@ -93,9 +92,9 @@ const columns: ColumnDef<AuditLogEntry, unknown>[] = [
     header: 'Time',
     cell: ({ getValue }) => {
       const val = getValue() as string
-      if (!val) return <span className="text-[var(--pz-text-muted)] font-mono text-xs">—</span>
+      if (!val) return <span style={{ color: 'var(--pz-text-muted)', fontFamily: 'monospace', fontSize: '12px' }}>—</span>
       return (
-        <span className="text-[var(--pz-text-secondary)] font-mono tabular-nums text-xs">
+        <span style={{ color: 'var(--pz-text-secondary)', fontFamily: 'monospace', fontSize: '12px', fontVariantNumeric: 'tabular-nums' }}>
           {format(new Date(val), 'MMM d, HH:mm:ss')}
         </span>
       )
@@ -117,9 +116,9 @@ const columns: ColumnDef<AuditLogEntry, unknown>[] = [
     header: 'Method',
     cell: ({ getValue }) => {
       const method = getValue() as string
-      if (!method) return <span className="text-[var(--pz-text-muted)] text-xs">—</span>
+      if (!method) return <span style={{ color: 'var(--pz-text-muted)', fontSize: '12px' }}>—</span>
       return (
-        <span className={`text-xs font-mono font-bold ${methodColors[method] || 'text-[var(--pz-text-muted)]'}`}>
+        <span style={{ fontSize: '12px', fontFamily: 'monospace', fontWeight: 700, color: methodColors[method] || 'var(--pz-text-muted)' }}>
           {method}
         </span>
       )
@@ -130,11 +129,11 @@ const columns: ColumnDef<AuditLogEntry, unknown>[] = [
     accessorKey: 'username',
     header: 'User',
     cell: ({ row }) => (
-      <div className="flex items-center gap-2">
-        <div className="w-6 h-6 rounded-full bg-[var(--pz-surface-2)] border border-[var(--pz-border)] flex items-center justify-center">
-          <span className="text-[9px] font-bold text-[var(--pz-text-muted)]">{(row.original.username || '?')[0]?.toUpperCase()}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--pz-text-muted)' }}>{(row.original.username || '?')[0]?.toUpperCase()}</span>
         </div>
-        <span className="text-[var(--pz-text)] text-xs font-medium">{row.original.username || 'System'}</span>
+        <span style={{ color: 'var(--pz-text)', fontSize: '12px', fontWeight: 500 }}>{row.original.username || 'System'}</span>
       </div>
     ),
     size: 140,
@@ -143,9 +142,9 @@ const columns: ColumnDef<AuditLogEntry, unknown>[] = [
     accessorKey: 'entity_type',
     header: 'Entity',
     cell: ({ row }) => (
-      <span className="text-[var(--pz-text-muted)] text-xs capitalize">
+      <span style={{ color: 'var(--pz-text-muted)', fontSize: '12px', textTransform: 'capitalize' }}>
         {row.original.entity_type?.replace(/_/g, ' ') || '—'}
-        {row.original.entity_id && <span className="text-[var(--pz-text-muted)] font-mono ml-1">#{String(row.original.entity_id).slice(0, 8)}</span>}
+        {row.original.entity_id && <span style={{ color: 'var(--pz-text-muted)', fontFamily: 'monospace', marginLeft: '4px' }}>#{String(row.original.entity_id).slice(0, 8)}</span>}
       </span>
     ),
   },
@@ -154,18 +153,27 @@ const columns: ColumnDef<AuditLogEntry, unknown>[] = [
     header: 'Endpoint',
     cell: ({ getValue }) => {
       const endpoint = getValue() as string
-      if (!endpoint) return <span className="text-[var(--pz-text-muted)] text-xs">—</span>
-      return <span className="text-[var(--pz-text-muted)] font-mono text-[10px] truncate max-w-[200px] block">{endpoint}</span>
+      if (!endpoint) return <span style={{ color: 'var(--pz-text-muted)', fontSize: '12px' }}>—</span>
+      return <span style={{ color: 'var(--pz-text-muted)', fontFamily: 'monospace', fontSize: '10px', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '200px', display: 'block' }}>{endpoint}</span>
     },
     size: 200,
   },
   {
     accessorKey: 'ip_address',
     header: 'IP',
-    cell: ({ getValue }) => <span className="text-[var(--pz-text-muted)] font-mono text-[11px]">{(getValue() as string) || '—'}</span>,
+    cell: ({ getValue }) => <span style={{ color: 'var(--pz-text-muted)', fontFamily: 'monospace', fontSize: '11px' }}>{(getValue() as string) || '—'}</span>,
     size: 120,
   },
 ]
+
+const s = {
+  page: { display: 'flex', flexDirection: 'column' as const, gap: '28px', padding: '32px', flex: 1 },
+  header: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' },
+  headerLeft: { display: 'flex', flexDirection: 'column' as const, gap: '4px' },
+  headerTitle: { fontSize: '22px', fontWeight: 700, color: 'var(--pz-text)', margin: 0, letterSpacing: '-0.02em' },
+  headerSubtitle: { fontSize: '13px', color: 'var(--pz-text-muted)', margin: 0 },
+  actions: { display: 'flex', alignItems: 'center', gap: '8px' },
+}
 
 export default function AuditLogs() {
   const [searchValue, setSearchValue] = useState('')
@@ -219,24 +227,23 @@ export default function AuditLogs() {
   }
 
   return (
-    <div className="space-y-5 pz-slide-up">
-      <PageHeader
-        title="Audit Logs"
-        subtitle="Complete system audit trail with before/after comparison"
-        breadcrumbs={[{ label: 'Administration' }, { label: 'Audit Logs' }]}
-        actions={
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="md" onClick={() => handleExport('csv')}>
-              <Download size={14} />
-              CSV
-            </Button>
-            <Button variant="outline" size="md" onClick={() => handleExport('json')}>
-              <Download size={14} />
-              JSON
-            </Button>
-          </div>
-        }
-      />
+    <div style={s.page}>
+      <div style={s.header}>
+        <div style={s.headerLeft}>
+          <h1 style={s.headerTitle}>Audit Logs</h1>
+          <p style={s.headerSubtitle}>Complete system audit trail with before/after comparison</p>
+        </div>
+        <div style={s.actions}>
+          <Button variant="outline" size="md" onClick={() => handleExport('csv')}>
+            <Download size={14} />
+            CSV
+          </Button>
+          <Button variant="outline" size="md" onClick={() => handleExport('json')}>
+            <Download size={14} />
+            JSON
+          </Button>
+        </div>
+      </div>
 
       <DataTable
         data={logs}
@@ -301,16 +308,16 @@ export default function AuditLogs() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
             {/* Action + Method header */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', paddingBottom: '20px', borderBottom: '1px solid var(--pz-border)' }}>
-              <div style={{ padding: '14px', borderRadius: '6px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '24px', paddingBottom: '20px', borderBottom: '1px solid var(--pz-border)' }}>
+              <div style={{ padding: '18px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', flexShrink: 0 }}>
                 <ScrollText size={22} style={{ color: 'var(--pz-accent)' }} />
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                 <StatusBadge status={actionColors[selectedLog.action.toLowerCase()] || 'info'} size="md" dot={false}>
                   {selectedLog.action}
                 </StatusBadge>
                 {selectedLog.request_method && (
-                  <span className={`text-xs font-mono font-bold ${methodColors[selectedLog.request_method] || 'text-[var(--pz-text-muted)]'}`}>
+                  <span style={{ fontSize: '12px', fontFamily: 'monospace', fontWeight: 700, color: methodColors[selectedLog.request_method] || 'var(--pz-text-muted)' }}>
                     {selectedLog.request_method}
                   </span>
                 )}
@@ -318,9 +325,14 @@ export default function AuditLogs() {
             </div>
 
             {/* Event details table */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Event Details</h4>
-              <div style={{ border: '1px solid var(--pz-border)', borderRadius: '6px', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '28px', height: '28px', borderRadius: '10px', background: 'rgba(59,130,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Info size={14} style={{ color: 'var(--pz-accent)' }} />
+                </div>
+                <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Event Details</h4>
+              </div>
+              <div style={{ border: '1px solid var(--pz-border)', borderRadius: '10px', overflow: 'hidden' }}>
                 {([
                   ['Action', selectedLog.action],
                   ['Entity Type', selectedLog.entity_type || '—'],
@@ -331,7 +343,7 @@ export default function AuditLogs() {
                   ['Timestamp', format(new Date(selectedLog.created_at || selectedLog.timestamp || ''), 'MMM d, yyyy HH:mm:ss')],
                   ...(selectedLog.user_agent ? [['User Agent', selectedLog.user_agent]] : []),
                 ] as [string, string][]).map(([label, value], i, arr) => (
-                  <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: '44px', paddingBlock: '8px', paddingInline: '14px', borderBottom: i < arr.length - 1 ? '1px solid var(--pz-border)' : 'none', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
+                  <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: '52px', paddingBlock: '12px', paddingInline: '16px', borderBottom: i < arr.length - 1 ? '1px solid var(--pz-border)' : 'none', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
                     <span style={{ fontSize: '12px', color: 'var(--pz-text-muted)', flexShrink: 0, marginRight: '16px' }}>{label}</span>
                     <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--pz-text-secondary)', fontFamily: 'monospace', textAlign: 'right', maxWidth: '340px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={value}>{value}</span>
                   </div>
@@ -341,9 +353,14 @@ export default function AuditLogs() {
 
             {/* Change comparison diff */}
             {(selectedLog.previous_value || selectedLog.new_value) && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Change Comparison</h4>
-                <div style={{ border: '1px solid var(--pz-border)', borderRadius: '6px', padding: '16px', background: 'var(--pz-surface-2)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '10px', background: 'rgba(59,130,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <ArrowRight size={14} style={{ color: 'var(--pz-accent)' }} />
+                  </div>
+                  <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Change Comparison</h4>
+                </div>
+                <div style={{ border: '1px solid var(--pz-border)', borderRadius: '10px', padding: '20px', background: 'var(--pz-surface-2)' }}>
                   <ValueDiff previous={selectedLog.previous_value} current={selectedLog.new_value} />
                 </div>
               </div>
@@ -351,9 +368,14 @@ export default function AuditLogs() {
 
             {/* Additional details JSON */}
             {selectedLog.details && Object.keys(selectedLog.details).length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Additional Details</h4>
-                <pre style={{ fontSize: '11px', color: 'var(--pz-text-muted)', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', borderRadius: '6px', padding: '16px', overflowX: 'auto', fontFamily: 'monospace', maxHeight: '200px', margin: 0 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '10px', background: 'rgba(59,130,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <FileText size={14} style={{ color: 'var(--pz-accent)' }} />
+                  </div>
+                  <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Additional Details</h4>
+                </div>
+                <pre style={{ fontSize: '11px', color: 'var(--pz-text-muted)', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', borderRadius: '10px', padding: '20px', overflowX: 'auto', fontFamily: 'monospace', maxHeight: '200px', margin: 0 }}>
                   {JSON.stringify(selectedLog.details, null, 2)}
                 </pre>
               </div>
@@ -361,18 +383,28 @@ export default function AuditLogs() {
 
             {/* Previous / New state */}
             {selectedLog.previous_value && Object.keys(selectedLog.previous_value).length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Previous State</h4>
-                <pre style={{ fontSize: '11px', color: 'var(--pz-text-muted)', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', borderRadius: '6px', padding: '16px', overflowX: 'auto', fontFamily: 'monospace', maxHeight: '200px', margin: 0 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '10px', background: 'rgba(59,130,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Info size={14} style={{ color: 'var(--pz-text-muted)' }} />
+                  </div>
+                  <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Previous State</h4>
+                </div>
+                <pre style={{ fontSize: '11px', color: 'var(--pz-text-muted)', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', borderRadius: '10px', padding: '20px', overflowX: 'auto', fontFamily: 'monospace', maxHeight: '200px', margin: 0 }}>
                   {JSON.stringify(selectedLog.previous_value, null, 2)}
                 </pre>
               </div>
             )}
 
             {selectedLog.new_value && Object.keys(selectedLog.new_value).length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>New State</h4>
-                <pre style={{ fontSize: '11px', color: 'var(--pz-text-muted)', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', borderRadius: '6px', padding: '16px', overflowX: 'auto', fontFamily: 'monospace', maxHeight: '200px', margin: 0 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '10px', background: 'rgba(59,130,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Info size={14} style={{ color: 'var(--pz-accent)' }} />
+                  </div>
+                  <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>New State</h4>
+                </div>
+                <pre style={{ fontSize: '11px', color: 'var(--pz-text-muted)', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', borderRadius: '10px', padding: '20px', overflowX: 'auto', fontFamily: 'monospace', maxHeight: '200px', margin: 0 }}>
                   {JSON.stringify(selectedLog.new_value, null, 2)}
                 </pre>
               </div>

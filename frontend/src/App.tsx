@@ -29,6 +29,8 @@ const LeaveManagement = lazy(() => import('@/pages/LeaveManagement'))
 const ShiftProtocols = lazy(() => import('@/pages/ShiftProtocols'))
 const Schedules = lazy(() => import('@/pages/Schedules'))
 const RosterManagement = lazy(() => import('@/pages/RosterManagement'))
+const HolidayCalendar = lazy(() => import('@/pages/HolidayCalendar'))
+const SchedulingAnalytics = lazy(() => import('@/pages/SchedulingAnalytics'))
 const DailyReport = lazy(() => import('@/pages/DailyReport'))
 const SystemHealth = lazy(() => import('@/pages/SystemHealth'))
 const Backups = lazy(() => import('@/pages/Backups'))
@@ -120,6 +122,8 @@ export default function App() {
               <Route path="/shift-protocols" element={withPageBoundary(ShiftProtocols)} />
               <Route path="/schedules" element={withPageBoundary(Schedules)} />
               <Route path="/roster" element={withPageBoundary(RosterManagement)} />
+              <Route path="/holidays" element={withPageBoundary(HolidayCalendar)} />
+              <Route path="/scheduling-analytics" element={withPageBoundary(SchedulingAnalytics)} />
               <Route path="/reports" element={withPageBoundary(Reports)} />
               <Route path="/daily-report" element={withPageBoundary(DailyReport)} />
               <Route path="/settings" element={withPageBoundary(Settings)} />

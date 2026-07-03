@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import {
   Users, UserCheck, Clock, UserX, Monitor, Bell,
   Fingerprint, Activity, Shield, ArrowRight, Radio, Cpu,
-  ChevronLeft, ChevronRight, CalendarDays,
+  ChevronLeft, ChevronRight, CalendarDays, BarChart3, AlertTriangle,
 } from 'lucide-react'
 import { dashboardAPI, attendanceAPI, devicesAPI, employeesAPI, deviceActivityAPI } from '@/api/client'
 import {
@@ -13,10 +13,10 @@ import {
 } from 'recharts'
 import { format, subDays, addDays, isToday, parseISO } from 'date-fns'
 import type { DashboardStats, DashboardChartData, AttendanceLog, Device, Employee } from '@/types'
-import { PageHeader } from '@/components/ui/PageHeader'
-import { KPICard, KPIDrillPanel } from '@/components/ui/KPICard'
+import { KPIDrillPanel } from '@/components/ui/KPICard'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { MetricRing } from '@/components/ui/MetricRing'
+import { Section, sectionHeader, sectionIcon, cardStyle } from '@/components/ui/CardSection'
 import { useConnectionStore } from '@/stores/connectionStore'
 import { useAlertStore } from '@/stores/alertStore'
 import { AlertDrawer } from '@/components/dashboard/AlertDrawer'
@@ -25,17 +25,91 @@ import { ShiftCoverageWidget } from '@/components/dashboard/ShiftCoverageWidget'
 import { UpcomingChangesWidget } from '@/components/dashboard/UpcomingChangesWidget'
 import { useDeptSummaryStore } from '@/stores/deptSummaryStore'
 
+/* ── Shared Styles ───────────────────────────────────────── */
+const card = cardStyle
+
 const chartTooltipStyle = {
-  background: 'var(--pz-surface-1)',
-  borderRadius: 'var(--pz-radius-lg)',
-  border: '1px solid var(--pz-border-strong)',
+  background: 'var(--pz-surface-2)',
+  borderRadius: 10,
+  border: '1px solid var(--pz-border)',
   color: 'var(--pz-text)',
-  boxShadow: 'var(--pz-shadow-lg)',
-  fontSize: '13px',
+  boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+  fontSize: 13,
+  padding: '8px 12px',
 }
 
 type DrillKey = 'workforce' | 'present' | 'late' | 'absent' | null
 
+/* ── StatusMiniCard ──────────────────────────────────────── */
+function StatusMiniCard({ label, value, color }: { label: string; value: number; color: string }) {
+  const dotColors: Record<string, string> = {
+    green: '#10B981', amber: '#F59E0B', blue: '#3B82F6', gray: '#64748B', red: '#EF4444',
+  }
+  const bgColors: Record<string, string> = {
+    green: 'rgba(16,185,129,0.08)', amber: 'rgba(245,158,11,0.08)',
+    blue: 'rgba(59,130,246,0.08)', gray: 'rgba(100,116,139,0.08)', red: 'rgba(239,68,68,0.08)',
+  }
+  const dotColor = dotColors[color] || dotColors.gray
+  return (
+    <div
+      className="rounded-xl px-4 py-3 border"
+      style={{ background: bgColors[color] || bgColors.gray, borderColor: `${dotColor}18` }}
+    >
+      <div className="flex items-center gap-1.5 mb-1">
+        <span className="w-1.5 h-1.5 rounded-full" style={{ background: dotColor }} />
+        <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--pz-text-muted)' }}>
+          {label}
+        </span>
+      </div>
+      <p className="text-xl font-bold" style={{ color: dotColor }}>{value}</p>
+    </div>
+  )
+}
+
+/* ── Empty State ─────────────────────────────────────────── */
+function EmptyState({ icon: Icon, title, desc }: { icon: any; title: string; desc?: string }) {
+  return (
+    <div className="text-center py-14" style={{ color: 'var(--pz-text-muted)' }}>
+      <Icon size={32} className="mx-auto mb-3" style={{ opacity: 0.2 }} />
+      <p className="text-sm font-medium">{title}</p>
+      {desc && <p className="text-xs mt-1.5" style={{ color: 'var(--pz-text-faint)' }}>{desc}</p>}
+    </div>
+  )
+}
+
+const s = {
+  page: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '28px',
+    padding: '32px',
+    flex: 1,
+  },
+  header: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  headerLeft: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '4px',
+  },
+  headerTitle: {
+    fontSize: '22px',
+    fontWeight: 700,
+    color: 'var(--pz-text)',
+    margin: 0,
+    letterSpacing: '-0.02em',
+  },
+  headerSubtitle: {
+    fontSize: '13px',
+    color: 'var(--pz-text-muted)',
+    margin: 0,
+  },
+}
+
+/* ── Dashboard ───────────────────────────────────────────── */
 export default function Dashboard() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drillKey, setDrillKey] = useState<DrillKey>(null)
@@ -159,178 +233,223 @@ export default function Dashboard() {
   }, [drillKey, allEmployees, liveData])
 
   return (
-    <div className="space-y-8">
-      {/* ── Page Header ─────────────────────────────────────── */}
-      <PageHeader
-        title="Operations Command Center"
-        subtitle={`Real-time airport workforce readiness \u00b7 ${format(new Date(), 'EEEE, MMMM d yyyy')}`}
-        breadcrumbs={[{ label: 'Operations' }, { label: 'Dashboard' }]}
-        actions={
-          <div className="flex items-center gap-3">
-            {connectionStatus !== 'connected' && (
-              <div className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold border
-                ${connectionStatus === 'reconnecting'
-                  ? 'bg-amber-500/5 text-amber-400 border-amber-500/20'
-                  : 'bg-red-500/5 text-red-400 border-red-500/20'
-                }`}>
-                <span className="relative flex h-2 w-2">
-                  <span className={`pz-ping absolute inline-flex h-full w-full rounded-full opacity-75
-                    ${connectionStatus === 'reconnecting' ? 'bg-amber-400' : 'bg-red-400'}`} />
-                  <span className={`relative inline-flex rounded-full h-2 w-2
-                    ${connectionStatus === 'reconnecting' ? 'bg-amber-500' : 'bg-red-500'}`} />
+    <div style={s.page}>
+      {/* ── Header ──────────────────────────────────────────── */}
+      <div style={s.header}>
+        <div style={s.headerLeft}>
+          <h1 style={s.headerTitle}>Operations Command Center</h1>
+          <p style={s.headerSubtitle}>Real-time airport workforce readiness · {format(new Date(), 'EEEE, MMMM d yyyy')}</p>
+        </div>
+        <div className="flex items-center gap-3">
+          {connectionStatus !== 'connected' && (
+            <div
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold border"
+              style={{
+                background: connectionStatus === 'reconnecting' ? 'rgba(245,158,11,0.08)' : 'rgba(239,68,68,0.08)',
+                color: connectionStatus === 'reconnecting' ? '#FBBF24' : '#F87171',
+                borderColor: connectionStatus === 'reconnecting' ? 'rgba(245,158,11,0.2)' : 'rgba(239,68,68,0.2)',
+              }}
+            >
+              <span className="relative flex h-2 w-2">
+                <span
+                  className="absolute inline-flex h-full w-full rounded-full opacity-75"
+                    style={{
+                      background: connectionStatus === 'reconnecting' ? '#FBBF24' : '#F87171',
+                      animation: 'pz-ping 1s cubic-bezier(0,0,0.2,1) infinite',
+                    }}
+                  />
+                  <span
+                    className="relative inline-flex rounded-full h-2 w-2"
+                    style={{ background: connectionStatus === 'reconnecting' ? '#F59E0B' : '#EF4444' }}
+                  />
                 </span>
                 {connectionStatus === 'reconnecting' ? 'Reconnecting...' : 'System Degraded'}
               </div>
             )}
             <button
               onClick={() => setDrawerOpen(true)}
-              className="relative flex items-center gap-2.5 px-5 py-2.5 rounded-xl bg-[var(--pz-surface-2)] hover:bg-[var(--pz-surface-3)] border border-[var(--pz-border)] text-sm font-semibold text-[var(--pz-text-secondary)] transition-all"
+              className="relative flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-150"
+              style={{
+                background: 'var(--pz-surface-2)',
+                border: '1px solid var(--pz-border)',
+                color: 'var(--pz-text-secondary)',
+              }}
             >
-              <Bell size={16} className={unacknowledgedCount > 0 ? 'text-amber-400' : 'text-[var(--pz-text-muted)]'} />
+              <Bell size={16} style={{ color: unacknowledgedCount > 0 ? '#FBBF24' : 'var(--pz-text-muted)' }} />
               Alerts
               {unacknowledgedCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[22px] h-[22px] rounded-full bg-red-600 text-white text-[11px] font-bold flex items-center justify-center px-1">
+                <span
+                  className="absolute -top-1.5 -right-1.5 min-w-[20px] h-[20px] rounded-full flex items-center justify-center text-[10px] font-bold text-white px-1"
+                  style={{ background: '#DC2626' }}
+                >
                   {unacknowledgedCount}
                 </span>
               )}
             </button>
           </div>
-        }
-      />
+        </div>
 
       {/* ═════════════════════════════════════════════════════════
          ROW 1: Executive KPIs with Drill-down
          ═════════════════════════════════════════════════════════ */}
       <div>
-        {/* Date Navigation Bar */}
-        <div className="flex items-center justify-center gap-3 mb-5">
+        {/* Date Navigation */}
+        <div className="flex items-center justify-center gap-2.5 mb-5">
           <button
             onClick={goToPreviousDay}
-            className="p-2 rounded-lg bg-[var(--pz-surface-2)] hover:bg-[var(--pz-surface-3)] border border-[var(--pz-border)] text-[var(--pz-text-secondary)] transition-all"
+            className="p-2 rounded-xl transition-all duration-150"
+            style={{
+              background: 'var(--pz-surface-2)',
+              border: '1px solid var(--pz-border)',
+              color: 'var(--pz-text-secondary)',
+            }}
           >
-            <ChevronLeft size={16} />
+            <ChevronLeft size={15} />
           </button>
-          <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)]">
-            <CalendarDays size={16} className="text-[var(--pz-text-muted)]" />
-            <span className="text-sm font-semibold text-[var(--pz-text)]">
+          <div
+            className="flex items-center gap-2 px-4 py-2 rounded-xl"
+            style={{
+              background: 'var(--pz-surface-2)',
+              border: '1px solid var(--pz-border)',
+            }}
+          >
+            <CalendarDays size={15} style={{ color: 'var(--pz-text-muted)' }} />
+            <span className="text-sm font-semibold" style={{ color: 'var(--pz-text)' }}>
               {format(parseISO(selectedDate), 'EEEE, MMMM d, yyyy')}
             </span>
           </div>
           <button
             onClick={goToNextDay}
-            className="p-2 rounded-lg bg-[var(--pz-surface-2)] hover:bg-[var(--pz-surface-3)] border border-[var(--pz-border)] text-[var(--pz-text-secondary)] transition-all"
+            disabled={isViewingToday}
+            className="p-2 rounded-xl transition-all duration-150 disabled:opacity-30"
+            style={{
+              background: 'var(--pz-surface-2)',
+              border: '1px solid var(--pz-border)',
+              color: 'var(--pz-text-secondary)',
+            }}
           >
-            <ChevronRight size={16} />
+            <ChevronRight size={15} />
           </button>
           {!isViewingToday && (
             <button
               onClick={goToToday}
-              className="px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-400 text-xs font-semibold border border-blue-500/20 hover:bg-blue-500/20 transition-all"
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all"
+              style={{
+                background: 'rgba(59,130,246,0.1)',
+                color: '#60A5FA',
+                borderColor: 'rgba(59,130,246,0.2)',
+              }}
             >
               Today
             </button>
           )}
         </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-          className={`grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-5 ${drillKey ? 'mb-1' : ''}`}
-        >
-          <KPICard
-            icon={Users} label="Total Workforce"
-            value={stats?.total_employees ?? '\u2014'}
-            change={stats?.trends.employees_change} color="#3B82F6"
-            loading={statsLoading}
-            onClick={() => setDrillKey(drillKey === 'workforce' ? null : 'workforce')}
-          />
-          <KPICard
-            icon={UserCheck} label="Present Today"
-            value={stats?.present_today ?? '\u2014'}
-            change={stats?.trends.present_change} color="#10B981"
-            loading={statsLoading}
-            onClick={() => setDrillKey(drillKey === 'present' ? null : 'present')}
-          />
-          <KPICard
-            icon={Clock} label="Late Today"
-            value={stats?.late_today ?? '\u2014'}
-            change={stats?.trends.late_change} color="#F59E0B"
-            loading={statsLoading}
-            onClick={() => setDrillKey(drillKey === 'late' ? null : 'late')}
-          />
-          <KPICard
-            icon={UserX} label="Absent Today"
-            value={stats?.absent_today ?? '\u2014'}
-            subtitle={stats?.expected_today ? `${stats.expected_today} expected` : undefined}
-            change={stats?.trends.absent_change} color="#EF4444"
-            loading={statsLoading}
-            onClick={() => setDrillKey(drillKey === 'absent' ? null : 'absent')}
-          />
-          <KPICard
-            icon={Monitor} label="Device Fleet"
-            value={totalDevices > 0 ? `${onlineDevices}/${totalDevices}` : '\u2014'}
-            color="#6366F1" loading={statsLoading} suffix="online"
-          />
-        </motion.div>
+        <Section delay={0}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px' }}>
+            {([
+              { icon: Users, bg: 'linear-gradient(135deg, rgba(59,130,246,0.2), rgba(99,102,241,0.2))', color: '#3B82F6', label: 'Total Workforce', value: stats?.total_employees ?? '—', onClick: () => setDrillKey(drillKey === 'workforce' ? null : 'workforce') },
+              { icon: UserCheck, bg: 'linear-gradient(135deg, rgba(16,185,129,0.2), rgba(52,211,153,0.2))', color: '#10B981', label: 'Present Today', value: stats?.present_today ?? '—', onClick: () => setDrillKey(drillKey === 'present' ? null : 'present') },
+              { icon: Clock, bg: 'linear-gradient(135deg, rgba(245,158,11,0.2), rgba(251,191,36,0.2))', color: '#F59E0B', label: 'Late Today', value: stats?.late_today ?? '—', onClick: () => setDrillKey(drillKey === 'late' ? null : 'late') },
+              { icon: UserX, bg: 'linear-gradient(135deg, rgba(239,68,68,0.2), rgba(248,113,113,0.2))', color: '#EF4444', label: 'Absent Today', value: stats?.absent_today ?? '—', onClick: () => setDrillKey(drillKey === 'absent' ? null : 'absent') },
+              { icon: Monitor, bg: 'linear-gradient(135deg, rgba(99,102,241,0.2), rgba(129,140,248,0.2))', color: '#6366F1', label: 'Device Fleet', value: totalDevices > 0 ? `${onlineDevices}/${totalDevices}` : '—' },
+            ] as const).map((item) => {
+              const { icon: Icon, bg, color, label, value } = item
+              const clickHandler = 'onClick' in item ? item.onClick : undefined
+              return (
+              <div key={label}
+                onClick={clickHandler}
+                style={{ display: 'flex', alignItems: 'center', gap: '14px', background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', borderRadius: '10px', padding: '20px', cursor: clickHandler ? 'pointer' : 'default', transition: 'all 0.15s ease' }}
+                onMouseEnter={(e) => { if (clickHandler) e.currentTarget.style.borderColor = 'var(--pz-accent)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--pz-border)' }}
+              >
+                <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Icon size={18} color={color} />
+                </div>
+                <div>
+                  <p style={{ fontSize: '20px', fontWeight: 700, color: 'var(--pz-text)', margin: 0, lineHeight: 1.1 }}>{value}</p>
+                  <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '2px 0 0 0' }}>{label}</p>
+                </div>
+              </div>
+            )
+          })}
+          </div>
 
-        {/* Drill-down Panel */}
-        {drillData && (
-          <KPIDrillPanel
-            open={!!drillKey}
-            title={drillData.title}
-            onClose={() => setDrillKey(null)}
-          >
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-[var(--pz-border)]">
-                    {drillData.headers.map((h: string) => (
-                      <th key={h} className="text-left py-3 px-4 text-[11px] font-bold text-[var(--pz-text-muted)] uppercase tracking-wider">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {drillData.rows.length > 0 ? (
-                    drillData.rows.map((row: string[], i: number) => (
-                      <tr key={i} className="border-b border-[var(--pz-border)]/20 hover:bg-[var(--pz-surface-2)]/30 transition-colors">
-                        {row.map((cell: string, j: number) => (
-                          <td key={j} className="py-3 px-4 text-sm text-[var(--pz-text-secondary)]">{cell}</td>
-                        ))}
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={drillData.headers.length} className="py-12 text-center text-sm text-[var(--pz-text-muted)]">
-                        No data available
-                      </td>
+          {/* Drill-down Panel */}
+          {drillData && (
+            <KPIDrillPanel
+              open={!!drillKey}
+              title={drillData.title}
+              onClose={() => setDrillKey(null)}
+            >
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--pz-border)' }}>
+                      {drillData.headers.map((h: string) => (
+                        <th
+                          key={h}
+                          className="text-left py-3 px-4 text-[11px] font-bold uppercase tracking-wider"
+                          style={{ color: 'var(--pz-text-muted)' }}
+                        >
+                          {h}
+                        </th>
+                      ))}
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </KPIDrillPanel>
-        )}
+                  </thead>
+                  <tbody>
+                    {drillData.rows.length > 0 ? (
+                      drillData.rows.map((row: string[], i: number) => (
+                        <tr
+                          key={i}
+                          className="transition-colors"
+                          style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
+                        >
+                          {row.map((cell: string, j: number) => (
+                            <td key={j} className="py-3 px-4 text-sm" style={{ color: 'var(--pz-text-secondary)' }}>
+                              {cell}
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td
+                          colSpan={drillData.headers.length}
+                          className="py-12 text-center text-sm"
+                          style={{ color: 'var(--pz-text-muted)' }}
+                        >
+                          No data available
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </KPIDrillPanel>
+          )}
+        </Section>
       </div>
 
       {/* ═════════════════════════════════════════════════════════
-         ROW 1.5: Employee Status Breakdown (Enrollment Status)
+         ROW 1.5: Employee Status Breakdown
          ═════════════════════════════════════════════════════════ */}
       {stats && (
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.05 }}
-          className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm p-5"
-        >
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
-              <Users size={16} className="text-indigo-500" />
-            </div>
-            <h3 className="text-sm font-bold text-gray-700 dark:text-gray-200">Employee Status Breakdown</h3>
-            <a href="/employees" className="ml-auto text-xs text-blue-500 hover:text-blue-400 font-semibold">View All</a>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <Section delay={0.05}>
+          {sectionHeader(
+            <div style={sectionIcon('#6366F1')}>
+              <BarChart3 size={16} style={{ color: '#818CF8' }} />
+            </div>,
+            'Employee Status Breakdown',
+            <a
+              href="/employees"
+              className="text-xs font-semibold transition-colors"
+              style={{ color: 'var(--pz-brand)' }}
+            >
+              View All
+            </a>
+          )}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <StatusMiniCard label="Active" value={stats.employees_active} color="green" />
             <StatusMiniCard label="Pending Enrollment" value={stats.employees_pending_enrollment} color="amber" />
             <StatusMiniCard label="Enrolled" value={stats.employees_enrolled} color="blue" />
@@ -338,15 +457,24 @@ export default function Dashboard() {
             <StatusMiniCard label="Terminated" value={stats.employees_terminated} color="red" />
           </div>
           {stats.active_enrollment_sessions > 0 && (
-            <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-              <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+            <div
+              className="mt-4 pt-4 flex items-center gap-2"
+              style={{ borderTop: '1px solid var(--pz-border)' }}
+            >
+              <span className="w-2 h-2 rounded-full" style={{ background: '#3B82F6', animation: 'pz-pulse-dot 2s ease-in-out infinite' }} />
+              <span className="text-xs font-medium" style={{ color: 'var(--pz-text-muted)' }}>
                 {stats.active_enrollment_sessions} active enrollment session{stats.active_enrollment_sessions !== 1 ? 's' : ''} in progress
               </span>
-              <a href="/enrollment" className="ml-auto text-xs text-blue-500 hover:text-blue-400 font-semibold">Monitor</a>
+              <a
+                href="/enrollment"
+                className="ml-auto text-xs font-semibold transition-colors"
+                style={{ color: 'var(--pz-brand)' }}
+              >
+                Monitor
+              </a>
             </div>
           )}
-        </motion.div>
+        </Section>
       )}
 
       {/* ═════════════════════════════════════════════════════════
@@ -355,24 +483,22 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         {/* Department Readiness */}
         {Object.keys(deptSummaries).length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="pz-card p-6 xl:col-span-2"
-          >
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20">
-                  <Shield size={18} className="text-blue-400" />
-                </div>
-                <h3 className="text-base font-bold text-[var(--pz-text)]">Department Readiness</h3>
-              </div>
-              <a href="/departments" className="text-sm text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1.5 transition-colors group">
-                View All <ArrowRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
+          <Section delay={0.1} className="xl:col-span-2">
+            {sectionHeader(
+              <div style={sectionIcon('#3B82F6')}>
+                <Shield size={16} style={{ color: '#60A5FA' }} />
+              </div>,
+              'Department Readiness',
+              <a
+                href="/departments"
+                className="text-xs font-semibold flex items-center gap-1.5 transition-colors group"
+                style={{ color: 'var(--pz-brand)' }}
+              >
+                View All
+                <ArrowRight size={13} className="group-hover:translate-x-0.5 transition-transform" />
               </a>
-            </div>
-            <div className="flex flex-wrap gap-10 justify-center py-4">
+            )}
+            <div className="flex flex-wrap gap-8 justify-center py-4">
               {Object.values(deptSummaries).slice(0, 8).map((dept) => {
                 const readiness = dept.expected_count > 0
                   ? Math.round((dept.present_count / dept.expected_count) * 100)
@@ -381,7 +507,7 @@ export default function Dashboard() {
                   <MetricRing
                     key={dept.department_id}
                     value={readiness}
-                    size={96}
+                    size={92}
                     strokeWidth={6}
                     color="auto"
                     label={dept.department_name}
@@ -390,25 +516,17 @@ export default function Dashboard() {
                 )
               })}
             </div>
-          </motion.div>
+          </Section>
         )}
 
         {/* Shift Coverage & Upcoming Changes */}
         <div className="flex flex-col gap-5">
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15 }}
-          >
+          <Section delay={0.15}>
             <ShiftCoverageWidget />
-          </motion.div>
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-          >
+          </Section>
+          <Section delay={0.2}>
             <UpcomingChangesWidget />
-          </motion.div>
+          </Section>
         </div>
       </div>
 
@@ -416,126 +534,130 @@ export default function Dashboard() {
          ROW 3: Live Operations
          ═════════════════════════════════════════════════════════ */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Live Activity Feed */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25 }}
-          className="pz-card p-6 lg:col-span-2"
-        >
-          <div className="flex items-center justify-between mb-5">
+        {/* Live Scan Activity */}
+        <Section delay={0.25} className="lg:col-span-2">
+          {sectionHeader(
+            <div style={sectionIcon('#3B82F6')}>
+              <Fingerprint size={16} style={{ color: '#60A5FA' }} />
+            </div>,
+            'Live Scan Activity',
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20">
-                <Fingerprint size={18} className="text-blue-400" />
-              </div>
-              <h3 className="text-base font-bold text-[var(--pz-text)]">Live Scan Activity</h3>
               {liveData?.items?.length > 0 && (
-                <span className="flex items-center gap-1.5 text-xs text-emerald-400 font-semibold">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 pz-pulse-dot" />
+                <span className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: '#34D399' }}>
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#34D399', animation: 'pz-pulse-dot 2s ease-in-out infinite' }} />
                   Live
                 </span>
               )}
+              <a
+                href="/attendance"
+                className="text-xs font-semibold flex items-center gap-1.5 transition-colors group"
+                style={{ color: 'var(--pz-brand)' }}
+              >
+                View All
+                <ArrowRight size={13} className="group-hover:translate-x-0.5 transition-transform" />
+              </a>
             </div>
-            <a href="/attendance" className="text-sm text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1.5 transition-colors group">
-              View All <ArrowRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
-            </a>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[var(--pz-border)]">
-                  <th className="text-left py-3.5 px-4 text-[11px] font-bold text-[var(--pz-text-muted)] uppercase tracking-wider">Employee</th>
-                  <th className="text-left py-3.5 px-4 text-[11px] font-bold text-[var(--pz-text-muted)] uppercase tracking-wider">Department</th>
-                  <th className="text-left py-3.5 px-4 text-[11px] font-bold text-[var(--pz-text-muted)] uppercase tracking-wider">Direction</th>
-                  <th className="text-left py-3.5 px-4 text-[11px] font-bold text-[var(--pz-text-muted)] uppercase tracking-wider">Time</th>
-                  <th className="text-left py-3.5 px-4 text-[11px] font-bold text-[var(--pz-text-muted)] uppercase tracking-wider">Terminal</th>
-                </tr>
-              </thead>
-              <tbody>
-                {liveData?.items?.length ? (
-                  liveData.items.slice(0, 8).map((log: AttendanceLog, i: number) => (
+          )}
+          {liveData?.items?.length ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--pz-border)' }}>
+                    <th className="text-left py-3.5 px-4 text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--pz-text-muted)' }}>Employee</th>
+                    <th className="text-left py-3.5 px-4 text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--pz-text-muted)' }}>Department</th>
+                    <th className="text-left py-3.5 px-4 text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--pz-text-muted)' }}>Direction</th>
+                    <th className="text-left py-3.5 px-4 text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--pz-text-muted)' }}>Time</th>
+                    <th className="text-left py-3.5 px-4 text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--pz-text-muted)' }}>Terminal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {liveData.items.slice(0, 8).map((log: AttendanceLog, i: number) => (
                     <motion.tr
                       key={log.id}
                       initial={{ opacity: 0, x: -6 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: i * 0.03 }}
-                      className="border-b border-[var(--pz-border)]/20 hover:bg-[var(--pz-surface-2)]/30 transition-colors"
+                      className="transition-colors"
+                      style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
                     >
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-900/40 to-indigo-900/40 flex items-center justify-center text-xs font-bold text-blue-400 border border-blue-500/20">
+                          <div
+                            className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-sm border"
+                            style={{
+                              background: 'linear-gradient(135deg, rgba(59,130,246,0.15), rgba(99,102,241,0.15))',
+                              color: '#60A5FA',
+                              borderColor: 'rgba(59,130,246,0.2)',
+                            }}
+                          >
                             {log.employee_name?.[0] || '?'}
                           </div>
                           <div>
-                            <span className="font-semibold text-[var(--pz-text-secondary)] text-sm">{log.employee_name || 'Unknown'}</span>
-                            <p className="text-[11px] text-[var(--pz-text-muted)]">{log.employee_code}</p>
+                            <span className="font-semibold text-sm" style={{ color: 'var(--pz-text-secondary)' }}>
+                              {log.employee_name || 'Unknown'}
+                            </span>
+                            <p className="text-[11px]" style={{ color: 'var(--pz-text-muted)' }}>{log.employee_code}</p>
                           </div>
                         </div>
                       </td>
-                      <td className="py-3.5 px-4 text-sm text-[var(--pz-text-tertiary)]">{log.department_name || '\u2014'}</td>
+                      <td className="py-3.5 px-4 text-sm" style={{ color: 'var(--pz-text-tertiary)' }}>
+                        {log.department_name || '\u2014'}
+                      </td>
                       <td className="py-3.5 px-4">
                         <StatusBadge status={log.punch_direction === 'in' ? 'in' : 'out'} size="sm" dot={false}>
                           {log.punch_direction?.toUpperCase()}
                         </StatusBadge>
                       </td>
-                      <td className="py-3.5 px-4 text-sm text-[var(--pz-text-tertiary)] font-mono tabular-nums">
+                      <td className="py-3.5 px-4 text-sm font-mono tabular-nums" style={{ color: 'var(--pz-text-tertiary)' }}>
                         {format(new Date(log.timestamp), 'hh:mm a')}
                       </td>
-                      <td className="py-3.5 px-4 text-xs text-[var(--pz-text-faint)] font-mono">{log.device_name || log.device_ip}</td>
+                      <td className="py-3.5 px-4 text-xs font-mono" style={{ color: 'var(--pz-text-faint)' }}>
+                        {log.device_name || log.device_ip}
+                      </td>
                     </motion.tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={5} className="py-16 text-center text-[var(--pz-text-muted)]">
-                      <Fingerprint size={32} className="mx-auto mb-3 opacity-20" />
-                      <p className="text-sm font-medium">No active scan telemetry</p>
-                      <p className="text-xs mt-1.5 text-[var(--pz-text-faint)]">Waiting for biometric push...</p>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </motion.div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState icon={Fingerprint} title="No active scan telemetry" desc="Waiting for biometric push..." />
+          )}
+        </Section>
 
         {/* Workforce Telemetry */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="pz-card p-6"
-        >
-          <div className="flex items-center gap-3 mb-5">
-            <div className="p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
-              <Activity size={18} className="text-indigo-400" />
-            </div>
-            <h3 className="text-base font-semibold tracking-tight text-[var(--pz-text)]">Workforce Telemetry</h3>
-          </div>
+        <Section delay={0.3}>
+          {sectionHeader(
+            <div style={sectionIcon('#6366F1')}>
+              <Activity size={16} style={{ color: '#818CF8' }} />
+            </div>,
+            'Workforce Telemetry'
+          )}
           <WorkforceReadiness />
-        </motion.div>
+        </Section>
       </div>
 
       {/* ═════════════════════════════════════════════════════════
          ROW 4: Analytics
          ═════════════════════════════════════════════════════════ */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.35 }}
-          className="pz-card p-6 lg:col-span-2"
-        >
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-                <Activity size={18} className="text-emerald-400" />
-              </div>
-              <h3 className="text-base font-semibold tracking-tight text-[var(--pz-text)]">Attendance Trend</h3>
-            </div>
-            <span className="text-xs text-[var(--pz-text-muted)] bg-[var(--pz-surface-2)] px-3 py-1.5 rounded-lg font-semibold border border-[var(--pz-border)]">
+        {/* Attendance Trend */}
+        <Section delay={0.35} className="lg:col-span-2">
+          {sectionHeader(
+            <div style={sectionIcon('#10B981')}>
+              <Activity size={16} style={{ color: '#34D399' }} />
+            </div>,
+            'Attendance Trend',
+            <span
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg border"
+              style={{
+                background: 'var(--pz-surface-2)',
+                color: 'var(--pz-text-muted)',
+                borderColor: 'var(--pz-border)',
+              }}
+            >
               7-Day
             </span>
-          </div>
+          )}
           {chartsLoading ? (
             <div className="skeleton w-full h-[300px] rounded-xl" />
           ) : (
@@ -552,20 +674,16 @@ export default function Dashboard() {
               </LineChart>
             </ResponsiveContainer>
           )}
-        </motion.div>
+        </Section>
 
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="pz-card p-6"
-        >
-          <div className="flex items-center gap-3 mb-5">
-            <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
-              <Users size={18} className="text-cyan-400" />
-            </div>
-            <h3 className="text-base font-semibold tracking-tight text-[var(--pz-text)]">By Department</h3>
-          </div>
+        {/* By Department */}
+        <Section delay={0.4}>
+          {sectionHeader(
+            <div style={sectionIcon('#06B6D4')}>
+              <Users size={16} style={{ color: '#22D3EE' }} />
+            </div>,
+            'By Department'
+          )}
           {chartsLoading ? (
             <div className="skeleton w-full h-[300px] rounded-xl" />
           ) : (
@@ -590,139 +708,166 @@ export default function Dashboard() {
               </BarChart>
             </ResponsiveContainer>
           )}
-        </motion.div>
+        </Section>
       </div>
 
       {/* ═════════════════════════════════════════════════════════
          ROW 5: Device Fleet
          ═════════════════════════════════════════════════════════ */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.45 }}
-        className="pz-card p-6"
-      >
-        <div className="flex items-center justify-between mb-5">
+      <Section delay={0.45}>
+        {sectionHeader(
+          <div style={sectionIcon('#8B5CF6')}>
+            <Monitor size={16} style={{ color: '#A78BFA' }} />
+          </div>,
+          'Device Fleet',
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-violet-500/10 border border-violet-500/20">
-              <Monitor size={18} className="text-violet-400" />
-            </div>
-            <h3 className="text-base font-semibold tracking-tight text-[var(--pz-text)]">Device Fleet</h3>
-            <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <span
+              className="px-2.5 py-1 rounded-lg text-xs font-semibold border"
+              style={{
+                background: 'rgba(16,185,129,0.1)',
+                color: '#34D399',
+                borderColor: 'rgba(16,185,129,0.2)',
+              }}
+            >
               {onlineDevices}/{totalDevices} online
             </span>
+            <a
+              href="/devices"
+              className="text-xs font-semibold flex items-center gap-1.5 transition-colors group"
+              style={{ color: 'var(--pz-brand)' }}
+            >
+              View All
+              <ArrowRight size={13} className="group-hover:translate-x-0.5 transition-transform" />
+            </a>
           </div>
-          <a href="/devices" className="text-sm text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1.5 transition-colors group">
-            View All <ArrowRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
-          </a>
-        </div>
+        )}
         {devices.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
             {devices.map((device) => (
-              <div key={device.id} className="flex items-center gap-3.5 p-4 rounded-xl bg-[var(--pz-surface-2)]/50 border border-[var(--pz-border)] hover:border-[var(--pz-border-strong)] hover:bg-[var(--pz-surface-2)]/70 transition-all">
-                <div className={`p-2.5 rounded-xl ${device.is_online ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-[var(--pz-surface-2)] border border-[var(--pz-border)]'}`}>
-                  <Monitor size={16} className={device.is_online ? 'text-emerald-400' : 'text-[var(--pz-text-muted)]'} />
+              <div
+                key={device.id}
+                className="flex items-center gap-3.5 p-4 rounded-xl transition-all duration-150"
+                style={{
+                  background: 'var(--pz-surface-2)',
+                  border: '1px solid var(--pz-border)',
+                }}
+              >
+                <div
+                  className="p-2.5 rounded-xl"
+                  style={{
+                    background: device.is_online ? 'rgba(16,185,129,0.1)' : 'var(--pz-surface-2)',
+                    border: `1px solid ${device.is_online ? 'rgba(16,185,129,0.2)' : 'var(--pz-border)'}`,
+                  }}
+                >
+                  <Monitor size={15} style={{ color: device.is_online ? '#34D399' : 'var(--pz-text-muted)' }} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-[var(--pz-text-secondary)] truncate">
+                  <p className="text-sm font-semibold truncate" style={{ color: 'var(--pz-text-secondary)' }}>
                     {device.name || `Device ${device.serial_number.slice(-6)}`}
                   </p>
-                  <p className="text-xs text-[var(--pz-text-muted)] font-mono">{device.ip_address || device.serial_number}</p>
+                  <p className="text-xs font-mono" style={{ color: 'var(--pz-text-muted)' }}>
+                    {device.ip_address || device.serial_number}
+                  </p>
                 </div>
                 <StatusBadge status={device.is_online ? 'online' : 'offline'} size="sm" pulse={device.is_online} />
               </div>
             ))}
           </div>
         ) : (
-          <div className="text-center py-16 text-[var(--pz-text-muted)]">
-            <Monitor size={36} className="mx-auto mb-3 opacity-20" />
-            <p className="text-sm font-medium">No registered devices</p>
-          </div>
+          <EmptyState icon={Monitor} title="No registered devices" />
         )}
-      </motion.div>
+      </Section>
 
       {/* ═════════════════════════════════════════════════════════
          ROW 6: Device Activity & Enrollment Events
          ═════════════════════════════════════════════════════════ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Device Activity Stream */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="pz-card p-6"
-        >
-          <div className="flex items-center gap-3 mb-5">
-            <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20">
-              <Radio size={18} className="text-blue-400" />
-            </div>
-            <h3 className="text-base font-semibold tracking-tight text-[var(--pz-text)]">Device Activity Stream</h3>
-          </div>
-          <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
-            {!fleetActivity?.recent_activity?.length ? (
-              <div className="text-center py-12 text-[var(--pz-text-muted)]">
-                <Cpu size={32} className="mx-auto mb-3 opacity-20" />
-                <p className="text-sm font-medium">No recent device activity</p>
-                <p className="text-xs mt-1.5 text-[var(--pz-text-faint)]">Waiting for device events...</p>
-              </div>
-            ) : (
-              fleetActivity.recent_activity.slice(0, 12).map((item: any) => (
+        <Section delay={0.5}>
+          {sectionHeader(
+            <div style={sectionIcon('#3B82F6')}>
+              <Radio size={16} style={{ color: '#60A5FA' }} />
+            </div>,
+            'Device Activity Stream'
+          )}
+          {!fleetActivity?.recent_activity?.length ? (
+            <EmptyState icon={Cpu} title="No recent device activity" desc="Waiting for device events..." />
+          ) : (
+            <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
+              {fleetActivity.recent_activity.slice(0, 12).map((item: any) => (
                 <div
                   key={item.id}
-                  className="flex items-start gap-3 p-3 rounded-xl border border-[var(--pz-border)] bg-[var(--pz-surface-2)]/20 hover:border-[var(--pz-border-strong)] transition-colors"
+                  className="flex items-start gap-3 p-3 rounded-xl transition-colors"
+                  style={{
+                    background: 'var(--pz-surface-2)',
+                    border: '1px solid var(--pz-border)',
+                  }}
                 >
-                  <div className={`mt-0.5 p-1.5 rounded-lg ${
-                    item.activity_type === 'attendance_push' ? 'bg-emerald-500/10 text-emerald-400' :
-                    item.activity_type === 'heartbeat' ? 'bg-blue-500/10 text-blue-400' :
-                    item.activity_type === 'device_disconnected' ? 'bg-red-500/10 text-red-400' :
-                    item.activity_type === 'health_probe' ? 'bg-violet-500/10 text-violet-400' :
-                    'bg-gray-500/10 text-gray-400'
-                  }`}>
+                  <div
+                    className="mt-0.5 p-1.5 rounded-lg"
+                    style={{
+                      background: item.activity_type === 'attendance_push' ? 'rgba(16,185,129,0.1)' :
+                        item.activity_type === 'heartbeat' ? 'rgba(59,130,246,0.1)' :
+                        item.activity_type === 'device_disconnected' ? 'rgba(239,68,68,0.1)' :
+                        item.activity_type === 'health_probe' ? 'rgba(139,92,246,0.1)' :
+                        'rgba(100,116,139,0.1)',
+                      color: item.activity_type === 'attendance_push' ? '#34D399' :
+                        item.activity_type === 'heartbeat' ? '#60A5FA' :
+                        item.activity_type === 'device_disconnected' ? '#F87171' :
+                        item.activity_type === 'health_probe' ? '#A78BFA' :
+                        '#94A3B8',
+                    }}
+                  >
                     <Cpu size={12} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-[var(--pz-text-secondary)]">
+                    <p className="text-xs font-semibold" style={{ color: 'var(--pz-text-secondary)' }}>
                       {item.activity_type.replace(/_/g, ' ')}
                     </p>
-                    <p className="text-[10px] text-[var(--pz-text-muted)] font-mono">
+                    <p className="text-[10px] font-mono" style={{ color: 'var(--pz-text-muted)' }}>
                       {item.ip_address || 'Unknown IP'} · {new Date(item.created_at).toLocaleTimeString()}
                     </p>
                   </div>
-                </div>
-              ))
-            )}
+              </div>
+            ))}
           </div>
-        </motion.div>
+        )
+      }
+        </Section>
 
         {/* Activity Summary */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.55 }}
-          className="pz-card p-6"
-        >
-          <div className="flex items-center gap-3 mb-5">
-            <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
-              <Activity size={18} className="text-cyan-400" />
-            </div>
-            <h3 className="text-base font-semibold tracking-tight text-[var(--pz-text)]">Activity Summary (24h)</h3>
-          </div>
+        <Section delay={0.55}>
+          {sectionHeader(
+            <div style={sectionIcon('#06B6D4')}>
+              <Activity size={16} style={{ color: '#22D3EE' }} />
+            </div>,
+            'Activity Summary (24h)'
+          )}
           <div className="grid grid-cols-2 gap-3">
             {[
-              { label: 'Heartbeats', key: 'heartbeat', color: 'blue' },
-              { label: 'Attendance Pushes', key: 'attendance_push', color: 'emerald' },
-              { label: 'Health Probes', key: 'health_probe', color: 'violet' },
-              { label: 'Disconnections', key: 'device_disconnected', color: 'red' },
+              { label: 'Heartbeats', key: 'heartbeat', color: '#3B82F6' },
+              { label: 'Attendance Pushes', key: 'attendance_push', color: '#10B981' },
+              { label: 'Health Probes', key: 'health_probe', color: '#8B5CF6' },
+              { label: 'Disconnections', key: 'device_disconnected', color: '#EF4444' },
             ].map(({ label, key, color }) => (
-              <div key={key} className="p-3 rounded-xl border border-[var(--pz-border)] bg-[var(--pz-surface-2)]/20">
-                <p className="text-[10px] text-[var(--pz-text-muted)] font-semibold uppercase tracking-wider">{label}</p>
-                <p className={`text-2xl font-bold mt-1 text-${color}-400`}>
+              <div
+                key={key}
+                className="p-3.5 rounded-xl"
+                style={{
+                  background: 'var(--pz-surface-2)',
+                  border: '1px solid var(--pz-border)',
+                }}
+              >
+                <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--pz-text-muted)' }}>
+                  {label}
+                </p>
+                <p className="text-2xl font-bold mt-1" style={{ color }}>
                   {fleetActivity?.activity_counts?.[key] ?? 0}
                 </p>
               </div>
             ))}
           </div>
-        </motion.div>
+        </Section>
       </div>
 
       {/* Alert Drawer */}
@@ -743,24 +888,4 @@ function groupByDepartment(employees: Employee[]) {
   return Array.from(map.entries())
     .sort((a, b) => b[1].total - a[1].total)
     .map(([dept, counts]) => [dept, String(counts.total), `${counts.active} active`])
-}
-
-function StatusMiniCard({ label, value, color }: { label: string; value: number; color: string }) {
-  const colorMap: Record<string, { bg: string; text: string; dot: string }> = {
-    green: { bg: 'bg-green-50 dark:bg-green-950/30', text: 'text-green-700 dark:text-green-300', dot: 'bg-green-500' },
-    amber: { bg: 'bg-amber-50 dark:bg-amber-950/30', text: 'text-amber-700 dark:text-amber-300', dot: 'bg-amber-500' },
-    blue: { bg: 'bg-blue-50 dark:bg-blue-950/30', text: 'text-blue-700 dark:text-blue-300', dot: 'bg-blue-500' },
-    gray: { bg: 'bg-gray-50 dark:bg-gray-900/50', text: 'text-gray-600 dark:text-gray-400', dot: 'bg-gray-400' },
-    red: { bg: 'bg-red-50 dark:bg-red-950/30', text: 'text-red-700 dark:text-red-300', dot: 'bg-red-500' },
-  }
-  const c = colorMap[color] || colorMap.gray
-  return (
-    <div className={`rounded-lg px-3 py-2 ${c.bg} border border-transparent`}>
-      <div className="flex items-center gap-1.5 mb-0.5">
-        <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{label}</span>
-      </div>
-      <p className={`text-xl font-bold ${c.text}`}>{value}</p>
-    </div>
-  )
 }

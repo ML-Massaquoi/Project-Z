@@ -193,6 +193,8 @@ export interface ShiftProtocol {
   night_shift_end?: string
   grace_period_minutes?: number
   include_weekends?: boolean
+  cycle_length?: number
+  default_shift_supervisor?: string
   color?: string
   description?: string
   is_active: boolean
@@ -575,6 +577,7 @@ export interface DepartmentDetail {
     code: string
     office_name: string | null
     shift_protocol_name: string | null
+    protocol_type: 'rotating' | 'fixed'
     head_name: string | null
   }
   employees: DepartmentEmployee[]

@@ -1,13 +1,10 @@
 ﻿import { useState, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Monitor, Wifi, WifiOff, Download, Activity, Clock, Zap, RefreshCw, Globe, Radio, Grid3X3, List, Users, FolderOpen, Plus, Edit2, Trash2, ChevronRight, Cpu, Save } from 'lucide-react'
+import { Monitor, Wifi, WifiOff, Download, Activity, Clock, Zap, RefreshCw, Globe, Radio, Grid3X3, List, FolderOpen, Plus, Edit2, Trash2, ChevronRight, Cpu, Search, ChevronDown } from 'lucide-react'
 import { devicesAPI, deviceHealthAPI, officesAPI, departmentsAPI } from '@/api/client'
 import { format } from 'date-fns'
 import type { Device } from '@/types'
-import { PageHeader, TabBar } from '@/components/ui/PageHeader'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { KPICard } from '@/components/ui/KPICard'
-import { DataTable, type ColumnDef } from '@/components/ui/data-table/DataTable'
 import { DetailDrawer } from '@/components/ui/DetailDrawer'
 import { Modal } from '@/components/ui/Modal'
 import { Input } from '@/components/ui/input'
@@ -21,8 +18,8 @@ const healthColors: Record<string, string> = {
   healthy: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
   degraded: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
   critical: 'text-red-400 bg-red-500/10 border-red-500/20',
-  offline: 'text-gray-400 bg-gray-500/10 border-gray-500/20',
-  unknown: 'text-gray-400 bg-gray-500/10 border-gray-500/20',
+  offline: 'text-[var(--pz-text-muted)] bg-[var(--pz-surface-2)]/50 border-[var(--pz-border)]',
+  unknown: 'text-[var(--pz-text-muted)] bg-[var(--pz-surface-2)]/50 border-[var(--pz-border)]',
 }
 
 const healthLabels: Record<string, string> = {
@@ -33,81 +30,306 @@ const healthLabels: Record<string, string> = {
   unknown: 'Unknown',
 }
 
-const columns: ColumnDef<Device, unknown>[] = [
-  {
-    accessorKey: 'name',
-    header: 'Device',
-    cell: ({ row }) => (
-      <div className="flex items-center gap-3">
-        <div className={`p-2 rounded-lg ${row.original.is_online ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-[var(--pz-surface-2)] border border-[var(--pz-border)]'}`}>
-          <Monitor size={16} className={row.original.is_online ? 'text-emerald-400' : 'text-[var(--pz-text-muted)]'} />
-        </div>
-        <div>
-          <p className="font-semibold text-[var(--pz-text-secondary)] text-sm">{row.original.name || `Device ${row.original.serial_number.slice(-6)}`}</p>
-          <p className="text-[10px] text-[var(--pz-text-muted)] font-mono">{row.original.serial_number}</p>
-        </div>
-      </div>
-    ),
-    size: 260,
+const s = {
+  page: {
+    padding: '32px',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '28px',
+    minHeight: '100%',
+    boxSizing: 'border-box' as const,
   },
-  {
-    accessorKey: 'health_status',
-    header: 'Health',
-    cell: ({ getValue }) => {
-      const status = (getValue() as string) || 'unknown'
-      return (
-        <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${healthColors[status] || healthColors.unknown}`}>
-          {healthLabels[status] || status}
-        </span>
-      )
-    },
-    size: 110,
+  headerRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  {
-    accessorKey: 'is_online',
-    header: 'Status',
-    cell: ({ getValue }) => (
-      <StatusBadge status={getValue() ? 'online' : 'offline'} size="sm" pulse={getValue() as boolean} />
-    ),
-    size: 110,
+  title: {
+    fontSize: '24px',
+    fontWeight: 700,
+    color: 'var(--pz-text)',
+    margin: 0,
   },
-  {
-    accessorKey: 'avg_response_time_ms',
-    header: 'Latency',
-    cell: ({ getValue }) => {
-      const val = getValue() as number | null
-      if (!val) return <span className="text-[var(--pz-text-faint)] text-xs">--</span>
-      const color = val < 2000 ? 'text-emerald-400' : val < 5000 ? 'text-amber-400' : 'text-red-400'
-      return <span className={`text-xs font-mono ${color}`}>{val}ms</span>
-    },
-    size: 100,
+  subtitle: {
+    fontSize: '14px',
+    color: 'var(--pz-text-muted)',
+    marginTop: '4px',
+    marginBottom: 0,
   },
-  {
-    accessorKey: 'ip_address',
-    header: 'IP Address',
-    cell: ({ getValue }) => <span className="text-[var(--pz-text-tertiary)] font-mono text-xs">{(getValue() as string) || '\u2014'}</span>,
-    size: 140,
+  summaryGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(6, 1fr)',
+    gap: '16px',
   },
-  {
-    accessorKey: 'office_name',
-    header: 'Office',
-    cell: ({ getValue }) => <span className="text-[var(--pz-text-tertiary)] text-sm">{(getValue() as string) || 'Unassigned'}</span>,
+  summaryCard: {
+    background: 'var(--pz-surface-1)',
+    border: '1px solid var(--pz-border)',
+    borderRadius: '10px',
+    padding: '16px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '14px',
   },
-  {
-    accessorKey: 'department_name',
-    header: 'Department',
-    cell: ({ getValue }) => <span className="text-[var(--pz-text-tertiary)] text-sm">{(getValue() as string) || 'Unassigned'}</span>,
+  iconBox: (gradient: string): React.CSSProperties => ({
+    width: '42px',
+    height: '42px',
+    borderRadius: '10px',
+    background: gradient,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  }),
+  statValue: {
+    fontSize: '24px',
+    fontWeight: 700,
+    color: 'var(--pz-text)',
+    margin: 0,
+    lineHeight: 1,
   },
-  {
-    accessorKey: 'last_seen',
-    header: 'Last Seen',
-    cell: ({ getValue }) => {
-      const val = getValue() as string | null
-      if (!val) return <span className="text-[var(--pz-text-faint)] text-xs">Never</span>
-      return <span className="text-[var(--pz-text-tertiary)] text-xs font-mono tabular-nums">{format(new Date(val), 'MMM d, HH:mm')}</span>
-    },
-    size: 140,
+  statLabel: {
+    fontSize: '12px',
+    color: 'var(--pz-text-muted)',
+    margin: '4px 0 0',
   },
+  section: {
+    background: 'var(--pz-surface-1)',
+    border: '1px solid var(--pz-border)',
+    borderRadius: '10px',
+    overflow: 'hidden',
+  },
+  sectionHeader: {
+    padding: '16px 20px',
+    borderBottom: '1px solid var(--pz-border)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+  },
+  sectionTitle: {
+    fontSize: '15px',
+    fontWeight: 600,
+    color: 'var(--pz-text)',
+    margin: 0,
+  },
+  tabBar: {
+    display: 'flex',
+    gap: '4px',
+    padding: '4px',
+    background: 'var(--pz-surface-2)',
+    borderRadius: '10px',
+    border: '1px solid var(--pz-border)',
+  },
+  tabPill: (active: boolean): React.CSSProperties => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '8px 14px',
+    borderRadius: '8px',
+    fontSize: '13px',
+    fontWeight: 600,
+    border: 'none',
+    cursor: 'pointer',
+    background: active ? 'var(--pz-brand)' : 'transparent',
+    color: active ? '#fff' : 'var(--pz-text-muted)',
+    transition: 'all 0.12s',
+  }),
+  searchRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+  },
+  searchInput: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '0 14px',
+    height: '38px',
+    borderRadius: '10px',
+    background: 'var(--pz-surface-2)',
+    border: '1px solid var(--pz-border)',
+    color: 'var(--pz-text)',
+    fontSize: '13px',
+    width: '260px',
+    outline: 'none',
+  },
+  table: {
+    width: '100%',
+    borderCollapse: 'collapse' as const,
+  },
+  th: {
+    padding: '10px 16px',
+    fontSize: '11px',
+    fontWeight: 600,
+    color: 'var(--pz-text-muted)',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.05em',
+    textAlign: 'left' as const,
+    borderBottom: '1px solid var(--pz-border)',
+    background: 'var(--pz-surface-2)',
+  },
+  td: {
+    padding: '12px 16px',
+    fontSize: '13px',
+    color: 'var(--pz-text-secondary)',
+    borderBottom: '1px solid var(--pz-border)',
+  },
+  tableRow: (hover: boolean): React.CSSProperties => ({
+    cursor: 'pointer',
+    background: hover ? 'var(--pz-surface-2)' : 'transparent',
+    transition: 'background 0.12s',
+  }),
+  pagination: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '12px 16px',
+    borderTop: '1px solid var(--pz-border)',
+  },
+  paginationText: {
+    fontSize: '12px',
+    color: 'var(--pz-text-muted)',
+  },
+  paginationBtns: {
+    display: 'flex',
+    gap: '4px',
+    alignItems: 'center',
+  },
+  paginationBtn: (active: boolean): React.CSSProperties => ({
+    width: '32px',
+    height: '32px',
+    borderRadius: '8px',
+    border: `1px solid ${active ? 'var(--pz-brand)' : 'var(--pz-border)'}`,
+    background: active ? 'var(--pz-brand)' : 'transparent',
+    color: active ? '#fff' : 'var(--pz-text-muted)',
+    fontSize: '12px',
+    fontWeight: 600,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  }),
+  fleetHealthCard: {
+    background: 'var(--pz-surface-1)',
+    border: '1px solid var(--pz-border)',
+    borderRadius: '10px',
+    padding: '20px',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '10px',
+  },
+  viewToggle: {
+    display: 'flex',
+    gap: '4px',
+    padding: '3px',
+    background: 'var(--pz-surface-2)',
+    borderRadius: '8px',
+    border: '1px solid var(--pz-border)',
+  },
+  viewBtn: (active: boolean): React.CSSProperties => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '6px 12px',
+    borderRadius: '10px',
+    fontSize: '12px',
+    fontWeight: 600,
+    border: 'none',
+    cursor: 'pointer',
+    background: active ? 'var(--pz-brand)' : 'transparent',
+    color: active ? '#fff' : 'var(--pz-text-muted)',
+    transition: 'all 0.12s',
+  }),
+  filterChip: (active: boolean): React.CSSProperties => ({
+    padding: '5px 12px',
+    borderRadius: '20px',
+    fontSize: '11px',
+    fontWeight: 600,
+    border: `1px solid ${active ? 'var(--pz-brand)' : 'var(--pz-border)'}`,
+    background: active ? 'rgba(59,130,246,0.1)' : 'transparent',
+    color: active ? 'var(--pz-brand)' : 'var(--pz-text-muted)',
+    cursor: 'pointer',
+    transition: 'all 0.12s',
+    whiteSpace: 'nowrap' as const,
+  }),
+  filterRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    flexWrap: 'wrap' as const,
+  },
+  avatarBox: (online: boolean): React.CSSProperties => ({
+    padding: '8px',
+    borderRadius: '8px',
+    background: online ? 'rgba(16,185,129,0.10)' : 'var(--pz-surface-2)',
+    border: `1px solid ${online ? 'rgba(16,185,129,0.25)' : 'var(--pz-border)'}`,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  }),
+  deviceName: {
+    fontSize: '13px',
+    fontWeight: 600,
+    color: 'var(--pz-text-secondary)',
+    margin: 0,
+  },
+  deviceSerial: {
+    fontSize: '10px',
+    color: 'var(--pz-text-muted)',
+    fontFamily: 'monospace',
+    margin: '2px 0 0',
+  },
+  healthPill: (status: string): React.CSSProperties => {
+    const map: Record<string, { bg: string; fg: string; border: string }> = {
+      healthy: { bg: 'rgba(16,185,129,0.1)', fg: '#10B981', border: 'rgba(16,185,129,0.25)' },
+      degraded: { bg: 'rgba(245,158,11,0.1)', fg: '#F59E0B', border: 'rgba(245,158,11,0.25)' },
+      critical: { bg: 'rgba(239,68,68,0.1)', fg: '#EF4444', border: 'rgba(239,68,68,0.25)' },
+      offline: { bg: 'rgba(107,114,128,0.1)', fg: '#9CA3AF', border: 'rgba(107,114,128,0.25)' },
+    }
+    const c = map[status] || map.offline
+    return {
+      display: 'inline-flex',
+      alignItems: 'center',
+      padding: '3px 10px',
+      borderRadius: '20px',
+      fontSize: '10px',
+      fontWeight: 700,
+      letterSpacing: '0.03em',
+      textTransform: 'uppercase' as const,
+      background: c.bg,
+      color: c.fg,
+      border: `1px solid ${c.border}`,
+    }
+  },
+  emptyState: {
+    padding: '48px 20px',
+    textAlign: 'center' as const,
+    color: 'var(--pz-text-muted)',
+  },
+  toolRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '12px 20px',
+    borderBottom: '1px solid var(--pz-border)',
+  },
+}
+
+const healthFilters = ['', 'healthy', 'degraded', 'critical']
+const healthFilterLabels: Record<string, string> = {
+  '': 'All',
+  healthy: 'Healthy',
+  degraded: 'Degraded',
+  critical: 'Critical',
+}
+
+const summaryCards = [
+  { icon: Monitor, label: 'Total', key: 'total' as const, gradient: 'linear-gradient(135deg, #6366F1, #4F46E5)' },
+  { icon: Wifi, label: 'Online', key: 'online' as const, gradient: 'linear-gradient(135deg, #10B981, #059669)' },
+  { icon: WifiOff, label: 'Offline', key: 'offline' as const, gradient: 'linear-gradient(135deg, #EF4444, #DC2626)' },
+  { icon: Activity, label: 'Healthy', key: 'healthy' as const, gradient: 'linear-gradient(135deg, #10B981, #059669)' },
+  { icon: Clock, label: 'Degraded', key: 'degraded' as const, gradient: 'linear-gradient(135deg, #F59E0B, #D97706)' },
+  { icon: Zap, label: 'Critical', key: 'critical' as const, gradient: 'linear-gradient(135deg, #EF4444, #DC2626)' },
 ]
 
 export default function Devices() {
@@ -118,6 +340,7 @@ export default function Devices() {
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null)
   const [editingDevice, setEditingDevice] = useState<Device | null>(null)
   const [page, setPage] = useState(1)
+  const [hoveredRow, setHoveredRow] = useState<string | null>(null)
   const pageSize = 15
   const queryClient = useQueryClient()
 
@@ -178,6 +401,15 @@ export default function Devices() {
   const degradedCount = devices.filter(d => d.health_status === 'degraded').length
   const criticalCount = devices.filter(d => d.health_status === 'critical').length
 
+  const countMap: Record<string, number> = {
+    total: devices.length,
+    online: onlineCount,
+    offline: offlineCount,
+    healthy: healthyCount,
+    degraded: degradedCount,
+    critical: criticalCount,
+  }
+
   const filtered = useMemo(() => {
     let result = devices
     if (searchValue.trim()) {
@@ -215,124 +447,297 @@ export default function Devices() {
     }
   }
 
+  const tabIcons: Record<string, React.ReactNode> = {
+    registry: <List size={14} />,
+    map: <Grid3X3 size={14} />,
+    groups: <FolderOpen size={14} />,
+    discovery: <Globe size={14} />,
+    live: <Radio size={14} />,
+  }
+
+  const tabLabels: Record<string, string> = {
+    registry: 'Registry',
+    map: 'Device Map',
+    groups: 'Groups',
+    discovery: 'Discovery',
+    live: 'Live Operations',
+  }
+
   return (
-    <div className="space-y-5 pz-slide-up">
-      <PageHeader
-        title="Device Management"
-        subtitle={`Fleet management for biometric terminals \u00b7 ${devices.length} devices`}
-        breadcrumbs={[{ label: 'Infrastructure' }, { label: 'Devices' }]}
-        tabs={
-          <TabBar
-            tabs={[
-              { id: 'registry', label: 'Registry', icon: <List size={14} /> },
-              { id: 'map', label: 'Device Map', icon: <Grid3X3 size={14} /> },
-              { id: 'groups', label: 'Groups', icon: <FolderOpen size={14} /> },
-              { id: 'discovery', label: 'Discovery', icon: <Globe size={14} /> },
-              { id: 'live', label: 'Live Operations', icon: <Radio size={14} /> },
-            ]}
-            activeTab={tab}
-            onChange={(t) => { setTab(t); setSearchValue('') }}
-          />
-        }
-        actions={
-          <div className="flex items-center gap-2">
-            {tab === 'registry' && (
-              <Button variant="outline" size="md"
-                onClick={() => probeAllMutation.mutate()}
-                disabled={probeAllMutation.isPending}
-                loading={probeAllMutation.isPending}>
-                <RefreshCw size={15} className={probeAllMutation.isPending ? 'animate-spin' : ''} />
-                Probe All
-              </Button>
-            )}
+    <div style={s.page}>
+      {/* Header */}
+      <div style={s.headerRow}>
+        <div>
+          <h1 style={s.title}>Device Management</h1>
+          <p style={s.subtitle}>
+            Fleet management for biometric terminals &middot; {devices.length} devices
+          </p>
+        </div>
+        <div style={s.searchRow}>
+          <div style={s.searchInput}>
+            <Search size={15} style={{ color: 'var(--pz-text-muted)', flexShrink: 0 }} />
+            <input
+              type="text"
+              value={searchValue}
+              onChange={(e) => { setSearchValue(e.target.value); setPage(1) }}
+              placeholder="Search by name, serial, IP..."
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--pz-text)',
+                fontSize: '13px',
+                outline: 'none',
+                width: '100%',
+                height: '100%',
+              }}
+            />
           </div>
-        }
-      />
+          {tab === 'registry' && (
+            <Button variant="outline" size="md"
+              onClick={() => probeAllMutation.mutate()}
+              disabled={probeAllMutation.isPending}
+              loading={probeAllMutation.isPending}>
+              <RefreshCw size={15} className={probeAllMutation.isPending ? 'animate-spin' : ''} />
+              Probe All
+            </Button>
+          )}
+          <Button variant="outline" size="md" onClick={handleExport}>
+            <Download size={15} />
+            Export
+          </Button>
+        </div>
+      </div>
+
+      {/* Tab Bar */}
+      <div style={s.tabBar}>
+        {Object.keys(tabLabels).map((t) => (
+          <button
+            key={t}
+            style={s.tabPill(tab === t)}
+            onClick={() => { setTab(t); setSearchValue('') }}
+          >
+            {tabIcons[t]}
+            {tabLabels[t]}
+          </button>
+        ))}
+      </div>
 
       {/* ── Registry Tab ──────────────────────────────────── */}
       {tab === 'registry' && (
         <>
-          {/* KPI Row */}
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-            <KPICard icon={Monitor} label="Total" value={devices.length} color="#6366F1" loading={isLoading} />
-            <KPICard icon={Wifi} label="Online" value={onlineCount} color="#10B981" loading={isLoading} />
-            <KPICard icon={WifiOff} label="Offline" value={offlineCount} color="#EF4444" loading={isLoading} />
-            <KPICard icon={Activity} label="Healthy" value={healthyCount} color="#10B981" loading={isLoading} />
-            <KPICard icon={Clock} label="Degraded" value={degradedCount} color="#F59E0B" loading={isLoading} />
-            <KPICard icon={Zap} label="Critical" value={criticalCount} color="#EF4444" loading={isLoading} />
+          {/* Summary Cards */}
+          <div style={s.summaryGrid}>
+            {summaryCards.map(({ icon: Icon, label, key, gradient }) => (
+              <div key={key} style={s.summaryCard}>
+                <div style={s.iconBox(gradient)}>
+                  <Icon size={18} style={{ color: '#fff' }} />
+                </div>
+                <div>
+                  <p style={s.statValue}>{isLoading ? '...' : countMap[key]}</p>
+                  <p style={s.statLabel}>{label}</p>
+                </div>
+              </div>
+            ))}
           </div>
 
-          {/* Fleet Health Bar */}
+          {/* Fleet Health */}
           {healthOverview && (
-            <div className="pz-card p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-[var(--pz-text-muted)] uppercase tracking-wider">Fleet Health</span>
-                <span className="text-sm font-bold text-[var(--pz-text-secondary)]">{healthOverview.fleet_health_percent}%</span>
+            <div style={s.fleetHealthCard}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Fleet Health
+                </span>
+                <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--pz-text-secondary)' }}>
+                  {healthOverview.fleet_health_percent}%
+                </span>
               </div>
-              <div className="w-full h-2 bg-[var(--pz-surface-3)] rounded-full overflow-hidden">
-                <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${healthOverview.fleet_health_percent}%` }} />
+              <div style={{ width: '100%', height: '8px', background: 'var(--pz-surface-3)', borderRadius: '4px', overflow: 'hidden' }}>
+                <div style={{ height: '100%', background: '#10B981', borderRadius: '4px', transition: 'width 0.5s', width: `${healthOverview.fleet_health_percent}%` }} />
               </div>
-              <div className="flex items-center gap-4 mt-2 text-[10px] text-[var(--pz-text-muted)]">
+              <div style={{ display: 'flex', gap: '16px', fontSize: '11px', color: 'var(--pz-text-muted)' }}>
                 <span>Avg Latency: {healthOverview.avg_response_time_ms ? `${healthOverview.avg_response_time_ms}ms` : '--'}</span>
                 <span>Online: {healthOverview.online_count}/{healthOverview.total_devices}</span>
               </div>
             </div>
           )}
 
-          {/* View Toggle */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 p-1 bg-[var(--pz-surface-2)] rounded-lg border border-[var(--pz-border)]">
-              <button
-                onClick={() => setViewMode('list')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${viewMode === 'list' ? 'bg-blue-600 text-white' : 'text-[var(--pz-text-muted)] hover:text-[var(--pz-text)]'}`}
-              >
-                <List size={13} /> List
-              </button>
-              <button
-                onClick={() => setViewMode('map')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${viewMode === 'map' ? 'bg-blue-600 text-white' : 'text-[var(--pz-text-muted)] hover:text-[var(--pz-text)]'}`}
-              >
-                <Grid3X3 size={13} /> Map
-              </button>
+          {/* Device Registry Section */}
+          <div style={s.section}>
+            <div style={s.sectionHeader}>
+              <Monitor size={18} style={{ color: 'var(--pz-brand)' }} />
+              <h2 style={s.sectionTitle}>Device Registry</h2>
             </div>
-          </div>
 
-          {viewMode === 'list' ? (
-            <DataTable
-              data={paginatedDevices}
-              columns={columns}
-              loading={isLoading}
-              onRowClick={(device) => setSelectedDevice(device)}
-              enablePagination
-              totalRows={filtered.length}
-              currentPage={page}
-              onPageChange={setPage}
-              totalPages={totalPages}
-              searchValue={searchValue}
-              onSearchChange={(v) => { setSearchValue(v); setPage(1) }}
-              searchPlaceholder="Search by name, serial, IP..."
-              toolbar={
-                <div className="flex items-center gap-2 ml-auto">
-                  <select
-                    value={filterValues.health || ''}
-                    onChange={(e) => { setFilterValues(prev => ({ ...prev, health: e.target.value })); setPage(1) }}
-                    className="px-3 py-2 rounded-xl bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs font-semibold text-[var(--pz-text-secondary)]"
+            {/* Toolbar: filter chips + view toggle */}
+            <div style={s.toolRow}>
+              <div style={s.filterRow}>
+                {healthFilters.map((f) => (
+                  <button
+                    key={f}
+                    style={s.filterChip(filterValues.health === f || (!filterValues.health && f === ''))}
+                    onClick={() => { setFilterValues(prev => ({ ...prev, health: f || '' })); setPage(1) }}
                   >
-                    <option value="">All Health</option>
-                    <option value="healthy">Healthy</option>
-                    <option value="degraded">Degraded</option>
-                    <option value="critical">Critical</option>
-                  </select>
-                  <Button variant="outline" size="md" onClick={handleExport}>
-                    <Download size={15} />
-                    Export
-                  </Button>
+                    {healthFilterLabels[f]}
+                  </button>
+                ))}
+              </div>
+              <div style={s.viewToggle}>
+                <button
+                  onClick={() => setViewMode('list')}
+                  style={s.viewBtn(viewMode === 'list')}
+                >
+                  <List size={13} /> List
+                </button>
+                <button
+                  onClick={() => setViewMode('map')}
+                  style={s.viewBtn(viewMode === 'map')}
+                >
+                  <Grid3X3 size={13} /> Map
+                </button>
+              </div>
+            </div>
+
+            {viewMode === 'list' ? (
+              <>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={s.table}>
+                    <thead>
+                      <tr>
+                        <th style={s.th}>Device</th>
+                        <th style={s.th}>Health</th>
+                        <th style={s.th}>Status</th>
+                        <th style={s.th}>Latency</th>
+                        <th style={s.th}>IP Address</th>
+                        <th style={s.th}>Office</th>
+                        <th style={s.th}>Department</th>
+                        <th style={s.th}>Last Seen</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paginatedDevices.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} style={{ ...s.td, textAlign: 'center', padding: '48px 16px' }}>
+                            <div style={s.emptyState}>
+                              <Monitor size={40} style={{ opacity: 0.2, margin: '0 auto 12px' }} />
+                              <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--pz-text-secondary)', margin: '0 0 4px' }}>
+                                No Devices Found
+                              </p>
+                              <p style={{ fontSize: '13px', margin: 0 }}>
+                                {searchValue || filterValues.health ? 'Try adjusting your search or filters' : 'No devices registered yet'}
+                              </p>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        paginatedDevices.map((device) => {
+                          const isHovered = hoveredRow === device.id
+                          return (
+                            <tr
+                              key={device.id}
+                              style={s.tableRow(isHovered)}
+                              onClick={() => setSelectedDevice(device)}
+                              onMouseEnter={() => setHoveredRow(device.id)}
+                              onMouseLeave={() => setHoveredRow(null)}
+                            >
+                              <td style={s.td}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                  <div style={s.avatarBox(device.is_online)}>
+                                    <Monitor size={16} style={{ color: device.is_online ? '#10B981' : 'var(--pz-text-muted)', display: 'block' }} />
+                                  </div>
+                                  <div>
+                                    <p style={s.deviceName}>{device.name || `Device ${device.serial_number.slice(-6)}`}</p>
+                                    <p style={s.deviceSerial}>{device.serial_number}</p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td style={s.td}>
+                                <span style={s.healthPill(device.health_status || 'unknown')}>
+                                  {healthLabels[device.health_status] || 'Unknown'}
+                                </span>
+                              </td>
+                              <td style={s.td}>
+                                <StatusBadge status={device.is_online ? 'online' : 'offline'} size="sm" pulse={device.is_online} />
+                              </td>
+                              <td style={s.td}>
+                                {device.avg_response_time_ms != null ? (
+                                  <span style={{
+                                    fontSize: '12px',
+                                    fontFamily: 'monospace',
+                                    color: device.avg_response_time_ms < 2000 ? '#10B981' : device.avg_response_time_ms < 5000 ? '#F59E0B' : '#EF4444',
+                                  }}>
+                                    {device.avg_response_time_ms}ms
+                                  </span>
+                                ) : (
+                                  <span style={{ fontSize: '12px', color: 'var(--pz-text-faint)' }}>&mdash;</span>
+                                )}
+                              </td>
+                              <td style={s.td}>
+                                <span style={{ fontSize: '12px', fontFamily: 'monospace', color: 'var(--pz-text-muted)' }}>
+                                  {device.ip_address || '\u2014'}
+                                </span>
+                              </td>
+                              <td style={s.td}>
+                                <span style={{ fontSize: '13px', color: 'var(--pz-text-muted)' }}>
+                                  {device.office_name || 'Unassigned'}
+                                </span>
+                              </td>
+                              <td style={s.td}>
+                                <span style={{ fontSize: '13px', color: 'var(--pz-text-muted)' }}>
+                                  {device.department_name || 'Unassigned'}
+                                </span>
+                              </td>
+                              <td style={s.td}>
+                                <span style={{ fontSize: '12px', color: 'var(--pz-text-faint)', fontFamily: 'monospace' }}>
+                                  {device.last_seen ? format(new Date(device.last_seen), 'MMM d, HH:mm') : 'Never'}
+                                </span>
+                              </td>
+                            </tr>
+                          )
+                        })
+                      )}
+                    </tbody>
+                  </table>
                 </div>
-              }
-            />
-          ) : (
-            <DeviceMap devices={filtered} onSelectDevice={(d) => setSelectedDevice(d)} />
-          )}
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div style={s.pagination}>
+                    <p style={s.paginationText}>
+                      Showing {(page - 1) * pageSize + 1}&ndash;{Math.min(page * pageSize, filtered.length)} of {filtered.length}
+                    </p>
+                    <div style={s.paginationBtns}>
+                      <button
+                        style={s.paginationBtn(false)}
+                        disabled={page <= 1}
+                        onClick={() => setPage(p => Math.max(1, p - 1))}
+                      >
+                        <ChevronDown size={13} style={{ transform: 'rotate(90deg)' }} />
+                      </button>
+                      {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                        const start = Math.max(1, Math.min(page - 3, totalPages - 6))
+                        return start + i
+                      }).map(p => (
+                        <button key={p} style={s.paginationBtn(p === page)} onClick={() => setPage(p)}>
+                          {p}
+                        </button>
+                      ))}
+                      <button
+                        style={s.paginationBtn(false)}
+                        disabled={page >= totalPages}
+                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                      >
+                        <ChevronDown size={13} style={{ transform: 'rotate(-90deg)' }} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div style={{ padding: '20px' }}>
+                <DeviceMap devices={filtered} onSelectDevice={(d) => setSelectedDevice(d)} />
+              </div>
+            )}
+          </div>
         </>
       )}
 
@@ -365,7 +770,7 @@ export default function Devices() {
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px', paddingBottom: '24px', borderBottom: '1px solid var(--pz-border)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '18px' }}>
                 <div style={{
-                  padding: '16px', borderRadius: '6px',
+                  padding: '20px', borderRadius: '10px',
                   background: selectedDevice.is_online ? 'rgba(16,185,129,0.10)' : 'var(--pz-surface-2)',
                   border: `1px solid ${selectedDevice.is_online ? 'rgba(16,185,129,0.25)' : 'var(--pz-border)'}`,
                   flexShrink: 0,
@@ -395,11 +800,12 @@ export default function Devices() {
 
             {/* ── Health Metrics ─────────────────────────── */}
             {deviceHealthDetail && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div style={{ width: '28px', height: '3px', borderRadius: '2px', background: '#10B981', marginBottom: '6px' }} />
                 <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>
                   Health Metrics
                 </h4>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '16px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '20px' }}>
                   {[
                     ['Uptime 24h', deviceHealthDetail.uptime_24h_percent != null ? `${deviceHealthDetail.uptime_24h_percent}%` : '--'],
                     ['Uptime 7d', deviceHealthDetail.uptime_7d_percent != null ? `${deviceHealthDetail.uptime_7d_percent}%` : '--'],
@@ -409,9 +815,9 @@ export default function Devices() {
                     ['Last Health Check', deviceHealthDetail.last_health_check ? format(new Date(deviceHealthDetail.last_health_check), 'MMM d, HH:mm') : 'Never'],
                   ].map(([label, value]) => (
                     <div key={label} style={{
-                      padding: '16px', borderRadius: '6px',
+                      padding: '20px', borderRadius: '10px',
                       background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)',
-                      minHeight: '90px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                      minHeight: '96px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
                     }}>
                       <p style={{ fontSize: '12px', fontWeight: 400, color: 'var(--pz-text-muted)', margin: 0 }}>{label}</p>
                       <p style={{ fontSize: '14px', fontWeight: 500, color: 'var(--pz-text-secondary)', fontFamily: 'monospace', margin: 0 }}>{value}</p>
@@ -423,11 +829,12 @@ export default function Devices() {
 
             {/* ── Biometric Counts ───────────────────────── */}
             {biometricCounts && biometricCounts.total > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div style={{ width: '28px', height: '3px', borderRadius: '2px', background: '#6366F1', marginBottom: '6px' }} />
                 <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>
                   Biometric Data
                 </h4>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
                   {[
                     { label: 'Fingerprints', value: biometricCounts.fingerprint || 0, color: '#6366F1' },
                     { label: 'Face', value: biometricCounts.face || 0, color: '#10B981' },
@@ -435,7 +842,7 @@ export default function Devices() {
                     { label: 'PIN', value: biometricCounts.pin || 0, color: '#EF4444' },
                   ].map(({ label, value, color }) => (
                     <div key={label} style={{
-                      padding: '12px', borderRadius: '6px',
+                      padding: '16px', borderRadius: '10px',
                       background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)',
                       textAlign: 'center',
                     }}>
@@ -444,7 +851,7 @@ export default function Devices() {
                     </div>
                   ))}
                 </div>
-                <div style={{ padding: '10px 14px', borderRadius: '6px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ padding: '10px 16px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--pz-text-muted)' }}>Total Templates</span>
                   <span style={{ fontSize: '16px', fontWeight: 700, color: 'var(--pz-text-secondary)', fontFamily: 'monospace' }}>{biometricCounts.total}</span>
                 </div>
@@ -453,15 +860,16 @@ export default function Devices() {
 
             {/* ── Recent Health Checks ────────────────────── */}
             {healthHistory && healthHistory.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div style={{ width: '28px', height: '3px', borderRadius: '2px', background: '#F59E0B', marginBottom: '6px' }} />
                 <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>
                   Recent Health Checks
                 </h4>
-                <div style={{ border: '1px solid var(--pz-border)', borderRadius: '6px', overflow: 'hidden', maxHeight: '260px', overflowY: 'auto' }}>
+                <div style={{ border: '1px solid var(--pz-border)', borderRadius: '10px', overflow: 'hidden', maxHeight: '260px', overflowY: 'auto' }}>
                   {healthHistory.slice(0, 20).map((log: { id: string; check_result: string; response_time_ms: number | null; created_at: string }, i: number) => (
                     <div key={log.id} style={{
                       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      paddingBlock: '10px', paddingInline: '14px',
+                      paddingBlock: '10px', paddingInline: '16px',
                       borderBottom: '1px solid var(--pz-border)',
                       background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)',
                     }}>
@@ -488,22 +896,23 @@ export default function Devices() {
             )}
 
             {/* ── Configuration ───────────────────────────── */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div style={{ width: '28px', height: '3px', borderRadius: '2px', background: '#3B82F6', marginBottom: '6px' }} />
               <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>
                 Configuration
               </h4>
-              <div style={{ border: '1px solid var(--pz-border)', borderRadius: '6px', overflow: 'hidden' }}>
+              <div style={{ border: '1px solid var(--pz-border)', borderRadius: '10px', overflow: 'hidden' }}>
                 {[
                   ['Serial Number', selectedDevice.serial_number],
-                  ['Platform', selectedDevice.platform || '—'],
-                  ['Model', selectedDevice.model || '—'],
-                  ['Firmware', selectedDevice.firmware_version || '—'],
+                  ['Platform', selectedDevice.platform || '\u2014'],
+                  ['Model', selectedDevice.model || '\u2014'],
+                  ['Firmware', selectedDevice.firmware_version || '\u2014'],
                   ['Active', selectedDevice.is_active ? 'Yes' : 'No'],
                   ['Registered', format(new Date(selectedDevice.created_at), 'MMM d, yyyy')],
                 ].map(([label, value], i, arr) => (
                   <div key={label} style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    height: '44px', paddingInline: '14px',
+                    minHeight: '52px', paddingInline: '16px',
                     borderBottom: i < arr.length - 1 ? '1px solid var(--pz-border)' : 'none',
                     background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)',
                   }}>
@@ -515,20 +924,21 @@ export default function Devices() {
             </div>
 
             {/* ── Network Information ─────────────────────── */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div style={{ width: '28px', height: '3px', borderRadius: '2px', background: '#06B6D4', marginBottom: '6px' }} />
               <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>
                 Network Information
               </h4>
-              <div style={{ border: '1px solid var(--pz-border)', borderRadius: '6px', overflow: 'hidden' }}>
+              <div style={{ border: '1px solid var(--pz-border)', borderRadius: '10px', overflow: 'hidden' }}>
                 {[
-                  ['IP Address', selectedDevice.ip_address || '—'],
+                  ['IP Address', selectedDevice.ip_address || '\u2014'],
                   ['Office', selectedDevice.office_name || 'Unassigned'],
                   ['Department', selectedDevice.department_name || 'Unassigned'],
                   ['Last Seen', selectedDevice.last_seen ? format(new Date(selectedDevice.last_seen), 'MMM d, yyyy HH:mm') : 'Never'],
                 ].map(([label, value], i, arr) => (
                   <div key={label} style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    height: '44px', paddingInline: '14px',
+                    minHeight: '52px', paddingInline: '16px',
                     borderBottom: i < arr.length - 1 ? '1px solid var(--pz-border)' : 'none',
                     background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)',
                   }}>
@@ -570,6 +980,9 @@ function EditDeviceModal({ device, onClose }: { device: Device | null; onClose: 
     queryFn: async () => (await departmentsAPI.list()).data,
   })
 
+  const offices: any[] = officesData?.items ?? officesData ?? []
+  const departments: any[] = departmentsData?.items ?? departmentsData ?? []
+
   useEffect(() => {
     if (device) {
       setName(device.name || '')
@@ -588,9 +1001,6 @@ function EditDeviceModal({ device, onClose }: { device: Device | null; onClose: 
     },
     onError: (err: any) => toast.error(err?.response?.data?.detail || 'Failed to update device'),
   })
-
-  const offices: any[] = officesData?.items ?? officesData ?? []
-  const departments: any[] = departmentsData?.items ?? departmentsData ?? []
 
   const handleSave = () => {
     const data: Record<string, unknown> = {}
@@ -612,48 +1022,62 @@ function EditDeviceModal({ device, onClose }: { device: Device | null; onClose: 
       confirmLabel="Save Changes"
       confirmLoading={updateMutation.isPending}
     >
-      <div className="space-y-4">
-        <Input
-          label="Device Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. I.T Department Device"
-        />
-        <div className="grid grid-cols-2 gap-4">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-[var(--pz-text-secondary)] uppercase tracking-wide">Office</label>
-            <select
-              value={officeId}
-              onChange={(e) => setOfficeId(e.target.value)}
-              className="h-11 px-3.5 rounded-lg border border-[var(--pz-border)] bg-[var(--pz-surface-1)] text-sm text-[var(--pz-text)]"
-            >
-              <option value="">No Office</option>
-              {offices.map((o: any) => (
-                <option key={o.id} value={o.id}>{o.name}</option>
-              ))}
-            </select>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+            <Monitor size={16} style={{ color: 'var(--pz-accent)' }} />
+            <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Device Information</span>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-[var(--pz-text-secondary)] uppercase tracking-wide">Department</label>
-            <select
-              value={departmentId}
-              onChange={(e) => setDepartmentId(e.target.value)}
-              className="h-11 px-3.5 rounded-lg border border-[var(--pz-border)] bg-[var(--pz-surface-1)] text-sm text-[var(--pz-text)]"
-            >
-              <option value="">No Department</option>
-              {departments.map((d: any) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
-            </select>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <Input
+              label="Device Name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. I.T Department Device"
+            />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+              <div className="flex flex-col gap-1.5">
+                <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--pz-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Office</label>
+                <select
+                  value={officeId}
+                  onChange={(e) => setOfficeId(e.target.value)}
+                  style={{ minHeight: '52px', padding: '0 14px', borderRadius: '8px', border: '1px solid var(--pz-border)', backgroundColor: 'var(--pz-surface-1)', color: 'var(--pz-text)', fontSize: '14px', outline: 'none' }}
+                >
+                  <option value="">No Office</option>
+                  {offices.map((o: any) => (
+                    <option key={o.id} value={o.id}>{o.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--pz-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Department</label>
+                <select
+                  value={departmentId}
+                  onChange={(e) => setDepartmentId(e.target.value)}
+                  style={{ minHeight: '52px', padding: '0 14px', borderRadius: '8px', border: '1px solid var(--pz-border)', backgroundColor: 'var(--pz-surface-1)', color: 'var(--pz-text)', fontSize: '14px', outline: 'none' }}
+                >
+                  <option value="">No Department</option>
+                  {departments.map((d: any) => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
         </div>
-        <Input
-          label="Location Description"
-          value={locationDescription}
-          onChange={(e) => setLocationDescription(e.target.value)}
-          placeholder="e.g. Main lobby entrance"
-          hint="Optional physical location description"
-        />
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+            <Globe size={16} style={{ color: 'var(--pz-accent)' }} />
+            <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Location</span>
+          </div>
+          <Input
+            label="Location Description"
+            value={locationDescription}
+            onChange={(e) => setLocationDescription(e.target.value)}
+            placeholder="e.g. Main lobby entrance"
+            hint="Optional physical location description"
+          />
+        </div>
       </div>
     </Modal>
   )
@@ -770,18 +1194,25 @@ function DeviceGroups() {
         </div>
       )}
 
-      {/* Create/Edit Modal placeholder */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-[var(--pz-border)] bg-[var(--pz-surface-1)] p-6 space-y-4">
-            <h3 className="text-lg font-semibold text-[var(--pz-text-primary)]">Create Device Group</h3>
-            <p className="text-sm text-[var(--pz-text-muted)]">Form implementation coming soon</p>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowCreateModal(false)}>Cancel</Button>
-            </div>
+      <Modal
+        open={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        title="Create Device Group"
+        description="Form implementation coming soon"
+        size="sm"
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <Button variant="outline" onClick={() => setShowCreateModal(false)}>Cancel</Button>
           </div>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', padding: '32px 24px' }}>
+          <FolderOpen size={40} style={{ color: 'var(--pz-text-muted)' }} />
+          <p style={{ fontSize: '14px', color: 'var(--pz-text-muted)', margin: 0, textAlign: 'center', lineHeight: '1.5' }}>
+            Device group management will be available in a future release.
+          </p>
         </div>
-      )}
+      </Modal>
     </div>
   )
 }

@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
+import { Modal } from '@/components/ui/Modal'
 import {
   Calendar, Plus, CheckCircle2, XCircle, Clock, Filter,
   Search, Plane, Stethoscope, Baby, UserX, AlertCircle,
+  FileText, Info,
 } from 'lucide-react'
 import { format, differenceInDays, parseISO } from 'date-fns'
 import { leaveAPI, employeesAPI } from '@/api/client'
-import { PageHeader } from '@/components/ui/PageHeader'
 import { KPICard } from '@/components/ui/KPICard'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { DetailDrawer } from '@/components/ui/DetailDrawer'
@@ -29,18 +30,45 @@ interface LeaveRequest {
 }
 
 const LEAVE_TYPE_CONFIG: Record<string, { icon: React.ReactNode; color: string; label: string }> = {
-  annual: { icon: <Plane size={14} />, color: 'text-blue-400', label: 'Annual' },
-  sick: { icon: <Stethoscope size={14} />, color: 'text-amber-400', label: 'Sick' },
-  maternity: { icon: <Baby size={14} />, color: 'text-pink-400', label: 'Maternity' },
-  paternity: { icon: <Baby size={14} />, color: 'text-indigo-400', label: 'Paternity' },
-  unpaid: { icon: <UserX size={14} />, color: 'text-gray-400', label: 'Unpaid' },
-  emergency: { icon: <AlertCircle size={14} />, color: 'text-red-400', label: 'Emergency' },
+  annual: { icon: <Plane size={14} />, color: '#60A5FA', label: 'Annual' },
+  sick: { icon: <Stethoscope size={14} />, color: '#FBBF24', label: 'Sick' },
+  maternity: { icon: <Baby size={14} />, color: '#F472B6', label: 'Maternity' },
+  paternity: { icon: <Baby size={14} />, color: '#818CF8', label: 'Paternity' },
+  unpaid: { icon: <UserX size={14} />, color: '#9CA3AF', label: 'Unpaid' },
+  emergency: { icon: <AlertCircle size={14} />, color: '#F87171', label: 'Emergency' },
 }
 
 const STATUS_CONFIG: Record<string, { color: string; icon: React.ReactNode }> = {
-  pending: { color: 'text-amber-400', icon: <Clock size={14} /> },
-  approved: { color: 'text-emerald-400', icon: <CheckCircle2 size={14} /> },
-  rejected: { color: 'text-red-400', icon: <XCircle size={14} /> },
+  pending: { color: '#FBBF24', icon: <Clock size={14} /> },
+  approved: { color: '#34D399', icon: <CheckCircle2 size={14} /> },
+  rejected: { color: '#F87171', icon: <XCircle size={14} /> },
+}
+
+const s = {
+  page: { display: 'flex', flexDirection: 'column' as const, gap: '28px', padding: '32px', flex: 1 },
+  header: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' },
+  headerLeft: { display: 'flex', flexDirection: 'column' as const, gap: '4px' },
+  headerTitle: { fontSize: '22px', fontWeight: 700, color: 'var(--pz-text)', margin: 0, letterSpacing: '-0.02em' },
+  headerSubtitle: { fontSize: '13px', color: 'var(--pz-text-muted)', margin: 0 },
+  kpiGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' },
+  filters: { display: 'flex', flexWrap: 'wrap' as const, alignItems: 'center', gap: '12px' },
+  searchWrap: { position: 'relative' as const, flex: 1, maxWidth: '320px' },
+  searchInput: { width: '100%', padding: '8px 12px 8px 36px', borderRadius: '8px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '12px', color: 'var(--pz-text-secondary)', outline: 'none', boxSizing: 'border-box' as const },
+  selectInput: { padding: '8px 12px', borderRadius: '8px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '12px', color: 'var(--pz-text-secondary)', outline: 'none' },
+  card: { background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', borderRadius: '10px', overflow: 'hidden' },
+  tableWrap: { overflowX: 'auto' as const },
+  table: { width: '100%', fontSize: '12px', borderCollapse: 'collapse' as const },
+  th: { textAlign: 'left' as const, padding: '12px 16px', color: 'var(--pz-text-muted)', fontWeight: 600 },
+  empCell: { display: 'flex', alignItems: 'center', gap: '10px' },
+  avatar: { width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg, rgba(59,130,246,0.4), rgba(99,102,241,0.4))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700, color: 'var(--pz-accent)', border: '1px solid rgba(59,130,246,0.2)' },
+  empName: { fontWeight: 600, color: 'var(--pz-text-secondary)' },
+  empCode: { fontSize: '10px', color: 'var(--pz-text-muted)', margin: 0 },
+  leaveTypeCell: { display: 'flex', alignItems: 'center', gap: '6px' },
+  duration: { color: 'var(--pz-text-secondary)', fontWeight: 600 },
+  dates: { color: 'var(--pz-text-muted)', fontFamily: 'monospace', fontSize: '10px' },
+  emptyState: { padding: '64px 0', textAlign: 'center' as const, color: 'var(--pz-text-muted)' },
+  emptyTitle: { fontSize: '14px', fontWeight: 500, margin: 0 },
+  emptySub: { fontSize: '12px', marginTop: '4px' },
 }
 
 export default function LeaveManagement() {
@@ -126,21 +154,22 @@ export default function LeaveManagement() {
   }
 
   return (
-    <div className="space-y-5 pz-slide-up">
-      <PageHeader
-        title="Leave Management"
-        subtitle={`Employee leave requests · ${stats.pending} pending approval`}
-        breadcrumbs={[{ label: 'Workforce' }, { label: 'Leave' }]}
-        actions={
-          <Button variant="default" size="md" onClick={() => setShowCreateModal(true)}>
-            <Plus size={15} />
-            New Request
-          </Button>
-        }
-      />
+    <div style={s.page}>
+      <div style={s.header}>
+        <div style={s.headerLeft}>
+          <h1 style={s.headerTitle}>Leave Management</h1>
+          <p style={s.headerSubtitle}>
+            Employee leave requests · {stats.pending} pending approval
+          </p>
+        </div>
+        <Button variant="default" size="md" onClick={() => setShowCreateModal(true)}>
+          <Plus size={15} />
+          New Request
+        </Button>
+      </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div style={s.kpiGrid}>
         <KPICard icon={Calendar} label="Total" value={stats.total} color="#3B82F6" />
         <KPICard icon={Clock} label="Pending" value={stats.pending} color="#F59E0B" />
         <KPICard icon={CheckCircle2} label="Approved" value={stats.approved} color="#10B981" />
@@ -148,22 +177,22 @@ export default function LeaveManagement() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 max-w-xs">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+      <div style={s.filters}>
+        <div style={s.searchWrap}>
+          <Search size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--pz-text-muted)' }} />
           <input
             type="text"
             placeholder="Search employee..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs text-gray-200 placeholder:text-gray-500 focus:outline-none focus:border-blue-500"
+            style={s.searchInput}
           />
         </div>
 
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs text-gray-300 focus:outline-none"
+          style={s.selectInput}
         >
           <option value="">All Status</option>
           <option value="pending">Pending</option>
@@ -174,7 +203,7 @@ export default function LeaveManagement() {
         <select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value)}
-          className="px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-xs text-gray-300 focus:outline-none"
+          style={s.selectInput}
         >
           <option value="">All Types</option>
           <option value="annual">Annual</option>
@@ -190,18 +219,18 @@ export default function LeaveManagement() {
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        className="pz-card overflow-hidden"
+        style={s.card}
       >
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
+        <div style={s.tableWrap}>
+          <table style={s.table}>
             <thead>
-              <tr className="border-b border-[var(--pz-border)] bg-[var(--pz-surface-2)]/50">
-                <th className="text-left py-3 px-4 text-gray-400 font-semibold">Employee</th>
-                <th className="text-left py-3 px-4 text-gray-400 font-semibold">Type</th>
-                <th className="text-left py-3 px-4 text-gray-400 font-semibold">Duration</th>
-                <th className="text-left py-3 px-4 text-gray-400 font-semibold">Dates</th>
-                <th className="text-left py-3 px-4 text-gray-400 font-semibold">Status</th>
-                <th className="text-left py-3 px-4 text-gray-400 font-semibold">Actions</th>
+              <tr style={{ borderBottom: '1px solid var(--pz-border)', background: 'rgba(255,255,255,0.025)' }}>
+                <th style={s.th}>Employee</th>
+                <th style={s.th}>Type</th>
+                <th style={s.th}>Duration</th>
+                <th style={s.th}>Dates</th>
+                <th style={s.th}>Status</th>
+                <th style={s.th}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -214,51 +243,55 @@ export default function LeaveManagement() {
                     initial={{ opacity: 0, x: -8 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: i * 0.02 }}
-                    className="border-b border-[var(--pz-border)]/30 hover:bg-[var(--pz-surface-2)]/30 transition-colors"
+                    style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}
                   >
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-900/40 to-indigo-900/40 flex items-center justify-center text-[10px] font-bold text-blue-400 border border-blue-500/20">
+                    <td style={{ padding: '12px 16px' }}>
+                      <div style={s.empCell}>
+                        <div style={s.avatar}>
                           {req.employee_name?.[0] || '?'}
                         </div>
                         <div>
-                          <span className="font-semibold text-gray-200">{req.employee_name || 'Unknown'}</span>
-                          <p className="text-[10px] text-gray-500">{req.employee_code}</p>
+                          <span style={s.empName}>{req.employee_name || 'Unknown'}</span>
+                          <p style={s.empCode}>{req.employee_code}</p>
                         </div>
                       </div>
                     </td>
-                    <td className="py-3 px-4">
-                      <div className={`flex items-center gap-1.5 ${typeConfig.color}`}>
-                        {typeConfig.icon}
-                        <span className="capitalize">{typeConfig.label}</span>
+                    <td style={{ padding: '12px 16px' }}>
+                      <div style={s.leaveTypeCell}>
+                        <span style={{ color: typeConfig.color, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          {typeConfig.icon}
+                          <span style={{ textTransform: 'capitalize' }}>{typeConfig.label}</span>
+                        </span>
                       </div>
                     </td>
-                    <td className="py-3 px-4 text-gray-300 font-semibold">
-                      {days} day{days !== 1 ? 's' : ''}
+                    <td style={{ padding: '12px 16px' }}>
+                      <span style={s.duration}>{days} day{days !== 1 ? 's' : ''}</span>
                     </td>
-                    <td className="py-3 px-4 text-gray-400 font-mono text-[10px]">
-                      {format(parseISO(req.start_date), 'MMM d')} – {format(parseISO(req.end_date), 'MMM d')}
+                    <td style={{ padding: '12px 16px' }}>
+                      <span style={s.dates}>
+                        {format(parseISO(req.start_date), 'MMM d')} - {format(parseISO(req.end_date), 'MMM d')}
+                      </span>
                     </td>
-                    <td className="py-3 px-4">
+                    <td style={{ padding: '12px 16px' }}>
                       <StatusBadge status={req.status as any} size="xs" dot={false}>
-                        <span className={STATUS_CONFIG[req.status]?.color || 'text-gray-400'}>
+                        <span style={{ color: STATUS_CONFIG[req.status]?.color || 'var(--pz-text-muted)' }}>
                           {req.status}
                         </span>
                       </StatusBadge>
                     </td>
-                    <td className="py-3 px-4">
+                    <td style={{ padding: '12px 16px' }}>
                       {req.status === 'pending' && (
-                        <div className="flex items-center gap-1">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                           <button
                             onClick={() => approveMutation.mutate(req.id)}
-                            className="p-1.5 rounded-md text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                            style={{ padding: '6px', borderRadius: '6px', border: 'none', cursor: 'pointer', color: 'var(--pz-success)', background: 'transparent' }}
                             title="Approve"
                           >
                             <CheckCircle2 size={14} />
                           </button>
                           <button
                             onClick={() => rejectMutation.mutate(req.id)}
-                            className="p-1.5 rounded-md text-red-400 hover:bg-red-500/10 transition-colors"
+                            style={{ padding: '6px', borderRadius: '6px', border: 'none', cursor: 'pointer', color: 'var(--pz-danger)', background: 'transparent' }}
                             title="Reject"
                           >
                             <XCircle size={14} />
@@ -271,10 +304,10 @@ export default function LeaveManagement() {
               })}
               {!filtered.length && !isLoading && (
                 <tr>
-                  <td colSpan={6} className="py-16 text-center text-gray-500">
-                    <Calendar size={32} className="mx-auto mb-3 opacity-20" />
-                    <p className="text-sm font-medium">No leave requests found</p>
-                    <p className="text-xs mt-1">Create a new request or adjust filters</p>
+                  <td colSpan={6} style={s.emptyState}>
+                    <Calendar size={32} style={{ margin: '0 auto 12px', opacity: 0.2 }} />
+                    <p style={s.emptyTitle}>No leave requests found</p>
+                    <p style={s.emptySub}>Create a new request or adjust filters</p>
                   </td>
                 </tr>
               )}
@@ -295,30 +328,35 @@ export default function LeaveManagement() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
             {/* Type + Status cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', paddingBottom: '20px', borderBottom: '1px solid var(--pz-border)' }}>
-              <div style={{ padding: '16px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', borderRadius: '6px', minHeight: '80px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', paddingBottom: '20px', borderBottom: '1px solid var(--pz-border)' }}>
+              <div style={{ padding: '20px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', borderRadius: '10px', minHeight: '88px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                 <p style={{ fontSize: '12px', fontWeight: 400, color: 'var(--pz-text-muted)', margin: 0 }}>Type</p>
                 <p style={{ fontSize: '16px', fontWeight: 600, color: 'var(--pz-text)', textTransform: 'capitalize', margin: 0 }}>{selectedRequest.leave_type}</p>
               </div>
-              <div style={{ padding: '16px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', borderRadius: '6px', minHeight: '80px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div style={{ padding: '20px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', borderRadius: '10px', minHeight: '88px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                 <p style={{ fontSize: '12px', fontWeight: 400, color: 'var(--pz-text-muted)', margin: 0 }}>Status</p>
                 <div><StatusBadge status={selectedRequest.status as any} size="md">{selectedRequest.status}</StatusBadge></div>
               </div>
             </div>
 
             {/* Details table */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Details</h4>
-              <div style={{ border: '1px solid var(--pz-border)', borderRadius: '6px', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '28px', height: '28px', borderRadius: '10px', background: 'rgba(59,130,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Calendar size={14} style={{ color: 'var(--pz-accent)' }} />
+                </div>
+                <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: 0 }}>Details</h4>
+              </div>
+              <div style={{ border: '1px solid var(--pz-border)', borderRadius: '10px', overflow: 'hidden' }}>
                 {[
                   ['Employee', selectedRequest.employee_name || 'Unknown'],
                   ['Start Date', format(parseISO(selectedRequest.start_date), 'MMMM d, yyyy')],
                   ['End Date', format(parseISO(selectedRequest.end_date), 'MMMM d, yyyy')],
                   ['Duration', `${differenceInDays(parseISO(selectedRequest.end_date), parseISO(selectedRequest.start_date)) + 1} days`],
-                  ['Reason', selectedRequest.reason || '—'],
+                  ['Reason', selectedRequest.reason || '---'],
                   ['Submitted', format(parseISO(selectedRequest.created_at), 'MMM d, yyyy HH:mm')],
                 ].map(([label, value], i, arr) => (
-                  <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '44px', paddingInline: '14px', borderBottom: i < arr.length - 1 ? '1px solid var(--pz-border)' : 'none', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
+                  <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: '52px', paddingInline: '16px', borderBottom: i < arr.length - 1 ? '1px solid var(--pz-border)' : 'none', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
                     <span style={{ fontSize: '12px', color: 'var(--pz-text-muted)' }}>{label}</span>
                     <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--pz-text-secondary)', textAlign: 'right', maxWidth: '240px' }}>{value}</span>
                   </div>
@@ -328,7 +366,7 @@ export default function LeaveManagement() {
 
             {/* Approve / Reject actions */}
             {selectedRequest.status === 'pending' && (
-              <div style={{ display: 'flex', gap: '12px', paddingTop: '8px', borderTop: '1px solid var(--pz-border)' }}>
+              <div style={{ display: 'flex', gap: '16px', paddingTop: '16px', borderTop: '1px solid var(--pz-border)' }}>
                 <Button variant="success" size="md" style={{ flex: 1 }}
                   disabled={approveMutation.isPending} loading={approveMutation.isPending}
                   onClick={() => approveMutation.mutate(selectedRequest.id)}>
@@ -347,28 +385,32 @@ export default function LeaveManagement() {
       </DetailDrawer>
 
       {/* Create Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-6"
-          style={{ background: 'rgba(17,24,39,0.55)', backdropFilter: 'blur(6px)' }}
-          onClick={e => e.target === e.currentTarget && setShowCreateModal(false)}>
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
-            style={{
-              width: '100%', maxWidth: '680px',
-              background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)',
-              boxShadow: 'var(--pz-shadow-modal)', borderRadius: '10px', overflow: 'hidden',
-            }}
-          >
-            {/* Header */}
-            <div style={{ padding: '28px 32px 20px 32px', borderBottom: '1px solid var(--pz-border)' }}>
-              <h3 style={{ fontSize: '22px', fontWeight: 700, color: 'var(--pz-text)', margin: 0 }}>New Leave Request</h3>
-              <p style={{ fontSize: '14px', color: 'var(--pz-text-muted)', marginTop: '4px', marginBottom: 0 }}>Submit a leave request on behalf of an employee.</p>
-            </div>
+      <Modal
+        open={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        title="New Leave Request"
+        description="Submit a leave request on behalf of an employee."
+        size="md"
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+            <Button variant="outline" size="md" onClick={() => setShowCreateModal(false)}>Cancel</Button>
+            <Button variant="default" size="md" loading={createMutation.isPending} disabled={!createForm.employee_id || !createForm.start_date || !createForm.end_date || createMutation.isPending} onClick={() => createMutation.mutate(createForm)}>
+              {createMutation.isPending ? 'Creating...' : 'Create Request'}
+            </Button>
+          </div>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', padding: '24px' }}>
 
-            {/* Body */}
-            <div style={{ padding: '28px 32px', display: 'flex', flexDirection: 'column', gap: '22px' }}>
+          {/* ── Leave Details ── */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+              <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: 'rgba(59,130,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Info size={14} style={{ color: 'var(--pz-accent)' }} />
+              </div>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)' }}>Leave Details</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>
                   Employee <span style={{ color: 'var(--pz-danger-500)' }}>*</span>
@@ -404,59 +446,70 @@ export default function LeaveManagement() {
                   <option value="emergency">Emergency Leave</option>
                 </select>
               </div>
+            </div>
+          </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>
-                    Start Date <span style={{ color: 'var(--pz-danger-500)' }}>*</span>
-                  </label>
-                  <input
-                    type="date"
-                    value={createForm.start_date}
-                    onChange={(e) => setCreateForm(p => ({ ...p, start_date: e.target.value }))}
-                    className="pz-input w-full"
-                    style={{ height: '44px', fontSize: '14px' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>
-                    End Date <span style={{ color: 'var(--pz-danger-500)' }}>*</span>
-                  </label>
-                  <input
-                    type="date"
-                    value={createForm.end_date}
-                    onChange={(e) => setCreateForm(p => ({ ...p, end_date: e.target.value }))}
-                    className="pz-input w-full"
-                    style={{ height: '44px', fontSize: '14px' }}
-                  />
-                </div>
+          {/* ── Dates ── */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+              <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: 'rgba(59,130,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Calendar size={14} style={{ color: 'var(--pz-accent)' }} />
               </div>
-
+              <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)' }}>Dates</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>
-                  Reason (optional)
+                  Start Date <span style={{ color: 'var(--pz-danger-500)' }}>*</span>
                 </label>
-                <textarea
-                  value={createForm.reason}
-                  onChange={(e) => setCreateForm(p => ({ ...p, reason: e.target.value }))}
-                  rows={3}
+                <input
+                  type="date"
+                  value={createForm.start_date}
+                  onChange={(e) => setCreateForm(p => ({ ...p, start_date: e.target.value }))}
                   className="pz-input w-full"
-                  placeholder="Reason for leave..."
-                  style={{ height: 'auto', minHeight: '88px', fontSize: '14px', resize: 'none' }}
+                  style={{ height: '44px', fontSize: '14px' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>
+                  End Date <span style={{ color: 'var(--pz-danger-500)' }}>*</span>
+                </label>
+                <input
+                  type="date"
+                  value={createForm.end_date}
+                  onChange={(e) => setCreateForm(p => ({ ...p, end_date: e.target.value }))}
+                  className="pz-input w-full"
+                  style={{ height: '44px', fontSize: '14px' }}
                 />
               </div>
             </div>
+          </div>
 
-            {/* Footer */}
-            <div style={{ padding: '20px 32px 28px 32px', borderTop: '1px solid var(--pz-border)', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-              <Button variant="outline" size="md" onClick={() => setShowCreateModal(false)}>Cancel</Button>
-              <Button variant="default" size="md" loading={createMutation.isPending} disabled={!createForm.employee_id || !createForm.start_date || !createForm.end_date || createMutation.isPending} onClick={() => createMutation.mutate(createForm)}>
-                {createMutation.isPending ? 'Creating...' : 'Create Request'}
-              </Button>
+          {/* ── Reason ── */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+              <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: 'rgba(59,130,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <FileText size={14} style={{ color: 'var(--pz-accent)' }} />
+              </div>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)' }}>Reason</span>
             </div>
-          </motion.div>
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--pz-text-secondary)', marginBottom: '8px' }}>
+                Reason (optional)
+              </label>
+              <textarea
+                value={createForm.reason}
+                onChange={(e) => setCreateForm(p => ({ ...p, reason: e.target.value }))}
+                rows={3}
+                className="pz-input w-full"
+                placeholder="Reason for leave..."
+                style={{ height: 'auto', minHeight: '88px', fontSize: '14px', resize: 'none' }}
+              />
+            </div>
+          </div>
         </div>
-      )}
+
+      </Modal>
     </div>
   )
 }

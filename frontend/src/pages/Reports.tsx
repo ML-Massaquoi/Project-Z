@@ -6,7 +6,6 @@ import {
 } from 'lucide-react'
 import { reportsAPI } from '@/api/client'
 import { format } from 'date-fns'
-import { PageHeader } from '@/components/ui/PageHeader'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 
@@ -28,6 +27,53 @@ const reportTypes: ReportType[] = [
   { id: 'shiftCompliance', title: 'Shift Compliance', description: 'How closely employees adhere to their assigned shift schedules over time.', icon: BarChart3, color: '#EC4899', needsRange: true },
   { id: 'unknownScans', title: 'Unknown Scans', description: 'Scan events from unrecognized users needing resolution.', icon: Search, color: '#F97316', needsRange: true },
 ]
+
+const s = {
+  page: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '28px',
+    padding: '32px',
+    flex: 1,
+  },
+  header: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  headerLeft: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '4px',
+  },
+  headerTitle: {
+    fontSize: '22px',
+    fontWeight: 700,
+    color: 'var(--pz-text)',
+    margin: 0,
+    letterSpacing: '-0.02em',
+  },
+  headerSubtitle: {
+    fontSize: '13px',
+    color: 'var(--pz-text-muted)',
+    margin: 0,
+  },
+  reportCard: {
+    background: 'var(--pz-surface-1)',
+    border: '1px solid var(--pz-border)',
+    borderRadius: '10px',
+    padding: '24px',
+    cursor: 'pointer',
+    transition: 'all 0.15s',
+  },
+  reportCardTitle: {
+    fontSize: '15px',
+    fontWeight: 700,
+    color: 'var(--pz-text)',
+    margin: 0,
+    letterSpacing: '-0.01em',
+  },
+}
 
 export default function Reports() {
   const [searchValue, setSearchValue] = useState('')
@@ -98,12 +144,13 @@ export default function Reports() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Reports"
-        subtitle="Generate and export workforce reports"
-        breadcrumbs={[{ label: 'Intelligence' }, { label: 'Reports' }]}
-      />
+    <div style={s.page}>
+      <div style={s.header}>
+        <div style={s.headerLeft}>
+          <h1 style={s.headerTitle}>Reports</h1>
+          <p style={s.headerSubtitle}>Generate and export workforce reports</p>
+        </div>
+      </div>
 
       {/* Search & Controls */}
       <div className="flex flex-wrap items-center gap-4">
@@ -119,7 +166,7 @@ export default function Reports() {
         </div>
         <div className="flex items-center gap-3 p-3 rounded-xl bg-[var(--pz-surface-2)]/50 border border-[var(--pz-border)]">
           <div className="flex items-center gap-2">
-            <label className="pz-label text-[10px]">From</label>
+            <label style={{ fontSize: '10px', fontWeight: 600, color: 'var(--pz-text-muted)' }}>From</label>
             <input
               type="date"
               value={dateRange.start}
@@ -128,7 +175,7 @@ export default function Reports() {
             />
           </div>
           <div className="flex items-center gap-2">
-            <label className="pz-label text-[10px]">To</label>
+            <label style={{ fontSize: '10px', fontWeight: 600, color: 'var(--pz-text-muted)' }}>To</label>
             <input
               type="date"
               value={dateRange.end}
@@ -137,7 +184,7 @@ export default function Reports() {
             />
           </div>
           <div className="flex items-center gap-2">
-            <label className="pz-label text-[10px]">Format</label>
+            <label style={{ fontSize: '10px', fontWeight: 600, color: 'var(--pz-text-muted)' }}>Format</label>
             <select
               value={exportFormat}
               onChange={(e) => setExportFormat(e.target.value)}
@@ -159,7 +206,10 @@ export default function Reports() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.05 }}
             onClick={() => setSelectedReport(report)}
-            className="pz-card pz-card--interactive p-6 group cursor-pointer"
+            className="group"
+            style={{
+              ...s.reportCard,
+            }}
           >
             <div className="flex items-start gap-3 mb-3">
               <div
@@ -172,18 +222,18 @@ export default function Reports() {
                 <report.icon size={20} style={{ color: report.color }} />
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="pz-card-title">{report.title}</h3>
+                <h3 style={s.reportCardTitle}>{report.title}</h3>
               </div>
-              <ArrowRight size={14} className="text-[var(--pz-text-faint)] group-hover:text-[var(--pz-text-tertiary)] transition-colors mt-1" />
+              <ArrowRight size={14} style={{ color: 'var(--pz-text-faint)', marginTop: '4px', flexShrink: 0 }} />
             </div>
-            <p className="text-sm text-[var(--pz-text-tertiary)] leading-relaxed">{report.description}</p>
-            <div className="mt-4 pt-4 border-t border-[var(--pz-border)] flex items-center justify-between">
+            <p className="text-sm" style={{ color: 'var(--pz-text-tertiary)', lineHeight: '1.625', margin: 0 }}>{report.description}</p>
+            <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--pz-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               {report.needsRange ? (
-                <span className="text-xs text-[var(--pz-text-muted)] font-mono">
-                  {dateRange.start} \u2192 {dateRange.end}
+                <span className="text-xs font-mono" style={{ color: 'var(--pz-text-muted)' }}>
+                  {dateRange.start} → {dateRange.end}
                 </span>
               ) : (
-                <span className="text-xs text-[var(--pz-text-muted)] font-mono">{dateRange.start}</span>
+                <span className="text-xs font-mono" style={{ color: 'var(--pz-text-muted)' }}>{dateRange.start}</span>
               )}
               <Button
                 variant="default"
