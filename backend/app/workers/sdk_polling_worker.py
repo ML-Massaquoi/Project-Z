@@ -230,14 +230,21 @@ async def poll_device(device, db_session_factory) -> dict:
 def _fetch_attendance_from_device(ip: str, port: int) -> list[dict]:
     """
     Synchronous: connect to device via TCP SDK and fetch attendance records.
+    Also syncs device time (many ZKTeco devices lose clock on power loss).
     Returns list of dicts with user_id, timestamp, status, punch.
     """
+    from datetime import datetime
     from zk import ZK
 
     zk = ZK(ip, port=port, timeout=5, password=0, force_udp=False, ommit_ping=True)
     conn = zk.connect()
     try:
         conn.disable_device()
+        # Sync device clock to prevent wrong timestamps
+        try:
+            conn.set_time(datetime.now())
+        except Exception:
+            pass  # time sync is best-effort
         attendances = conn.get_attendance()
         conn.enable_device()
 

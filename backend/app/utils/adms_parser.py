@@ -165,9 +165,14 @@ def generate_adms_options_response(serial_number: str) -> str:
     - TransInterval=1: minimum interval between pushes (seconds)
     - Delay=1: polling interval in seconds
     - TransFlag: which data types to transmit
+    - Time: syncs device clock (many ZKTeco devices lose time on power loss)
     """
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    time_str = now.strftime("%Y-%m-%d %H:%M:%S")
     return (
         f"GET OPTION FROM: {serial_number}\r\n"
+        f"Time={time_str}\r\n"
         "ATTLOGStamp=None\r\n"
         "OPERLOGStamp=None\r\n"
         "ATTPHOTOStamp=None\r\n"
@@ -177,7 +182,8 @@ def generate_adms_options_response(serial_number: str) -> str:
         "TransInterval=1\r\n"
         "TransFlag=TransData AttLog\r\n"
         "Realtime=1\r\n"
-        "Duplicate=0\r\n"
+        "Duplicate=1\r\n"
+        "DUPKICK=0\r\n"
         "Encrypt=0\r\n"
         "ServerVer=2.4.1\r\n"
         "PushProtVer=2.4.1\r\n"

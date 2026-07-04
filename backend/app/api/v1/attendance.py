@@ -33,13 +33,16 @@ router = APIRouter(prefix="/attendance", tags=["Attendance"])
 async def get_live_attendance(
     limit: int = Query(50, ge=1, le=200),
     department_id: Optional[UUID] = None,
+    target_date: Optional[str] = Query(None, description="Filter by date YYYY-MM-DD (default: today)"),
     db: AsyncSession = Depends(get_db),
     _user=Depends(get_current_user),
 ):
-    """Get live attendance feed (latest records)."""
+    """Get live attendance feed (latest records for today by default)."""
     try:
+        from datetime import date
+        d = today_date() if not target_date else date.fromisoformat(target_date)
         repo = AttendanceLogRepository(db)
-        logs = await repo.get_live_feed(limit=limit, department_id=department_id)
+        logs = await repo.get_live_feed(limit=limit, department_id=department_id, target_date=d)
 
         return AttendanceLiveResponse(
             items=[

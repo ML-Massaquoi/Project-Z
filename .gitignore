@@ -1,69 +1,60 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-*.egg-info/
-dist/
-build/
-.eggs/
-*.egg
-.venv/
-venv/
-env/
 
-# Node
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# Build
-frontend/dist/
-*.tsbuildinfo
-
-# Environment
-.env
-.env.local
-.env.*.local
 !docker/.env.example
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-desktop.ini
-
+# Build
+# Coverage
 # Docker
+# Environment
+# IDE
+# Logs
+# Node
+# OS
+# OpenCode config
+# Python
+# Stale artifact files
+# Testing
+*$py.class
+*.egg
+*.egg-info/
+*.log
+*.py[cod]
+*.so
+*.swo
+*.swp
+*.tsbuildinfo
+*~
+.DS_Store
+.aider*
+.coverage
+.eggs/
+.env
+.env.*.local
+.env.local
+.idea/
+.mypy_cache/
+.nyc_output/
+.opencode/
+.pnpm-debug.log*
+.pytest_cache/
+.venv/
+.vscode/
+Thumbs.db
+__pycache__/
+backend/nul
+build/
+coverage/
+desktop.ini
+dist/
 docker/postgres_data/
 docker/redis_data/
-
-# Logs
-*.log
-logs/
-
-# Coverage
-htmlcov/
-.coverage
-coverage/
-.nyc_output/
-
-# Testing
-.pytest_cache/
-.mypy_cache/
-.aider*
-
-# Stale artifact files
-nul
-backend/nul
+env/
+frontend/dist/
 frontend/nul
-
-# OpenCode config
-.opencode/
+frontend/src/pages/_tmp_write.py
+htmlcov/
+logs/
+node_modules/
+npm-debug.log*
+nul
+venv/
+yarn-debug.log*
+yarn-error.log*

@@ -117,14 +117,6 @@ class ColorFormatter(logging.Formatter):
 
         return line
 
-    def emit(self, record: logging.LogRecord) -> None:
-        try:
-            super().emit(record)
-            self.flush()
-        except Exception:
-            self.handleError(record)
-
-
 class FlushStreamHandler(logging.StreamHandler):
     """StreamHandler that flushes after every emit to prevent buffering issues."""
 
@@ -159,8 +151,8 @@ def setup_logging(debug: bool = False, json_format: bool = False) -> None:
     else:
         formatter = ColorFormatter()
 
-    # Console handler with auto-flush
-    console_handler = FlushStreamHandler(sys.stdout)
+    # Console handler with auto-flush and UTF-8 encoding
+    console_handler = FlushStreamHandler()
     console_handler.setFormatter(formatter)
 
     root_logger = logging.getLogger()

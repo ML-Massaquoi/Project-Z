@@ -407,9 +407,9 @@ async def assign_dept_protocol(
     # Auto-regenerate roster for current month if one exists
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
-    from app.services.scheduling_engine import SchedulingEngine
+    from app.services.rotation_engine import RotationEngine
     try:
-        engine = SchedulingEngine(db)
+        engine = RotationEngine(db)
         await engine.generate_department_roster(
             db=db,
             department_id=dept_id,
@@ -417,9 +417,9 @@ async def assign_dept_protocol(
             month=now.month,
             generated_by=_user.id,
         )
-        logger.info(f"[Scheduling] Auto-regenerated roster for dept={dept_id} after protocol change")
+        logger.info(f"[Rotation] Auto-regenerated roster for dept={dept_id} after protocol change")
     except Exception as e:
-        logger.warning(f"[Scheduling] Auto-regeneration failed for dept={dept_id}: {e}")
+        logger.warning(f"[Rotation] Auto-regeneration failed for dept={dept_id}: {e}")
     
     return _serialize_dept_protocol(dp)
 
@@ -603,8 +603,8 @@ async def generate_department_roster(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_hr_admin),
 ):
-    from app.services.scheduling_engine import SchedulingEngine
-    engine = SchedulingEngine(db)
+    from app.services.rotation_engine import RotationEngine
+    engine = RotationEngine(db)
     try:
         snapshot = await engine.generate_department_roster(
             db=db,
@@ -635,13 +635,14 @@ async def generate_multiple_department_rosters(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_hr_admin),
 ):
-    from app.services.roster_service import RosterService
+    from app.services.rotation_engine import RotationEngine
     results = []
     errors = []
-    service = RosterService(db)
+    engine = RotationEngine(db)
     for dept_id in data.department_ids:
         try:
-            snapshot = await service.generate_monthly_roster(
+            snapshot = await engine.generate_department_roster(
+                db=db,
                 department_id=dept_id,
                 year=data.year,
                 month=data.month,
@@ -674,13 +675,14 @@ async def generate_organization_roster(
     dept_result = await db.execute(select(Department).where(Department.is_active == True))
     departments = dept_result.scalars().all()
 
-    from app.services.roster_service import RosterService
+    from app.services.rotation_engine import RotationEngine
     results = []
     errors = []
-    service = RosterService(db)
+    engine = RotationEngine(db)
     for dept in departments:
         try:
-            snapshot = await service.generate_monthly_roster(
+            snapshot = await engine.generate_department_roster(
+                db=db,
                 department_id=dept.id,
                 year=data.year,
                 month=data.month,
@@ -716,17 +718,20 @@ async def generate_department_multi_month(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_hr_admin),
 ):
-    from app.services.scheduling_engine import SchedulingEngine
-    engine = SchedulingEngine(db)
+    from app.services.rotation_engine import RotationEngine
+    engine = RotationEngine(db)
     try:
-        snapshots = await engine.generate_multi_month_roster(
-            db=db,
-            department_id=dept_id,
-            year=data.year,
-            start_month=data.start_month,
-            num_months=data.num_months,
-            generated_by=current_user.id,
-        )
+        from datetime import date
+        snapshots = []
+        for m_offset in range(data.num_months):
+            m = data.start_month + m_offset
+            y = data.year + (m - 1) // 12
+            m = ((m - 1) % 12) + 1
+            snap = await engine.generate_department_roster(
+                db=db, department_id=dept_id, year=y, month=m,
+                generated_by=current_user.id,
+            )
+            snapshots.append(snap)
         await db.commit()
         return {
             "snapshots": [
@@ -755,16 +760,23 @@ async def generate_organization_multi_month(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_hr_admin),
 ):
-    from app.services.scheduling_engine import SchedulingEngine
-    engine = SchedulingEngine(db)
+    from app.services.rotation_engine import RotationEngine
+    engine = RotationEngine(db)
     try:
-        snapshots = await engine.generate_organization_multi_month(
-            db=db,
-            year=data.year,
-            start_month=data.start_month,
-            num_months=data.num_months,
-            generated_by=current_user.id,
-        )
+        from app.models.department import Department
+        dept_result = await db.execute(select(Department).where(Department.is_active == True))
+        departments = dept_result.scalars().all()
+        snapshots = []
+        for dept in departments:
+            for m_offset in range(data.num_months):
+                m = data.start_month + m_offset
+                y = data.year + (m - 1) // 12
+                m = ((m - 1) % 12) + 1
+                snap = await engine.generate_department_roster(
+                    db=db, department_id=dept.id, year=y, month=m,
+                    generated_by=current_user.id,
+                )
+                snapshots.append(snap)
         await db.commit()
         return {
             "snapshots": [
@@ -943,6 +955,256 @@ async def delete_roster_snapshot(
     await db.delete(snap)
     await db.flush()
     return {"message": "Roster snapshot deleted", "department_id": str(dept_id), "year": year, "month": month}
+
+
+# ---------------------------------------------------------------------------
+#  Rotation Groups (Protocol-Driven)
+# ---------------------------------------------------------------------------
+
+
+class RotationGroupCreate(BaseModel):
+    name: str = Field(..., max_length=50, description="Group name e.g. 'Group A'")
+    protocol_offset: int = Field(default=0, ge=0, description="Starting position in protocol sequence")
+    color: Optional[str] = Field(None, max_length=20)
+
+
+class RotationGroupUpdate(BaseModel):
+    name: Optional[str] = Field(None, max_length=50)
+    protocol_offset: Optional[int] = Field(None, ge=0)
+    color: Optional[str] = Field(None, max_length=20)
+    is_active: Optional[bool] = None
+
+
+class AutoDistributeRequest(BaseModel):
+    num_groups: int = Field(default=4, ge=2, le=20, description="Number of rotation groups to create")
+
+
+@router.get(
+    "/departments/{dept_id}/rotation-groups",
+    dependencies=[Depends(PermissionChecker("shift:view"))],
+)
+async def list_rotation_groups(
+    dept_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    _user=Depends(get_current_user),
+):
+    from app.models.rotation_group import RotationGroup, GroupAssignment
+    from app.models.employee import Employee
+
+    result = await db.execute(
+        select(RotationGroup)
+        .where(
+            and_(
+                RotationGroup.department_id == dept_id,
+                RotationGroup.is_active == True,
+            )
+        )
+        .order_by(RotationGroup.name)
+    )
+    groups = result.scalars().all()
+
+    output = []
+    for g in groups:
+        members_result = await db.execute(
+            select(GroupAssignment).where(GroupAssignment.group_id == g.id)
+        )
+        member_ids = [m.employee_id for m in members_result.scalars().all()]
+
+        employees = []
+        if member_ids:
+            emp_result = await db.execute(
+                select(Employee).where(Employee.id.in_(member_ids)).order_by(Employee.full_name)
+            )
+            employees = [
+                {"id": str(e.id), "code": e.employee_code, "name": e.full_name}
+                for e in emp_result.scalars().all()
+            ]
+
+        output.append({
+            "id": str(g.id),
+            "department_id": str(g.department_id),
+            "name": g.name,
+            "protocol_offset": g.protocol_offset,
+            "color": g.color,
+            "is_active": g.is_active,
+            "employee_count": len(employees),
+            "employees": employees,
+        })
+
+    return output
+
+
+@router.post(
+    "/departments/{dept_id}/rotation-groups",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_hr_admin)],
+)
+async def create_rotation_group(
+    dept_id: UUID,
+    data: RotationGroupCreate,
+    db: AsyncSession = Depends(get_db),
+    _user=Depends(get_current_user),
+):
+    from app.models.rotation_group import RotationGroup
+
+    group = RotationGroup(
+        department_id=dept_id,
+        name=data.name,
+        protocol_offset=data.protocol_offset,
+        color=data.color,
+    )
+    db.add(group)
+    await db.flush()
+    await db.refresh(group)
+    return {
+        "id": str(group.id),
+        "department_id": str(group.department_id),
+        "name": group.name,
+        "protocol_offset": group.protocol_offset,
+        "color": group.color,
+        "is_active": group.is_active,
+    }
+
+
+@router.put(
+    "/rotation-groups/{group_id}",
+    dependencies=[Depends(require_hr_admin)],
+)
+async def update_rotation_group(
+    group_id: UUID,
+    data: RotationGroupUpdate,
+    db: AsyncSession = Depends(get_db),
+    _user=Depends(get_current_user),
+):
+    from app.models.rotation_group import RotationGroup
+
+    result = await db.execute(select(RotationGroup).where(RotationGroup.id == group_id))
+    group = result.scalar_one_or_none()
+    if not group:
+        raise HTTPException(404, "Rotation group not found")
+
+    if data.name is not None:
+        group.name = data.name
+    if data.protocol_offset is not None:
+        group.protocol_offset = data.protocol_offset
+    if data.color is not None:
+        group.color = data.color
+    if data.is_active is not None:
+        group.is_active = data.is_active
+
+    await db.flush()
+    return {
+        "id": str(group.id),
+        "department_id": str(group.department_id),
+        "name": group.name,
+        "protocol_offset": group.protocol_offset,
+        "color": group.color,
+        "is_active": group.is_active,
+    }
+
+
+@router.delete(
+    "/rotation-groups/{group_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_hr_admin)],
+)
+async def delete_rotation_group(
+    group_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    _user=Depends(get_current_user),
+):
+    from app.models.rotation_group import RotationGroup
+
+    result = await db.execute(select(RotationGroup).where(RotationGroup.id == group_id))
+    group = result.scalar_one_or_none()
+    if not group:
+        raise HTTPException(404, "Rotation group not found")
+    await db.delete(group)
+    await db.flush()
+
+
+@router.post(
+    "/departments/{dept_id}/rotation-groups/auto-distribute",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_hr_admin)],
+)
+async def auto_distribute_employees(
+    dept_id: UUID,
+    data: AutoDistributeRequest,
+    db: AsyncSession = Depends(get_db),
+    _user=Depends(get_current_user),
+):
+    from app.services.rotation_engine import RotationEngine
+
+    engine = RotationEngine(db)
+    groups = await engine.auto_distribute(db, dept_id, data.num_groups)
+    return {
+        "department_id": str(dept_id),
+        "groups": [
+            {
+                "id": str(g.id),
+                "name": g.name,
+                "protocol_offset": g.protocol_offset,
+            }
+            for g in groups
+        ],
+        "total_groups": len(groups),
+    }
+
+
+@router.post(
+    "/rotation-groups/{group_id}/assign/{employee_id}",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_hr_admin)],
+)
+async def assign_employee_to_group(
+    group_id: UUID,
+    employee_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    _user=Depends(get_current_user),
+):
+    from app.models.rotation_group import GroupAssignment
+
+    # Remove from any existing group
+    existing = await db.execute(
+        select(GroupAssignment).where(GroupAssignment.employee_id == employee_id)
+    )
+    old = existing.scalar_one_or_none()
+    if old:
+        await db.delete(old)
+        await db.flush()
+
+    assignment = GroupAssignment(group_id=group_id, employee_id=employee_id)
+    db.add(assignment)
+    await db.flush()
+    await db.refresh(assignment)
+    return {
+        "id": str(assignment.id),
+        "group_id": str(assignment.group_id),
+        "employee_id": str(assignment.employee_id),
+    }
+
+
+@router.delete(
+    "/rotation-groups/assignments/{assignment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_hr_admin)],
+)
+async def remove_employee_from_group(
+    assignment_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    _user=Depends(get_current_user),
+):
+    from app.models.rotation_group import GroupAssignment
+
+    result = await db.execute(
+        select(GroupAssignment).where(GroupAssignment.id == assignment_id)
+    )
+    assignment = result.scalar_one_or_none()
+    if not assignment:
+        raise HTTPException(404, "Assignment not found")
+    await db.delete(assignment)
+    await db.flush()
 
 
 # ---------------------------------------------------------------------------
@@ -1186,6 +1448,8 @@ async def get_department_roster_grid(
     if not snap:
         days_in_month = calendar.monthrange(year, month)[1]
         weeks = _build_weeks(days_in_month, year, month)
+        for w in weeks:
+            w["groups"] = []
         return {
             "department": {"id": str(dept_id), "name": dept.name, "protocol_type": protocol_type},
             "year": year, "month": month,

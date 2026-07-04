@@ -72,6 +72,9 @@ function ScanCard({ scan }: { scan: ScanEventPayload }) {
         <p className="text-xs font-mono font-semibold text-[var(--pz-text-secondary)]">
           {format(new Date(scan.scan_timestamp), 'HH:mm:ss')}
         </p>
+        <p className="text-[9px] text-[var(--pz-text-muted)]">
+          {format(new Date(scan.scan_timestamp), 'MMM dd')}
+        </p>
         <p className="text-[9px] text-[var(--pz-text-muted)] truncate max-w-[70px]">
           {scan.device_name}
         </p>

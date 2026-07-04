@@ -424,6 +424,20 @@ export const schedulingAPI = {
   deleteSnapshot: (deptId: string, year: number, month: number) =>
     api.delete(`/scheduling/snapshot/${deptId}`, { params: { year, month } }),
 
+  // Rotation Groups
+  rotationGroups: (deptId: string) => api.get(`/scheduling/departments/${deptId}/rotation-groups`),
+  createRotationGroup: (deptId: string, data: { name: string; protocol_offset?: number; color?: string }) =>
+    api.post(`/scheduling/departments/${deptId}/rotation-groups`, data),
+  updateRotationGroup: (groupId: string, data: { name?: string; protocol_offset?: number; color?: string; is_active?: boolean }) =>
+    api.put(`/scheduling/rotation-groups/${groupId}`, data),
+  deleteRotationGroup: (groupId: string) => api.delete(`/scheduling/rotation-groups/${groupId}`),
+  autoDistribute: (deptId: string, data: { num_groups: number }) =>
+    api.post(`/scheduling/departments/${deptId}/rotation-groups/auto-distribute`, data),
+  assignEmployeeToGroup: (groupId: string, employeeId: string) =>
+    api.post(`/scheduling/rotation-groups/${groupId}/assign/${employeeId}`),
+  removeEmployeeFromGroup: (assignmentId: string) =>
+    api.delete(`/scheduling/rotation-groups/assignments/${assignmentId}`),
+
   // Analytics
   analytics: (deptId: string, params: { year: number; month: number }) => api.get(`/scheduling/analytics/${deptId}`, { params }),
 }

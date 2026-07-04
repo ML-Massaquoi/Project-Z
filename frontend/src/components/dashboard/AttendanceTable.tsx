@@ -96,7 +96,7 @@ export default function AttendanceTable() {
   const formatTime = (t: string | null | undefined) => {
     if (!t) return '--'
     try {
-      return format(new Date(t), 'HH:mm')
+      return format(new Date(t), 'MMM dd HH:mm')
     } catch {
       return '--'
     }

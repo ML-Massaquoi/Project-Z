@@ -101,7 +101,7 @@ async def record_status_transition(
             recorded_at=datetime.now(timezone.utc),
         )
         session.add(record)
-        logger.info(f"Device {device_id} status: {last.status if last else 'unknown'} → {new_status}")
+        logger.info(f"Device {device_id} status: {last.status if last else 'unknown'} -> {new_status}")
 
     if db:
         await _check_and_record(db)

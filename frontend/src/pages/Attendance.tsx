@@ -1,8 +1,8 @@
-﻿import { useState, useMemo } from 'react'
+﻿import { useState, useMemo, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Activity, Calendar, Clock, Download, Fingerprint, Info, List, Radio, Search } from 'lucide-react'
+import { Activity, Calendar, ChevronLeft, ChevronRight, Clock, Download, Fingerprint, Info, List, Radio, Search } from 'lucide-react'
 import { attendanceAPI } from '@/api/client'
-import { format } from 'date-fns'
+import { format, subDays, addDays, parseISO, isToday } from 'date-fns'
 import type { AttendanceLog, AttendanceSession } from '@/types'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { DataTable, type ColumnDef } from '@/components/ui/data-table/DataTable'
@@ -99,13 +99,14 @@ const liveColumns: ColumnDef<AttendanceLog, unknown>[] = [
   },
   {
     accessorKey: 'timestamp',
-    header: 'Time',
+    header: 'Date/Time',
     cell: ({ getValue }) => (
       <span className="text-[var(--pz-text-tertiary)] font-mono tabular-nums text-sm">
-        {format(new Date(getValue() as string), 'hh:mm:ss a')}
+        <div>{format(new Date(getValue() as string), 'MMM dd')}</div>
+        <div className="text-[10px]" style={{ color: 'var(--pz-text-muted)' }}>{format(new Date(getValue() as string), 'hh:mm:ss a')}</div>
       </span>
     ),
-    size: 120,
+    size: 130,
   },
   {
     accessorKey: 'device_name',
@@ -155,18 +156,18 @@ const sessionColumns: ColumnDef<AttendanceSession, unknown>[] = [
     header: 'Check In',
     cell: ({ getValue }) => {
       const val = getValue() as string | null
-      return <span className="text-[var(--pz-text-tertiary)] font-mono tabular-nums text-sm">{val ? format(new Date(val), 'hh:mm a') : '\u2014'}</span>
+      return <span className="text-[var(--pz-text-tertiary)] font-mono tabular-nums text-sm">{val ? format(new Date(val), 'MMM dd hh:mm a') : '\u2014'}</span>
     },
-    size: 100,
+    size: 140,
   },
   {
     accessorKey: 'check_out',
     header: 'Check Out',
     cell: ({ getValue }) => {
       const val = getValue() as string | null
-      return <span className="text-[var(--pz-text-tertiary)] font-mono tabular-nums text-sm">{val ? format(new Date(val), 'hh:mm a') : '\u2014'}</span>
+      return <span className="text-[var(--pz-text-tertiary)] font-mono tabular-nums text-sm">{val ? format(new Date(val), 'MMM dd hh:mm a') : '\u2014'}</span>
     },
-    size: 100,
+    size: 140,
   },
   {
     accessorKey: 'duration_minutes',
@@ -208,9 +209,21 @@ export default function Attendance() {
   const [searchValue, setSearchValue] = useState('')
   const [selectedSession, setSelectedSession] = useState<AttendanceSession | null>(null)
 
+  const isViewingToday = isToday(parseISO(historyDate))
+  const goToPrevDay = useCallback(() => {
+    setHistoryDate(d => format(subDays(parseISO(d), 1), 'yyyy-MM-dd'))
+  }, [])
+  const goToNextDay = useCallback(() => {
+    setHistoryDate(d => format(addDays(parseISO(d), 1), 'yyyy-MM-dd'))
+  }, [])
+  const goToToday = useCallback(() => {
+    setHistoryDate(format(new Date(), 'yyyy-MM-dd'))
+    setHistoryPage(1)
+  }, [])
+
   const { data: liveData, isLoading: liveLoading } = useQuery({
-    queryKey: ['attendance-live'],
-    queryFn: async () => (await attendanceAPI.live({ limit: 50 })).data,
+    queryKey: ['attendance-live', historyDate],
+    queryFn: async () => (await attendanceAPI.live({ limit: 50, target_date: historyDate })).data,
     refetchInterval: 10000,
     enabled: tab === 'live',
   })
@@ -246,14 +259,29 @@ export default function Attendance() {
   const handleExport = async () => {
     try {
       const data = tab === 'live' ? filteredLive : filteredHistory
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+      if (!data || data.length === 0) {
+        toast.error('No data to export')
+        return
+      }
+      // Export as CSV for easy spreadsheet use
+      const keys = Object.keys(data[0])
+      const csvRows = [keys.join(','), ...data.map((row: Record<string, unknown>) =>
+        keys.map(k => {
+          const v = row[k]
+          if (v === null || v === undefined) return ''
+          const s = String(v)
+          return s.includes(',') || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s
+        }).join(',')
+      )]
+      const csv = csvRows.join('\n')
+      const blob = new Blob([csv], { type: 'text/csv' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `attendance-${tab}-${format(new Date(), 'yyyy-MM-dd-HHmm')}.json`
+      a.download = `attendance-${tab}-${historyDate}.csv`
       a.click()
       URL.revokeObjectURL(url)
-      toast.success('Attendance data exported')
+      toast.success(`Exported ${data.length} records`)
     } catch {
       toast.error('Failed to export attendance data')
     }
@@ -278,6 +306,26 @@ export default function Attendance() {
               Sessions
             </button>
           </div>
+
+          {/* Date navigation */}
+          <div className="flex items-center gap-1 px-2 py-1 rounded-lg" style={{ background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)' }}>
+            <button onClick={goToPrevDay} className="p-1 rounded hover:bg-[var(--pz-surface-3)]" title="Previous day">
+              <ChevronLeft size={15} style={{ color: 'var(--pz-text-muted)' }} />
+            </button>
+            <button onClick={goToToday} className="px-2 py-0.5 text-xs font-semibold rounded hover:bg-[var(--pz-surface-3)]" style={{ color: isViewingToday ? 'var(--pz-accent)' : 'var(--pz-text)' }}>
+              {format(parseISO(historyDate), 'MMM d, yyyy')}
+            </button>
+            <button onClick={goToNextDay} className="p-1 rounded hover:bg-[var(--pz-surface-3)]" title="Next day" disabled={isViewingToday}>
+              <ChevronRight size={15} style={{ color: isViewingToday ? 'var(--pz-text-faint)' : 'var(--pz-text-muted)' }} />
+            </button>
+          </div>
+
+          {!isViewingToday && (
+            <button onClick={goToToday} className="text-xs px-2 py-1 rounded font-semibold" style={{ background: 'var(--pz-accent)', color: '#fff' }}>
+              Today
+            </button>
+          )}
+
           <Button variant="outline" size="md" onClick={handleExport}>
             <Download size={14} />
             Export
@@ -367,8 +415,8 @@ export default function Attendance() {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                 {[
-                  { label: 'Check In', value: selectedSession.check_in ? format(new Date(selectedSession.check_in), 'hh:mm a') : '—' },
-                  { label: 'Check Out', value: selectedSession.check_out ? format(new Date(selectedSession.check_out), 'hh:mm a') : '—' },
+                  { label: 'Check In', value: selectedSession.check_in ? format(new Date(selectedSession.check_in), 'MMM dd hh:mm a') : '—' },
+                  { label: 'Check Out', value: selectedSession.check_out ? format(new Date(selectedSession.check_out), 'MMM dd hh:mm a') : '—' },
                 ].map(({ label, value }) => (
                   <div key={label} style={{ padding: '20px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', borderRadius: '10px', minHeight: '80px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                     <p style={{ fontSize: '12px', fontWeight: 400, color: 'var(--pz-text-muted)', margin: 0 }}>{label}</p>

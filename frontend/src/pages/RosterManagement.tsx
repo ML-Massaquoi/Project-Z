@@ -8,11 +8,13 @@ import {
 } from 'lucide-react'
 import { format, addMonths, subMonths } from 'date-fns'
 import { toast } from 'sonner'
-import { schedulingAPI, departmentsAPI, employeesAPI, rosterExportsAPI } from '@/api/client'
+import { schedulingAPI, departmentsAPI, employeesAPI, workforceAPI, rosterExportsAPI } from '@/api/client'
 import { rosterAPI, type ShiftPair, type ShiftPairMember } from '@/api/roster'
 import { TabBar } from '@/components/ui/PageHeader'
 import { Badge } from '@/components/ui/badge'
-import type { Department, Employee } from '@/types'
+import type { Department, Employee, DepartmentDetail } from '@/types'
+import { EnterpriseRosterGrid } from '@/components/shifts/EnterpriseRosterGrid'
+import type { RosterGridData } from '@/components/shifts/EnterpriseRosterGrid'
 
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
@@ -65,7 +67,7 @@ const s = {
 
 export default function RosterManagement() {
   const qc = useQueryClient()
-  const [tab, setTab] = useState<'calendar' | 'generate' | 'swaps' | 'employees' | 'pairs'>('calendar')
+  const [tab, setTab] = useState<'calendar' | 'generate' | 'swaps' | 'employees' | 'pairs' | 'groups'>('calendar')
   const [selectedDeptId, setSelectedDeptId] = useState<string>('')
   const [calendarMonth, setCalendarMonth] = useState(new Date())
   const [showCreatePair, setShowCreatePair] = useState<'calendar' | 'generate' | false>(false)
@@ -87,11 +89,12 @@ export default function RosterManagement() {
         </div>
         <TabBar
           tabs={[
-            { id: 'calendar',  label: 'Calendar',     icon: <Calendar size={14} /> },
-            { id: 'generate',  label: 'Generate',      icon: <RefreshCw size={14} /> },
-            { id: 'pairs',     label: 'Shift Pairs',   icon: <Users size={14} /> },
-            { id: 'swaps',     label: 'Shift Swaps',   icon: <ArrowLeftRight size={14} /> },
-            { id: 'employees', label: 'Employees',     icon: <Clock size={14} /> },
+            { id: 'calendar',  label: 'Calendar',       icon: <Calendar size={14} /> },
+            { id: 'generate',  label: 'Generate',        icon: <RefreshCw size={14} /> },
+            { id: 'groups',    label: 'Rotation Groups', icon: <Users size={14} /> },
+            { id: 'pairs',     label: 'Shift Pairs',     icon: <ArrowLeftRight size={14} /> },
+            { id: 'swaps',     label: 'Shift Swaps',     icon: <Clock size={14} /> },
+            { id: 'employees', label: 'Employees',       icon: <Clock size={14} /> },
           ]}
           activeTab={tab}
           onChange={t => setTab(t as typeof tab)}
@@ -113,6 +116,7 @@ export default function RosterManagement() {
 
       {tab === 'calendar' && <CalendarTab deptId={selectedDeptId || activeDept?.id || ''} month={calendarMonth} onMonthChange={setCalendarMonth} onShowCreatePair={() => setShowCreatePair('calendar')} />}
       {tab === 'generate' && <GenerateTab deptId={selectedDeptId || activeDept?.id || ''} departments={departments} onShowCreatePair={() => setShowCreatePair('generate')} />}
+      {tab === 'groups' && <GroupsTab deptId={selectedDeptId || activeDept?.id || ''} />}
       {tab === 'pairs' && <PairsTab deptId={selectedDeptId || activeDept?.id || ''} />}
       {tab === 'swaps' && <SwapsTab deptId={selectedDeptId || activeDept?.id || ''} />}
       {tab === 'employees' && <EmployeeTab deptId={selectedDeptId || activeDept?.id || ''} />}
@@ -356,12 +360,30 @@ function CalendarTab({ deptId, month, onMonthChange, onShowCreatePair }: { deptI
   const [exporting, setExporting] = useState<'csv' | 'excel' | 'pdf' | null>(null)
   const [confirmRegen, setConfirmRegen] = useState(false)
 
-  const { data, isLoading } = useQuery({
+  // ── Determine if department is rotating or fixed ──────────
+  const { data: deptDetail } = useQuery({
+    queryKey: ['dept-detail-type', deptId],
+    queryFn: async () => (await workforceAPI.departmentDetail(deptId)).data as DepartmentDetail,
+    enabled: !!deptId,
+  })
+  const isRotating = deptDetail?.department?.protocol_type === 'rotating'
+
+  // ── Calendar data (per-employee, used for fixed depts) ────
+  const { data, isLoading: calLoading } = useQuery({
     queryKey: ['sched-calendar', deptId, year, monthNum],
     queryFn: () => schedulingAPI.departmentCalendar(deptId, { year, month: monthNum }),
     enabled: !!deptId,
     select: (d) => d.data as CalendarData,
   })
+
+  // ── Grid data (group-based, used for rotating depts) ──────
+  const { data: gridData, isLoading: gridLoading } = useQuery({
+    queryKey: ['dept-grid', deptId, year, monthNum],
+    queryFn: async () => (await schedulingAPI.departmentGrid(deptId, { year, month: monthNum })).data as RosterGridData,
+    enabled: !!deptId && isRotating,
+  })
+
+  const isLoading = isRotating ? gridLoading : calLoading
 
   const invalidateRoster = () => {
     qc.invalidateQueries({ queryKey: ['sched-calendar', deptId, year, monthNum] })
@@ -424,8 +446,10 @@ function CalendarTab({ deptId, month, onMonthChange, onShowCreatePair }: { deptI
   const publications = pubsData ?? []
   const currentPub = publications.find(p => p.year === year && p.month === monthNum)
 
+  const hasSnapshot = isRotating ? !!gridData?.weeks?.length : !!data?.snapshot_id
+
   const handleExport = async (format: 'csv' | 'excel' | 'pdf') => {
-    if (!deptId || !data?.snapshot_id) { toast.error('No roster to export'); return }
+    if (!deptId) { toast.error('No roster to export'); return }
     setExporting(format)
     try {
       const fn = rosterExportsAPI[format]
@@ -451,37 +475,21 @@ function CalendarTab({ deptId, month, onMonthChange, onShowCreatePair }: { deptI
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {/* ── Legend & Status Bar ───────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <button onClick={() => onMonthChange(subMonths(month, 1))}
-            style={{ padding: '8px', borderRadius: '8px', border: '1px solid var(--pz-border)', background: 'var(--pz-surface-1)', color: 'var(--pz-text-muted)', cursor: 'pointer' }}>
-            <ChevronLeft size={16} />
-          </button>
-          <h3 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--pz-text)', width: '176px', textAlign: 'center', margin: 0 }}>
-            {format(month, 'MMMM yyyy')}
-          </h3>
-          <button onClick={() => onMonthChange(addMonths(month, 1))}
-            style={{ padding: '8px', borderRadius: '8px', border: '1px solid var(--pz-border)', background: 'var(--pz-surface-1)', color: 'var(--pz-text-muted)', cursor: 'pointer' }}>
-            <ChevronRight size={16} />
-          </button>
-        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           {Object.entries(ASSIGN_CONFIG).map(([key, cfg]) => (
             <span key={key} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '999px', background: cfg.bg, color: cfg.text, border: `1px solid ${cfg.border}` }}>
               {cfg.short} {cfg.label}
             </span>
           ))}
-          {data?.snapshot_id && (
-            <div style={{ display: 'flex', gap: '4px' }}>
-              {(['csv', 'excel', 'pdf'] as const).map(fmt => (
-                <button key={fmt} onClick={() => handleExport(fmt)} disabled={exporting === fmt}
-                  style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', borderRadius: '6px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', fontSize: '10px', fontWeight: 600, color: 'var(--pz-text-muted)', cursor: 'pointer', opacity: exporting === fmt ? 0.5 : 1 }}>
-                  <Download size={11} /> {fmt === 'excel' ? 'xlsx' : fmt.toUpperCase()}
-                </button>
-              ))}
-            </div>
-          )}
-          {data?.status && (
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {isRotating && gridData?.weeks?.length ? (
+            <span style={{ fontSize: '11px', color: 'var(--pz-text-muted)' }}>
+              Rotating schedule &middot; {gridData.department.name}
+            </span>
+          ) : data?.status && (
             <Badge size="sm" className={data.status === 'locked' ? 'bg-red-500/15 text-red-400' : data.status === 'published' ? 'bg-green-500/15 text-green-400' : 'bg-amber-500/15 text-amber-400'}>
               {data.status}
             </Badge>
@@ -489,12 +497,12 @@ function CalendarTab({ deptId, month, onMonthChange, onShowCreatePair }: { deptI
         </div>
       </div>
 
-      {/* Calendar Actions Bar */}
-      {data?.snapshot_id && (
+      {/* ── Calendar Actions Bar (shared) ────────────────── */}
+      {hasSnapshot && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderRadius: '10px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '12px', color: 'var(--pz-text-muted)' }}>
-              Roster generated for {format(month, 'MMMM yyyy')}
+              Roster for {format(month, 'MMMM yyyy')}
               {currentPub && <span style={{ marginLeft: '6px', padding: '2px 8px', borderRadius: '4px', fontSize: '10px', fontWeight: 600, textTransform: 'capitalize', background: currentPub.status === 'locked' ? 'rgba(239,68,68,0.15)' : currentPub.status === 'published' ? 'rgba(34,197,94,0.15)' : 'rgba(250,204,21,0.15)', color: currentPub.status === 'locked' ? '#EF4444' : currentPub.status === 'published' ? '#10B981' : '#F59E0B' }}>{currentPub.status}</span>}
             </span>
           </div>
@@ -534,8 +542,8 @@ function CalendarTab({ deptId, month, onMonthChange, onShowCreatePair }: { deptI
                 </button>
               </>
             ) : (
-              <button onClick={() => setConfirmClear(true)} disabled={!data?.snapshot_id || currentPub?.status === 'locked'}
-                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '8px', background: 'transparent', border: '1px solid var(--pz-border)', color: 'var(--pz-text-muted)', fontSize: '11px', fontWeight: 600, cursor: 'pointer', opacity: !data?.snapshot_id || currentPub?.status === 'locked' ? 0.4 : 1 }}
+              <button onClick={() => setConfirmClear(true)} disabled={!hasSnapshot || currentPub?.status === 'locked'}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '8px', background: 'transparent', border: '1px solid var(--pz-border)', color: 'var(--pz-text-muted)', fontSize: '11px', fontWeight: 600, cursor: 'pointer', opacity: !hasSnapshot || currentPub?.status === 'locked' ? 0.4 : 1 }}
                 title="Remove all roster entries for this month">
                 <Trash2 size={13} /> Clear Calendar
               </button>
@@ -544,17 +552,29 @@ function CalendarTab({ deptId, month, onMonthChange, onShowCreatePair }: { deptI
         </div>
       )}
 
-      {isLoading ? (
+      {/* ── Rotating dept → Enterprise Roster Grid ──────── */}
+      {isRotating ? (
+        <EnterpriseRosterGrid
+          data={gridData}
+          loading={isLoading}
+          month={month}
+          onMonthChange={onMonthChange}
+          onExport={handleExport}
+        />
+      ) : isLoading ? (
+        /* ── Loading skeleton (fixed dept) ─────────────── */
         <div style={{ ...s.sectionCard(), padding: '48px', textAlign: 'center' }}>
           <div className="skeleton" style={{ height: '256px', borderRadius: '12px' }} />
         </div>
       ) : !data?.snapshot_id ? (
+        /* ── No roster (fixed dept) ────────────────────── */
         <div style={{ ...s.sectionCard(), padding: '48px', textAlign: 'center' }}>
           <Calendar size={36} style={{ margin: '0 auto 12px', opacity: 0.3, color: 'var(--pz-text-muted)' }} />
           <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--pz-text-secondary)' }}>No roster for {format(month, 'MMMM yyyy')}</p>
           <p style={{ fontSize: '12px', color: 'var(--pz-text-muted)', marginTop: '4px' }}>Use the Generate tab to create one.</p>
         </div>
       ) : (
+        /* ── Fixed department → Employee per-row table ─── */
         <div style={{ ...s.sectionCard(true), overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
@@ -612,6 +632,181 @@ function CalendarTab({ deptId, month, onMonthChange, onShowCreatePair }: { deptI
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ── Rotation Groups Tab ───────────────────────────────── */
+
+type RotationGroup = {
+  id: string
+  department_id: string
+  name: string
+  protocol_offset: number
+  color: string | null
+  is_active: boolean
+  employee_count: number
+  employees: { id: string; code: string; name: string }[]
+}
+
+function GroupsTab({ deptId }: { deptId: string }) {
+  const qc = useQueryClient()
+  const [showAutoDistribute, setShowAutoDistribute] = useState(false)
+  const [numGroups, setNumGroups] = useState(4)
+  const [editingGroup, setEditingGroup] = useState<string | null>(null)
+  const [editOffset, setEditOffset] = useState(0)
+
+  const { data: groups, isLoading } = useQuery({
+    queryKey: ['rotation-groups', deptId],
+    queryFn: async () => (await schedulingAPI.rotationGroups(deptId)).data as RotationGroup[],
+    enabled: !!deptId,
+  })
+
+  const autoDistributeMut = useMutation({
+    mutationFn: () => schedulingAPI.autoDistribute(deptId, { num_groups: numGroups }),
+    onSuccess: () => {
+      toast.success(`Auto-distributed employees into ${numGroups} groups`)
+      qc.invalidateQueries({ queryKey: ['rotation-groups', deptId] })
+      setShowAutoDistribute(false)
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Auto-distribute failed'),
+  })
+
+  const deleteGroupMut = useMutation({
+    mutationFn: (id: string) => schedulingAPI.deleteRotationGroup(id),
+    onSuccess: () => {
+      toast.success('Group deleted')
+      qc.invalidateQueries({ queryKey: ['rotation-groups', deptId] })
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Failed to delete group'),
+  })
+
+  const updateOffsetMut = useMutation({
+    mutationFn: ({ id, offset }: { id: string; offset: number }) =>
+      schedulingAPI.updateRotationGroup(id, { protocol_offset: offset }),
+    onSuccess: () => {
+      toast.success('Protocol offset updated')
+      qc.invalidateQueries({ queryKey: ['rotation-groups', deptId] })
+      setEditingGroup(null)
+    },
+    onError: (e: any) => toast.error(e.response?.data?.detail || 'Failed to update offset'),
+  })
+
+  if (!deptId) return <p style={{ color: 'var(--pz-text-muted)', fontSize: '13px' }}>Select a department above.</p>
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {/* ── Actions ─────────────────────────── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+        <p style={{ fontSize: '13px', color: 'var(--pz-text-muted)', margin: 0 }}>
+          Rotation groups determine how employees cover day/night/off shifts.
+          Each group starts at a different position in the protocol sequence.
+        </p>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {showAutoDistribute ? (
+            <>
+              <select value={numGroups} onChange={e => setNumGroups(+e.target.value)}
+                style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--pz-border)', background: 'var(--pz-surface-1)', color: 'var(--pz-text)', fontSize: '12px' }}>
+                {[2, 3, 4, 5, 6, 8].map(n => <option key={n} value={n}>{n} Groups</option>)}
+              </select>
+              <button onClick={() => autoDistributeMut.mutate()} disabled={autoDistributeMut.isPending}
+                style={{ padding: '8px 14px', borderRadius: '8px', background: 'var(--pz-accent)', color: '#fff', border: 'none', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
+                {autoDistributeMut.isPending ? 'Distributing...' : 'Confirm'}
+              </button>
+              <button onClick={() => setShowAutoDistribute(false)}
+                style={{ padding: '8px 14px', borderRadius: '8px', background: 'var(--pz-surface-1)', border: '1px solid var(--pz-border)', color: 'var(--pz-text-secondary)', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button onClick={() => setShowAutoDistribute(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '8px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', color: 'var(--pz-text)', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
+              Auto-Distribute Employees
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Groups list ─────────────────────── */}
+      {isLoading ? (
+        <div style={{ ...s.sectionCard(), padding: '48px', textAlign: 'center' }}>
+          <div className="skeleton" style={{ height: '200px', borderRadius: '12px' }} />
+        </div>
+      ) : !groups?.length ? (
+        <div style={{ ...s.sectionCard(), padding: '48px', textAlign: 'center' }}>
+          <Users size={36} style={{ margin: '0 auto 12px', opacity: 0.3, color: 'var(--pz-text-muted)' }} />
+          <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--pz-text-secondary)' }}>No rotation groups</p>
+          <p style={{ fontSize: '12px', color: 'var(--pz-text-muted)', marginTop: '4px' }}>Use Auto-Distribute to create groups from active employees.</p>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {groups.map((g, i) => (
+            <div key={g.id} style={{
+              ...s.sectionCard(), padding: '16px 20px',
+              borderLeft: g.color ? `4px solid ${g.color}` : '4px solid var(--pz-accent)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h3 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--pz-text)', margin: 0 }}>{g.name}</h3>
+                    <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '999px', background: 'var(--pz-surface-2)', color: 'var(--pz-text-muted)' }}>
+                      {g.employee_count} {g.employee_count === 1 ? 'member' : 'members'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--pz-text-muted)' }}>Protocol offset:</span>
+                    {editingGroup === g.id ? (
+                      <>
+                        <input type="number" min={0} max={31} value={editOffset} onChange={e => setEditOffset(+e.target.value)}
+                          style={{ width: '50px', padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--pz-border)', background: 'var(--pz-surface-1)', color: 'var(--pz-text)', fontSize: '12px' }} />
+                        <button onClick={() => updateOffsetMut.mutate({ id: g.id, offset: editOffset })} disabled={updateOffsetMut.isPending}
+                          style={{ padding: '4px 8px', borderRadius: '6px', background: 'var(--pz-accent)', color: '#fff', border: 'none', fontSize: '10px', fontWeight: 600, cursor: 'pointer' }}>
+                          Save
+                        </button>
+                        <button onClick={() => setEditingGroup(null)}
+                          style={{ padding: '4px 8px', borderRadius: '6px', background: 'transparent', border: 'none', color: 'var(--pz-text-muted)', fontSize: '10px', cursor: 'pointer' }}>
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--pz-text)', fontFamily: 'monospace' }}>{g.protocol_offset}</span>
+                        <button onClick={() => { setEditingGroup(g.id); setEditOffset(g.protocol_offset) }}
+                          style={{ padding: '2px 6px', borderRadius: '4px', background: 'transparent', border: '1px solid var(--pz-border)', color: 'var(--pz-text-muted)', fontSize: '9px', cursor: 'pointer' }}>
+                          Edit
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <button onClick={() => deleteGroupMut.mutate(g.id)} disabled={deleteGroupMut.isPending}
+                  style={{ padding: '6px 10px', borderRadius: '6px', background: 'transparent', border: '1px solid var(--pz-border)', color: 'var(--pz-text-muted)', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--pz-danger-500)'; (e.currentTarget as HTMLElement).style.color = 'var(--pz-danger-500)' }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--pz-border)'; (e.currentTarget as HTMLElement).style.color = 'var(--pz-text-muted)' }}>
+                  <Trash2 size={13} /> Delete
+                </button>
+              </div>
+
+              {/* Group members */}
+              {g.employees.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--pz-border)' }}>
+                  {g.employees.map(emp => (
+                    <span key={emp.id} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '4px',
+                      padding: '4px 10px', borderRadius: '999px',
+                      background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)',
+                      fontSize: '11px', fontWeight: 500, color: 'var(--pz-text)',
+                    }}>
+                      {emp.name}
+                      <span style={{ fontSize: '9px', color: 'var(--pz-text-muted)' }}>{emp.code}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>

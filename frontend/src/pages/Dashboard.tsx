@@ -148,9 +148,9 @@ export default function Dashboard() {
   })
 
   const { data: liveData } = useQuery({
-    queryKey: ['attendance-live'],
-    queryFn: async () => (await attendanceAPI.live({ limit: 10 })).data,
-    refetchInterval: 15000,
+    queryKey: ['attendance-live', selectedDate],
+    queryFn: async () => (await attendanceAPI.live({ limit: 10, target_date: selectedDate })).data,
+    enabled: !!selectedDate,
   })
 
   const { data: devicesData } = useQuery({
@@ -566,7 +566,7 @@ export default function Dashboard() {
                     <th className="text-left py-3.5 px-4 text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--pz-text-muted)' }}>Employee</th>
                     <th className="text-left py-3.5 px-4 text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--pz-text-muted)' }}>Department</th>
                     <th className="text-left py-3.5 px-4 text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--pz-text-muted)' }}>Direction</th>
-                    <th className="text-left py-3.5 px-4 text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--pz-text-muted)' }}>Time</th>
+                    <th className="text-left py-3.5 px-4 text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--pz-text-muted)' }}>Date/Time</th>
                     <th className="text-left py-3.5 px-4 text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--pz-text-muted)' }}>Terminal</th>
                   </tr>
                 </thead>
@@ -609,7 +609,8 @@ export default function Dashboard() {
                         </StatusBadge>
                       </td>
                       <td className="py-3.5 px-4 text-sm font-mono tabular-nums" style={{ color: 'var(--pz-text-tertiary)' }}>
-                        {format(new Date(log.timestamp), 'hh:mm a')}
+                        <div>{format(new Date(log.timestamp), 'MMM dd')}</div>
+                        <div style={{ fontSize: '10px', color: 'var(--pz-text-muted)' }}>{format(new Date(log.timestamp), 'hh:mm:ss a')}</div>
                       </td>
                       <td className="py-3.5 px-4 text-xs font-mono" style={{ color: 'var(--pz-text-faint)' }}>
                         {log.device_name || log.device_ip}
@@ -825,7 +826,7 @@ export default function Dashboard() {
                       {item.activity_type.replace(/_/g, ' ')}
                     </p>
                     <p className="text-[10px] font-mono" style={{ color: 'var(--pz-text-muted)' }}>
-                      {item.ip_address || 'Unknown IP'} · {new Date(item.created_at).toLocaleTimeString()}
+                      {item.ip_address || 'Unknown IP'} · {format(new Date(item.created_at), 'MMM dd HH:mm:ss')}
                     </p>
                   </div>
               </div>

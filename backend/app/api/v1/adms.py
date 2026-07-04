@@ -46,7 +46,9 @@ settings = get_settings()
 
 # Throttle: only write last_seen to DB every 30s per device (getrequest fires ~1/sec)
 _last_seen_cache: dict[str, float] = {}
+_last_options_refresh: dict[str, float] = {}
 _LAST_SEEN_WRITE_INTERVAL = 30  # seconds
+_OPTIONS_REFRESH_INTERVAL = 3600  # send OPTIONS command to force re-read every hour
 
 
 async def _validate_device_ip(db: AsyncSession, serial_number: str, client_ip: str) -> bool:
@@ -207,10 +209,28 @@ async def adms_getrequest(
             # DB temporarily unavailable — log but don't crash
             logger.warning(f"[HEARTBEAT] DB update skipped for {SN}: {e}")
 
-    if INFO:
-        logger.info(f"[ADMS] Device reconnected | SN={SN} | INFO={INFO} | IP={client_ip}")
+    from datetime import datetime, timezone
+    now_utc = datetime.now(timezone.utc)
+    time_str = now_utc.strftime("%Y-%m-%d %H:%M:%S")
 
-    return Response(content="OK", media_type="text/plain")
+    response_lines = ["DUPKICK=0"]
+
+    # Sync device clock on every heartbeat (devices lose time on power loss)
+    response_lines.append(f"SETTIME {time_str}")
+
+    # Force options re-read periodically and on reconnect
+    now = time.time()
+    last_refresh = _last_options_refresh.get(SN, 0)
+    if INFO or (now - last_refresh >= _OPTIONS_REFRESH_INTERVAL):
+        _last_options_refresh[SN] = now
+        response_lines.append("OPTIONS")
+        if INFO:
+            logger.info(
+                f"[ADMS] Device reconnected | SN={SN} | INFO={INFO} | IP={client_ip}"
+            )
+
+    response_lines.append("OK")
+    return Response(content="\r\n".join(response_lines), media_type="text/plain")
 
 
 # ── Handshake ─────────────────────────────────────────────────

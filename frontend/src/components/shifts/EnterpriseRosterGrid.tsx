@@ -156,7 +156,7 @@ export function EnterpriseRosterGrid({ data, loading, month, onMonthChange, onEx
                   </thead>
                   <tbody>
                     {/* ── Rotation groups ────────────── */}
-                    {week.groups.map((grp, gi) => (
+                    {(week.groups ?? []).map((grp, gi) => (
                       <tr key={grp.name || gi} style={{
                         borderTop: '1px solid var(--pz-border)',
                         background: gi % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)',

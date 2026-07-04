@@ -61,6 +61,9 @@ from app.models.department_protocol import DepartmentProtocol
 from app.models.shift_swap_request import ShiftSwapRequest
 from app.models.roster_publication import RosterPublication
 
+# ── Rotation Engine (replaces ShiftPair) ────────────────────
+from app.models.rotation_group import RotationGroup, GroupAssignment
+
 # ── Employee Enrollment & Lifecycle ──────────────────────────
 from app.models.enrollment_session import EnrollmentSession
 from app.models.enrollment_event import EnrollmentEvent
@@ -149,4 +152,7 @@ __all__ = [
     "EnrollmentEvent",
     "FaceTemplate",
     "EmployeeStatusTransition",
+    # Rotation Engine (replaces ShiftPair)
+    "RotationGroup",
+    "GroupAssignment",
 ]

@@ -30,12 +30,14 @@ class AttendanceLogRepository(BaseRepository[AttendanceLog]):
         super().__init__(AttendanceLog, session)
 
     async def get_live_feed(
-        self, limit: int = 50, department_id: Optional[UUID] = None
+        self, limit: int = 50, department_id: Optional[UUID] = None,
+        target_date: Optional[date] = None,
     ) -> Sequence[AttendanceLog]:
         """
         Get latest attendance logs with employee and device info.
-        Shows ALL scans (no duplicate filter) — every scan is real.
+        If target_date is provided, only return scans from that day (UTC).
         """
+        from datetime import datetime, timezone
         query = (
             select(AttendanceLog)
             .options(
@@ -45,6 +47,13 @@ class AttendanceLogRepository(BaseRepository[AttendanceLog]):
             .order_by(AttendanceLog.timestamp.desc())
             .limit(limit)
         )
+        if target_date:
+            day_start = datetime.combine(target_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+            day_end = datetime.combine(target_date, datetime.max.time()).replace(tzinfo=timezone.utc)
+            query = query.where(
+                AttendanceLog.timestamp >= day_start,
+                AttendanceLog.timestamp <= day_end,
+            )
         if department_id:
             query = query.join(Employee).where(
                 Employee.department_id == department_id
