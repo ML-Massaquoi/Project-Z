@@ -3,11 +3,12 @@ Project Z - User and Role Models
 System authentication and RBAC authorization.
 """
 
+import datetime
 import enum
 import uuid
 from typing import Optional
 
-from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, String, Text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -238,7 +239,7 @@ class User(BaseModel):
     avatar_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True)
     failed_login_attempts: Mapped[int] = mapped_column(default=0)
-    locked_until: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    locked_until: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Foreign Keys
     role_id: Mapped[Optional[uuid.UUID]] = mapped_column(
