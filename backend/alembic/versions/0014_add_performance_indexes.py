@@ -15,19 +15,16 @@ depends_on = None
 
 def upgrade() -> None:
     # ── Attendance Sessions Indexes ───────────────────────────
-    # Covering index for daily attendance queries
     op.create_index(
         "ix_attendance_sessions_date_employee",
         "attendance_sessions",
         ["date", "employee_id"],
     )
-    # Index for shift-based queries
     op.create_index(
         "ix_attendance_sessions_shift_date_status",
         "attendance_sessions",
         ["shift_date", "status"],
     )
-    # Index for status-based filtering
     op.create_index(
         "ix_attendance_sessions_status_date",
         "attendance_sessions",
@@ -35,13 +32,11 @@ def upgrade() -> None:
     )
 
     # ── Scan Events Indexes ───────────────────────────────────
-    # Index for processing status queries (worker polls)
     op.create_index(
         "ix_scan_events_processing_status_created",
         "scan_events",
         ["processing_status", "created_at"],
     )
-    # Index for device-based queries
     op.create_index(
         "ix_scan_events_device_id_timestamp",
         "scan_events",
@@ -49,43 +44,35 @@ def upgrade() -> None:
     )
 
     # ── Employees Indexes ─────────────────────────────────────
-    # Covering index for department employee queries
     op.create_index(
         "ix_employees_department_status",
         "employees",
         ["department_id", "status"],
     )
-    # Index for code lookups
-    op.create_index(
-        "ix_employees_employee_code",
-        "employees",
-        ["employee_code"],
-        unique=True,
+    # Use raw SQL with IF NOT EXISTS — 0001 already creates non-unique version
+    op.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_employees_employee_code"
+        " ON employees (employee_code)"
     )
 
     # ── Devices Indexes ───────────────────────────────────────
-    # Index for online status queries
     op.create_index(
         "ix_devices_is_online_last_seen",
         "devices",
         ["is_online", "last_seen"],
     )
-    # Index for serial number lookups
-    op.create_index(
-        "ix_devices_serial_number",
-        "devices",
-        ["serial_number"],
-        unique=True,
+    # Use raw SQL with IF NOT EXISTS — 0001 already creates non-unique version
+    op.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_devices_serial_number"
+        " ON devices (serial_number)"
     )
 
     # ── Leave Requests Indexes ────────────────────────────────
-    # Index for status-based queries
     op.create_index(
         "ix_leave_requests_status_start_date",
         "leave_requests",
         ["status", "start_date"],
     )
-    # Index for employee leave queries
     op.create_index(
         "ix_leave_requests_employee_id_dates",
         "leave_requests",
@@ -93,13 +80,11 @@ def upgrade() -> None:
     )
 
     # ── Audit Logs Indexes ────────────────────────────────────
-    # Index for time-based queries
     op.create_index(
         "ix_audit_logs_created_at",
         "audit_logs",
         ["created_at"],
     )
-    # Composite index for filtered queries
     op.create_index(
         "ix_audit_logs_action_entity_created",
         "audit_logs",
@@ -107,11 +92,9 @@ def upgrade() -> None:
     )
 
     # ── Shift Templates Indexes ───────────────────────────────
-    op.create_index(
-        "ix_shift_templates_code",
-        "shift_templates",
-        ["code"],
-        unique=True,
+    op.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_shift_templates_code"
+        " ON shift_templates (code)"
     )
 
     # ── Department Shift Rules Indexes ────────────────────────
@@ -131,7 +114,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Drop indexes in reverse order
     op.drop_index("ix_employee_shift_assignments_employee_id", table_name="employee_shift_assignments")
     op.drop_index("ix_dept_shift_rules_department_id", table_name="dept_shift_rules")
     op.drop_index("ix_shift_templates_code", table_name="shift_templates")
