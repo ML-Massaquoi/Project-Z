@@ -1,0 +1,7 @@
+# Production environment files (not committed)
+.env
+
+# SSL certificates (generated per-deployment)
+*.pem
+*.crt
+*.key

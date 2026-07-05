@@ -3,35 +3,30 @@
 # directly on the host network interface.
 #
 # Usage:
-#   docker compose -f docker-compose.infra.yml up -d
+#   docker compose -f docker-compose.infra.yml --env-file docker/.env up -d
 #
-# Postgres is accessible at localhost:5432
+# Postgres is accessible at localhost:5433
 # Redis   is accessible at localhost:6379
 
-version: "3.9"
-
 services:
-
-  # ── PostgreSQL ────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
     container_name: projectz-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: projectz_db
-      POSTGRES_USER: projectz
-      POSTGRES_PASSWORD: "519016"
+      POSTGRES_DB: ${POSTGRES_DB:-projectz}
+      POSTGRES_USER: ${POSTGRES_USER:-projectz}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
     ports:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U projectz -d projectz_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-projectz} -d ${POSTGRES_DB:-projectz}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
-  # ── Redis ─────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     container_name: projectz-redis

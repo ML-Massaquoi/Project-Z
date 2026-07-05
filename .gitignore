@@ -1,17 +1,3 @@
-
-!docker/.env.example
-# Build
-# Coverage
-# Docker
-# Environment
-# IDE
-# Logs
-# Node
-# OS
-# OpenCode config
-# Python
-# Stale artifact files
-# Testing
 *$py.class
 *.egg
 *.egg-info/
@@ -44,6 +30,7 @@ build/
 coverage/
 desktop.ini
 dist/
+docker/.env
 docker/postgres_data/
 docker/redis_data/
 env/
@@ -51,6 +38,9 @@ frontend/dist/
 frontend/nul
 frontend/src/pages/_tmp_write.py
 htmlcov/
+infrastructure/nginx/ssl/*.pem
+infrastructure/nginx/ssl/*.crt
+infrastructure/nginx/ssl/*.key
 logs/
 node_modules/
 npm-debug.log*

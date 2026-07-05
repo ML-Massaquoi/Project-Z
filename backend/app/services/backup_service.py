@@ -74,8 +74,13 @@ class BackupService:
         job.file_path = str(file_path)
 
         try:
-            cmd = self._build_pg_dump_command(backup_type, str(file_path))
-            logger.info(f"Running backup: {' '.join(cmd)}")
+            cmd, password = self._build_pg_dump_command(backup_type, str(file_path))
+            safe_cmd = [arg for arg in cmd if not arg.startswith("--password")]
+            logger.info(f"Running backup: {' '.join(safe_cmd)}")
+
+            # Pass password via env var to avoid /proc exposure
+            env = os.environ.copy()
+            env["PGPASSWORD"] = password
 
             start = time.monotonic()
             result = await asyncio.to_thread(
@@ -83,6 +88,7 @@ class BackupService:
                 cmd,
                 capture_output=True,
                 text=True,
+                env=env,
                 timeout=3600,  # 1 hour max
             )
             elapsed = int(time.monotonic() - start)
@@ -241,8 +247,12 @@ class BackupService:
         )
         return result.scalar_one_or_none()
 
-    def _build_pg_dump_command(self, backup_type: BackupType, output_path: str) -> list[str]:
-        """Build the pg_dump command."""
+    def _build_pg_dump_command(self, backup_type: BackupType, output_path: str) -> tuple[list[str], str]:
+        """Build the pg_dump command.
+
+        Returns (cmd_list, password) where password should be passed
+        via PGPASSWORD env var to avoid /proc exposure.
+        """
         db_url = settings.DATABASE_URL_SYNC
         match = re.match(
             r"postgresql(?:\+\w+)?://([^:]+):([^@]+)@([^:]+):(\d+)/(.+)",
@@ -269,8 +279,7 @@ class BackupService:
         elif backup_type == BackupType.DATA_ONLY:
             cmd.append("--data-only")
 
-        # Set password via environment variable
-        return cmd
+        return cmd, password
 
     def _extract_db_name(self) -> str:
         match = re.search(r"/([^/?]+)(?:\?.*)?$", settings.DATABASE_URL)
