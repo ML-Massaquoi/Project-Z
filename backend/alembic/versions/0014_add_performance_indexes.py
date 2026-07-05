@@ -45,7 +45,7 @@ def upgrade() -> None:
     op.create_index(
         "ix_scan_events_device_id_timestamp",
         "scan_events",
-        ["device_id", "timestamp"],
+        ["device_id", "scan_timestamp"],
     )
 
     # ── Employees Indexes ─────────────────────────────────────
