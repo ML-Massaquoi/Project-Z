@@ -9,9 +9,12 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta, date
 
 import sqlalchemy as sa
+from pathlib import Path
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.adms import router as adms_router
 from app.api.v1.router import api_router
@@ -572,4 +575,19 @@ async def metrics_prometheus():
     return Response(
         content=request_metrics.get_prometheus_text(),
         media_type="text/plain; version=0.0.4; charset=utf-8",
+    )
+
+
+# ── Frontend Static Files ─────────────────────────────────────
+# Serve production frontend build from backend.
+# Build: cd frontend && npm run build
+# The frontend/dist directory must exist at startup.
+_frontend_dist = Path(__file__).parent.parent.parent / "frontend" / "dist"
+if _frontend_dist.exists():
+    logger.info(f"Serving frontend from {_frontend_dist}")
+    app.mount("/", StaticFiles(directory=str(_frontend_dist), html=True), name="frontend")
+else:
+    logger.warning(
+        f"Frontend dist not found at {_frontend_dist}. "
+        "Build it with: cd frontend && npm run build"
     )
