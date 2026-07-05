@@ -582,6 +582,8 @@ export const enrollmentAPI = {
     middle_name?: string; gender?: string; email?: string; phone?: string;
     position?: string; department_id?: string; employment_type?: string; shift_id?: string; device_id: string;
   }) => api.post('/enrollment/wizard/create-and-enroll', data),
+  triggerFace: (sessionId: string) =>
+    api.post(`/enrollment/wizard/trigger-face/${sessionId}`),
   wizardPollFingerprint: (sessionId: string, timeout?: number) => {
     const seconds = timeout || 45
     return api.post(

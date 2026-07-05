@@ -347,24 +347,34 @@ async def test_device_connection(
     if not device.ip_address:
         raise HTTPException(400, "Device has no IP address")
 
-    from app.services.sdk_service import ZKSDKService, get_device_lock
+    from app.services.sdk_service import ZKSDKService
+    from app.services.device_queue_manager import DeviceQueueManager
 
-    device_lock = get_device_lock(device.ip_address)
-    if device_lock.locked():
+    # Check if DeviceQueueManager worker is active
+    manager = await DeviceQueueManager.get_instance()
+    worker = manager._workers.get(device.ip_address)
+    if worker and worker.state.value == "busy":
         raise HTTPException(
             409,
-            f"Device {device.name} is busy with another operation. Wait and retry."
+            f"Device {device.name} is busy with {worker.current_job.job_type}. Wait and retry."
         )
 
-    async with device_lock:
-        sdk = ZKSDKService(
-            ip=device.ip_address,
-            port=device.sdk_port or 4370,
-            timeout=10,
+    # Use run_sdk_operations for exclusive access
+    def _test_connection(sdk):
+        return sdk.test_connection()
+
+    try:
+        result = await manager.run_sdk_operations(
+            device_ip=device.ip_address,
+            handler=_test_connection,
+            timeout=15,
         )
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, sdk.test_connection)
         result["device_name"] = device.name
         result["serial_number"] = device.serial_number
         result["enrollment_active"] = ZKSDKService.is_enrollment_active(device.ip_address)
         return result
+    except Exception as e:
+        raise HTTPException(
+            502,
+            f"Connection test failed: {e}"
+        )

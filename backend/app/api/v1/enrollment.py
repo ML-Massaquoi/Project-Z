@@ -648,16 +648,15 @@ async def wizard_poll_fingerprint(
     3. Waits for the physical fingerprint scan
     4. Returns the captured template
 
-    Uses per-device locking to prevent conflicts with SDK polling worker.
+    Uses DeviceQueueManager for exclusive device access.
     """
-    import asyncio
     import base64
 
     from app.models.enrollment_session import EnrollmentSession
     from app.models.device import Device
     from app.models.employee import Employee
     from app.models.employee_device_mapping import EmployeeDeviceMapping
-    from app.services.sdk_service import ZKSDKService, get_device_lock
+    from app.services.sdk_service import ZKSDKService
     from sqlalchemy import select, and_
 
     session = await db.get(EnrollmentSession, session_id)
@@ -688,37 +687,121 @@ async def wizard_poll_fingerprint(
             detail=f"Device {device.name} ({device_ip}:{device_port}) is not reachable. Check if the device is powered on and connected to the network. Error: {e}"
         )
 
-    # Mark enrollment active FIRST — workers check this flag and skip the device.
+    # Mark enrollment active — DeviceQueueManager workers check this flag and
+    # skip the device during in-progress enrollment.
     ZKSDKService.mark_enrollment_active(device_ip)
-
-    # MUST acquire the device lock — ZKTeco devices only support ONE TCP session.
-    # Workers check enrollment_active INSIDE their lock blocks before SDK operations,
-    # so they yield within milliseconds of the flag being set. Worst-case wait is
-    # bounded by a single in-flight SDK operation (~30s for pull_templates).
-    device_lock = get_device_lock(device_ip)
-    lock_acquired = False
-    try:
-        await asyncio.wait_for(device_lock.acquire(), timeout=90.0)
-        lock_acquired = True
-    except asyncio.TimeoutError:
-        ZKSDKService.mark_enrollment_inactive(device_ip)
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"Device {device.name} is busy with a long-running background sync. "
-                "Please wait 1-2 minutes for the sync to complete, then try again."
-            ),
-        )
 
     try:
         result = await _execute_fingerprint_enrollment(
             session, device, employee, device_ip, device_port, timeout, db
         )
         return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Enrollment failed: {str(e)}",
+        )
     finally:
         ZKSDKService.mark_enrollment_inactive(device_ip)
-        if lock_acquired:
-            device_lock.release()
+
+
+@router.post("/wizard/trigger-face/{session_id}")
+async def wizard_trigger_face(
+    session_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    _user=Depends(get_current_user),
+):
+    """
+    Trigger face enrollment on the device after fingerprint has been captured.
+
+    Uses DeviceQueueManager to send a face enrollment command to the device.
+    The device will enter face capture mode — the user should look at the camera.
+    The face template is stored locally on the device (not sent back to the system).
+
+    Returns immediately after the command is sent; the device handles face capture.
+    """
+    from app.models.enrollment_session import EnrollmentSession
+    from app.models.device import Device
+    from app.models.employee import Employee
+    from app.models.employee_device_mapping import EmployeeDeviceMapping
+    from app.services.device_queue_manager import DeviceQueueManager
+    from sqlalchemy import select, and_
+
+    session = await db.get(EnrollmentSession, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    device = await db.get(Device, session.device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    if not device.is_online:
+        raise HTTPException(status_code=400, detail="Device is not online")
+
+    employee = await db.get(Employee, session.employee_id)
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    device_ip = device.ip_address
+    device_port = device.sdk_port or 4370
+
+    # Resolve device user ID
+    device_user_id = employee.employee_code
+    mapping_result = await db.execute(
+        select(EmployeeDeviceMapping).where(
+            and_(
+                EmployeeDeviceMapping.employee_id == employee.id,
+                EmployeeDeviceMapping.device_id == device.id,
+            )
+        )
+    )
+    mapping = mapping_result.scalar_one_or_none()
+    if mapping and mapping.device_user_id:
+        device_user_id = mapping.device_user_id
+
+    # Update session status
+    if session.status not in ("fingerprint_captured", "waiting_for_face", "face_in_progress"):
+        session.status = "waiting_for_face"
+        session.face_status = "in_progress"
+        await db.flush()
+
+    # Send face enrollment command via DeviceQueueManager
+    manager = await DeviceQueueManager.get_instance()
+    try:
+        result = await manager.execute_now(
+            device_ip=device_ip,
+            job_type="enroll_face",
+            payload={"user_id": device_user_id},
+        )
+
+        if result:
+            session.status = "face_in_progress"
+            await db.flush()
+            await db.commit()
+
+            await ws_manager.broadcast("enrollment.face.started", {
+                "session_id": str(session_id),
+                "employee_id": str(session.employee_id),
+                "device_ip": device_ip,
+                "message": "Face enrollment started. Please look at the device camera.",
+            })
+
+            return {"status": "triggered", "message": "Face enrollment command sent to device"}
+        else:
+            # Face enrollment command failed — allow proceeding without it
+            logger.warning(f"Face enrollment command rejected by device {device_ip}")
+            return {
+                "status": "not_supported",
+                "message": "Device may not support SDK face enrollment. Please enroll face manually via device menu.",
+            }
+
+    except Exception as e:
+        logger.error(f"Face enrollment trigger failed for session {session_id}: {e}")
+        return {
+            "status": "error",
+            "message": f"Failed to trigger face enrollment: {str(e)}",
+        }
 
 
 async def _auto_sync_after_fingerprint(
@@ -822,13 +905,11 @@ async def _execute_fingerprint_enrollment(
     session, device, employee, device_ip: str, device_port: int, timeout: int, db
 ) -> dict:
     """
-    Active fingerprint enrollment using CMD_STARTENROLL (verified on ZMM220_TFT).
+    Active fingerprint enrollment using the DeviceQueueManager.
 
-    Based on verified testing with RONASOFT MX-710 (ZMM220_TFT):
-      - CMD_STARTENROLL IS supported
-      - enroll_user() returns False when session ends (not reliable for success detection)
-      - Templates ARE captured on the device even when return is False
-      - Must verify enrollment by checking templates afterward
+    Uses run_sdk_operations for exclusive device access, which pauses the
+    device worker (preventing background polling conflicts) and manages
+    the TCP connection lifecycle.
 
     Flow:
       1. Register the user on the device
@@ -836,36 +917,10 @@ async def _execute_fingerprint_enrollment(
       3. Send enroll_user() command (blocks until finger scanned or timeout)
       4. Verify by checking templates after command returns
     """
-    import asyncio
-    import base64
     import hashlib
-    import time
 
     from app.models.employee_device_mapping import EmployeeDeviceMapping
-    from app.services.sdk_service import ZKSDKService
-    from sqlalchemy import select, and_
-
-    sdk = ZKSDKService(device_ip, device_port, timeout=120)
-
-    try:
-      return await _execute_fingerprint_enrollment_inner(sdk, session, device, employee, device_ip, device_port, timeout, db)
-    finally:
-      try:
-          sdk.disconnect()
-      except Exception:
-          pass
-
-
-async def _execute_fingerprint_enrollment_inner(
-    sdk, session, device, employee, device_ip: str, device_port: int, timeout: int, db
-) -> dict:
-    import asyncio
-    import base64
-    import hashlib
-    import time
-
-    from app.models.employee_device_mapping import EmployeeDeviceMapping
-    from app.services.sdk_service import ZKSDKService
+    from app.services.device_queue_manager import DeviceQueueManager
     from sqlalchemy import select, and_
 
     device_uid = None
@@ -883,87 +938,34 @@ async def _execute_fingerprint_enrollment_inner(
     if mapping:
         device_user_id = mapping.device_user_id or employee.employee_code
 
-    loop = asyncio.get_event_loop()
+    # Build payload for the SDK handler
+    payload = {
+        "device_user_id": device_user_id,
+        "employee_code": employee.employee_code,
+        "employee_name": employee.full_name,
+        "timeout": timeout,
+        "session_id": str(session.id),
+        "employee_id": str(employee.id),
+    }
 
-    # Phase 1: Connect, find/register user on device
-    # Data operations (get_users, set_user, get_templates) use disable_device
-    # to prevent real-time events from interfering. enroll_user ALSO needs
-    # disable_device on ZMM220_TFT — without it the device rejects CMD_STARTENROLL.
-    try:
-        conn = await loop.run_in_executor(None, sdk._connect_with_retry, 3, 1.5)
-        existing_users = await loop.run_in_executor(None, conn.get_users)
+    manager = await DeviceQueueManager.get_instance()
+    result = await manager.run_sdk_operations(
+        device_ip=device_ip,
+        port=device_port,
+        timeout=timeout + 60,
+        handler=lambda sdk: _fingerprint_enrollment_handler(sdk, payload),
+    )
 
-        for u in existing_users:
-            if u.user_id == device_user_id:
-                device_uid = u.uid
-                break
+    # Handle errors
+    if result.get("status") == "error":
+        error_msg = result.get("error", "Unknown SDK error")
+        logger.error(f"[EnrollmentWizard] SDK handler error: {error_msg}")
+        raise HTTPException(status_code=500, detail=error_msg)
 
-        if device_uid is None:
-            existing_uids = {u.uid for u in existing_users}
-            device_uid = max(existing_uids) + 1 if existing_uids else 1
+    device_uid = result.get("device_uid")
+    finger_index = result.get("finger_index", 0)
 
-            def _create_user():
-                conn.disable_device()
-                conn.set_user(
-                    uid=device_uid,
-                    name=employee.full_name[:8],
-                    privilege=0,
-                    password="",
-                    group_id="",
-                    user_id=device_user_id,
-                    card=0,
-                )
-                conn.enable_device()
-
-            await loop.run_in_executor(None, _create_user)
-            logger.info(
-                f"[EnrollmentWizard] Registered employee {employee.employee_code} "
-                f"on device as uid={device_uid}"
-            )
-
-        # Record baseline templates BEFORE enrollment to detect new ones.
-        all_templates = await loop.run_in_executor(None, sdk.get_templates)
-        baseline_hashes = {}
-        baseline_count = 0
-        for t in all_templates:
-            if t["uid"] == device_uid and t["valid"] and t["template"]:
-                key = (t["uid"], t["fid"])
-                baseline_hashes[key] = hashlib.md5(t["template"]).hexdigest()
-                baseline_count += 1
-        logger.info(
-            f"[EnrollmentWizard] Baseline templates for uid={device_uid}: "
-            f"{baseline_count} templates"
-        )
-
-        # Disconnect and reconnect fresh before enrollment
-        # to ensure a clean TCP session for CMD_STARTENROLL.
-        await loop.run_in_executor(None, sdk.disconnect)
-        await asyncio.sleep(0.5)
-        conn = await loop.run_in_executor(None, sdk._connect_with_retry, 2, 1.0)
-
-        # Re-register user on fresh connection with proper disable/enable wrapping
-        def _re_set_user():
-            conn.disable_device()
-            conn.set_user(
-                uid=device_uid,
-                name=employee.full_name[:8],
-                privilege=0,
-                password="",
-                group_id="",
-                user_id=device_user_id,
-                card=0,
-            )
-            conn.enable_device()
-
-        await loop.run_in_executor(None, _re_set_user)
-
-    except Exception as e:
-        sdk.disconnect()
-        logger.error(f"[EnrollmentWizard] Failed to setup user on device: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to setup user on device: {e}")
-
-    # Phase 2: Send enrollment command (active enrollment)
-    # Broadcast enrollment started event
+    # Broadcast enrollment started
     await ws_manager.broadcast("enrollment.fingerprint.started", {
         "session_id": str(session.id),
         "employee_id": str(session.employee_id),
@@ -972,167 +974,33 @@ async def _execute_fingerprint_enrollment_inner(
         "message": "Device entered enrollment mode. Please place your finger on the scanner.",
     })
 
-    logger.info(
-        f"[EnrollmentWizard] Sending enrollment command to {device_ip} "
-        f"uid={device_uid}, user_id={device_user_id} (timeout={timeout}s)"
-    )
-
-    # Determine which finger indexes are already taken to avoid conflicts
-    existing_fids = {t["fid"] for t in all_templates if t["uid"] == device_uid and t["valid"]}
-    finger_index = 0
-    while finger_index in existing_fids and finger_index < 10:
-        finger_index += 1
-    if finger_index >= 10:
-        finger_index = 0  # All fingers taken, try 0 anyway (device may overwrite)
-    logger.info(
-        f"[EnrollmentWizard] Using finger_index={finger_index} for enrollment "
-        f"(existing fids on device: {sorted(existing_fids)})"
-    )
-
-    # Send enrollment command in a thread (it blocks waiting for finger scan).
-    # CRITICAL: We must WAIT for the thread to finish before creating any new
-    # SDK connections for verification. ZKTeco devices only support ONE TCP
-    # session — a second connection would kick the first, causing "timed out".
-    #
-    # ZMM220_TFT requires disable_device before enroll_user. Despite the name,
-    # disable_device on this firmware does NOT prevent the enrollment prompt —
-    # it stops real-time event polling which would otherwise interfere with the
-    # CMD_STARTENROLL command. Without disable_device, the device rejects the
-    # enrollment command with "Cant Enroll user".
-    import threading
-    enrollment_result = {"completed": False, "error": None}
-    enrollment_done = threading.Event()
-
-    def do_enrollment(fid: int):
-        try:
-            conn = sdk._get_connection()
-            conn.disable_device()
-            try:
-                result = conn.enroll_user(uid=device_uid, temp_id=fid, user_id=device_user_id)
-                enrollment_result["completed"] = True
-                logger.info(f"[EnrollmentWizard] enroll_user(fid={fid}) returned: {result}")
-            finally:
-                try:
-                    conn.enable_device()
-                except Exception:
-                    pass
-        except Exception as e:
-            enrollment_result["error"] = str(e)
-            logger.error(f"[EnrollmentWizard] Enrollment command error: {e}")
-        finally:
-            enrollment_done.set()
-
-    # Start enrollment thread, then wait for it to COMPLETE (not just timeout).
-    # enroll_user() blocks on device until finger scanned or device-side timeout.
-    # CRITICAL: We MUST wait for the thread to fully finish before creating any new
-    # SDK connections for verification. ZKTeco devices only support ONE TCP
-    # session — a second connection would kick the first, causing "timed out".
-    thread = threading.Thread(target=do_enrollment, args=(finger_index,), daemon=True)
-    thread.start()
-
-    # Wait generously — enroll_user blocks until device timeout (~60s).
-    # Add large buffer so we never proceed to verification while enrollment thread is alive.
-    await asyncio.get_event_loop().run_in_executor(
-        None,
-        lambda: enrollment_done.wait(timeout=timeout + 60)
-    )
-
-    # Double-check: if thread is still alive, wait a bit more
-    if thread.is_alive():
-        logger.warning("[EnrollmentWizard] Enrollment thread still alive after wait, waiting 5s more")
-        await asyncio.get_event_loop().run_in_executor(
-            None,
-            lambda: enrollment_done.wait(timeout=5)
+    if result.get("status") == "captured":
+        template = result
+        logger.info(
+            f"[EnrollmentWizard] Fingerprint captured: "
+            f"uid={template['device_uid']}, fid={template['finger_index']}"
         )
 
-    # Thread has finished. Disconnect the enrollment SDK to free the TCP session
-    # before creating a new connection for verification.
-    try:
-        sdk.disconnect()
-    except Exception:
-        pass
-    await asyncio.sleep(0.5)
+        await ws_manager.broadcast("enrollment.fingerprint.saved", {
+            "session_id": str(session.id),
+            "employee_id": str(session.employee_id),
+            "finger_index": template["finger_index"],
+            "message": "Fingerprint captured and verified successfully.",
+        })
 
-    if enrollment_result["error"]:
-        logger.warning(
-            f"[EnrollmentWizard] Enrollment command reported error: {enrollment_result['error']}, "
-            f"but continuing to verification phase — templates may still have been captured"
-        )
+        return {
+            "status": "captured",
+            "template_data": template["template_data"],
+            "finger_index": template["finger_index"],
+            "quality": template.get("quality", 0),
+            "device_user_id": template["device_user_id"],
+            "device_uid": template["device_uid"],
+        }
 
-    # Phase 3: Verify enrollment by checking templates with retry
-    # The device needs time to finalize template storage after the scan.
-    MAX_VERIFY_RETRIES = 5
-    VERIFY_DELAY_SECONDS = 2
-
-    for attempt in range(1, MAX_VERIFY_RETRIES + 1):
-        await asyncio.sleep(VERIFY_DELAY_SECONDS)
-
-        try:
-            # Reconnect to verify templates
-            verify_sdk = ZKSDKService(device_ip, device_port, timeout=15)
-            await loop.run_in_executor(None, verify_sdk._connect_with_retry, 2, 1.0)
-
-            all_templates = await loop.run_in_executor(None, verify_sdk.get_templates)
-            user_templates = [t for t in all_templates if t["uid"] == device_uid and t["valid"] and t["template"]]
-
-            # Find new or changed templates
-            captured_templates = []
-            for t in user_templates:
-                key = (t["uid"], t["fid"])
-                current_hash = hashlib.md5(t["template"]).hexdigest()
-                if key not in baseline_hashes or baseline_hashes[key] != current_hash:
-                    template_bytes = t["template"]
-                    template_b64 = base64.b64encode(template_bytes).decode() if isinstance(template_bytes, bytes) else str(template_bytes)
-                    captured_templates.append({
-                        "template_data": template_b64,
-                        "finger_index": t["fid"],
-                        "quality": 0,
-                    })
-
-            verify_sdk.disconnect()
-
-            if captured_templates:
-                template = captured_templates[0]
-                logger.info(
-                    f"[EnrollmentWizard] Fingerprint verified on attempt {attempt}: "
-                    f"uid={device_uid}, fid={template['finger_index']}, "
-                    f"new_templates={len(captured_templates)}"
-                )
-
-                await ws_manager.broadcast("enrollment.fingerprint.saved", {
-                    "session_id": str(session.id),
-                    "employee_id": str(session.employee_id),
-                    "finger_index": template["finger_index"],
-                    "template_count": len(user_templates),
-                    "message": "Fingerprint captured and verified successfully.",
-                })
-
-                return {
-                    "status": "captured",
-                    "template_data": template["template_data"],
-                    "finger_index": template["finger_index"],
-                    "quality": template["quality"],
-                    "device_user_id": device_user_id,
-                    "device_uid": device_uid,
-                }
-            else:
-                logger.info(
-                    f"[EnrollmentWizard] Verification attempt {attempt}/{MAX_VERIFY_RETRIES}: "
-                    f"no new templates yet (found {len(user_templates)} existing)"
-                )
-
-        except Exception as e:
-            logger.warning(
-                f"[EnrollmentWizard] Verification attempt {attempt} error: {e}"
-            )
-
-    # All retries exhausted — no template detected
+    # Timeout
     logger.warning(
-        f"[EnrollmentWizard] No new templates detected after {MAX_VERIFY_RETRIES} attempts "
-        f"for uid={device_uid}."
+        f"[EnrollmentWizard] No fingerprint detected for uid={device_uid}."
     )
-
-    # Broadcast timeout event
     await ws_manager.broadcast("enrollment.fingerprint.timeout", {
         "session_id": str(session.id),
         "employee_id": str(session.employee_id),
@@ -1143,4 +1011,193 @@ async def _execute_fingerprint_enrollment_inner(
     return {
         "status": "timeout",
         "message": "No fingerprint detected. Please place your finger on the device scanner and try again.",
+    }
+
+
+def _fingerprint_enrollment_handler(sdk, payload: dict) -> dict:
+    """
+    Synchronous SDK handler for fingerprint enrollment.
+    Runs in a thread executor via run_sdk_operations.
+
+    Does ALL device communication. Returns template data or timeout/error.
+    """
+    import hashlib
+    import base64
+    import time
+    import logging
+    import threading
+
+    logger = logging.getLogger(__name__)
+
+    device_user_id = payload["device_user_id"]
+    employee_code = payload["employee_code"]
+    employee_name = payload["employee_name"]
+    timeout = payload.get("timeout", 60)
+
+    device_uid = None
+
+    # Phase 1: Connect, find/register user on device
+    try:
+        sdk._connect_with_retry(3, 1.5)
+        existing_users = sdk.get_users()
+
+        for u in existing_users:
+            if u.get("user_id", "") == device_user_id:
+                device_uid = u.get("uid")
+                break
+
+        if device_uid is None:
+            existing_uids = {u["uid"] for u in existing_users if "uid" in u}
+            device_uid = max(existing_uids) + 1 if existing_uids else 1
+            sdk.set_user(
+                uid=device_uid,
+                name=employee_name[:8],
+                privilege=0,
+                password="",
+                group_id="",
+                user_id=device_user_id,
+                card=0,
+            )
+            logger.info(
+                f"[EnrollmentSDK] Created user uid={device_uid} for {employee_code}"
+            )
+
+        # Record baseline templates before enrollment
+        all_templates = sdk.get_templates()
+        baseline_hashes = {}
+        baseline_count = 0
+        for t in all_templates:
+            if t["uid"] == device_uid and t["valid"] and t.get("template"):
+                key = (t["uid"], t["fid"])
+                baseline_hashes[key] = hashlib.md5(t["template"]).hexdigest()
+                baseline_count += 1
+        logger.info(
+            f"[EnrollmentSDK] Baseline templates for uid={device_uid}: "
+            f"{baseline_count} templates"
+        )
+
+        # Disconnect and reconnect fresh before enrollment
+        sdk.disconnect()
+        time.sleep(0.5)
+        sdk._connect_with_retry(2, 1.0)
+
+        # Re-register user on fresh connection
+        sdk.set_user(
+            uid=device_uid,
+            name=employee_name[:8],
+            privilege=0,
+            password="",
+            group_id="",
+            user_id=device_user_id,
+            card=0,
+        )
+
+    except Exception as e:
+        try:
+            sdk.disconnect()
+        except Exception:
+            pass
+        logger.error(f"[EnrollmentSDK] Failed to setup user on device: {e}")
+        return {"status": "error", "error": f"Failed to setup user on device: {e}"}
+
+    # Determine finger index
+    existing_fids = {t["fid"] for t in all_templates if t["uid"] == device_uid and t["valid"]}
+    finger_index = 0
+    while finger_index in existing_fids and finger_index < 10:
+        finger_index += 1
+    if finger_index >= 10:
+        finger_index = 0
+    logger.info(
+        f"[EnrollmentSDK] Using finger_index={finger_index} for enrollment "
+        f"(existing fids on device: {sorted(existing_fids)})"
+    )
+
+    # Phase 2: Send enrollment command
+    # ZMM220_TFT requires disable_device before enroll_user
+    enrollment_error = None
+
+    try:
+        conn = sdk._get_connection()
+        conn.disable_device()
+        try:
+            enroll_result = conn.enroll_user(uid=device_uid, temp_id=finger_index, user_id=device_user_id)
+            logger.info(f"[EnrollmentSDK] enroll_user(fid={finger_index}) returned: {enroll_result}")
+        finally:
+            try:
+                conn.enable_device()
+            except Exception:
+                pass
+    except Exception as e:
+        enrollment_error = str(e)
+        logger.error(f"[EnrollmentSDK] Enrollment command error: {e}")
+
+    # Disconnect enrollment connection before verification
+    try:
+        sdk.disconnect()
+    except Exception:
+        pass
+    time.sleep(0.5)
+
+    if enrollment_error:
+        logger.warning(
+            f"[EnrollmentSDK] Enrollment error: {enrollment_error}, "
+            f"but continuing verification — templates may still have been captured"
+        )
+
+    # Phase 3: Verify enrollment by checking templates with retry
+    MAX_VERIFY_RETRIES = 5
+    VERIFY_DELAY = 2
+
+    for attempt in range(1, MAX_VERIFY_RETRIES + 1):
+        time.sleep(VERIFY_DELAY)
+        try:
+            sdk._connect_with_retry(2, 1.0)
+            all_templates = sdk.get_templates()
+            user_templates = [t for t in all_templates if t["uid"] == device_uid and t["valid"] and t.get("template")]
+
+            captured = []
+            for t in user_templates:
+                key = (t["uid"], t["fid"])
+                current_hash = hashlib.md5(t["template"]).hexdigest()
+                if key not in baseline_hashes or baseline_hashes[key] != current_hash:
+                    template_bytes = t["template"]
+                    template_b64 = (
+                        base64.b64encode(template_bytes).decode()
+                        if isinstance(template_bytes, bytes)
+                        else str(template_bytes)
+                    )
+                    captured.append({
+                        "template_data": template_b64,
+                        "finger_index": t["fid"],
+                        "quality": 0,
+                    })
+
+            if captured:
+                tmpl = captured[0]
+                logger.info(
+                    f"[EnrollmentSDK] Verified on attempt {attempt}: "
+                    f"uid={device_uid}, fid={tmpl['finger_index']}"
+                )
+                return {
+                    "status": "captured",
+                    "template_data": tmpl["template_data"],
+                    "finger_index": tmpl["finger_index"],
+                    "quality": tmpl["quality"],
+                    "device_user_id": device_user_id,
+                    "device_uid": device_uid,
+                }
+
+            logger.info(
+                f"[EnrollmentSDK] Verify attempt {attempt}/{MAX_VERIFY_RETRIES}: "
+                f"no new templates yet"
+            )
+
+        except Exception as e:
+            logger.warning(f"[EnrollmentSDK] Verify attempt {attempt} error: {e}")
+
+    return {
+        "status": "timeout",
+        "error": enrollment_error,
+        "device_uid": device_uid,
+        "device_user_id": device_user_id,
     }

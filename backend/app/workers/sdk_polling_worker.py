@@ -1,16 +1,25 @@
 """
 Project Z - SDK Attendance Polling Worker
-Polls biometric devices via TCP SDK (pyzk) to pull attendance records.
+Polls biometric devices via TCP SDK using the DeviceQueueManager.
 
-Replaces ADMS push for devices that don't support online push.
-Connects via TCP port 4370, reads attendance, stores in database.
+Instead of opening its own TCP connections (which conflicts with the
+"one TCP connection per device" constraint), this worker enqueues
+attendance fetch jobs via the DeviceQueueManager and processes results.
 
-Deduplication: uses device.last_activity as persistent watermark to avoid re-ingesting.
+Architecture:
+  run_sdk_polling_worker (background loop)
+    └─ poll_device (per device)
+         └─ DeviceQueueManager.enqueue("get_attendance")
+              └─ DeviceWorker (owns TCP connection)
+                   └─ returns attendance records
+         └─ Process results in DB
+         └─ Update watermark
+         └─ Broadcast WebSocket event
 """
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -20,16 +29,19 @@ POLL_INTERVAL_SECONDS = 30
 
 async def poll_device(device, db_session_factory) -> dict:
     """
-    Poll a single device for attendance records via TCP SDK.
+    Poll a single device for attendance records via the DeviceQueueManager.
     Returns a summary dict.
 
-    Skips devices with active enrollment sessions to avoid TCP connection conflicts.
-    ZKTeco devices only support ONE concurrent TCP connection.
+    Skips devices with active enrollment sessions.
     """
     from app.services.ingestion_service import IngestionService
     from app.services.device_service import DeviceService
     from app.models.scan_event import ScanResult
-    from app.services.sdk_service import ZKSDKService, get_device_lock
+    from app.services.sdk_service import ZKSDKService
+    from app.services.device_queue_manager import (
+        DeviceQueueManager,
+        JobPriority,
+    )
 
     result = {
         "device_id": str(device.id),
@@ -44,14 +56,14 @@ async def poll_device(device, db_session_factory) -> dict:
         result["errors"].append("No IP address configured")
         return result
 
-    # Skip devices with active enrollment — they hold the only TCP session
+    # Skip devices with active enrollment — worker is busy with the enrollment session
     if ZKSDKService.is_enrollment_active(device.ip_address):
         logger.debug(
             f"[SDK Poll] Skipping {device.name} — enrollment in progress"
         )
         return result
 
-    # Quick TCP probe BEFORE lock — avoids blocking enrollment flow while probing.
+    # Quick TCP probe before enqueuing — skip unreachable devices immediately
     import socket
     try:
         with socket.create_connection(
@@ -65,36 +77,50 @@ async def poll_device(device, db_session_factory) -> dict:
         )
         return result
 
-    # Acquire per-device lock — now held for minimum time (SDK operations only).
-    device_lock = get_device_lock(device.ip_address)
-    async with device_lock:
-        # Check enrollment inside the lock — may have started while we probed
-        if ZKSDKService.is_enrollment_active(device.ip_address):
-            logger.debug(
-                f"[SDK Poll] Skipping {device.name} — enrollment in progress"
-            )
-            return result
+    # Fallback: check if legacy lock is held (non-migrated services)
+    from app.services.sdk_service import get_device_lock
+    legacy_lock = get_device_lock(device.ip_address)
+    if legacy_lock.locked():
+        logger.debug(
+            f"[SDK Poll] Skipping {device.name} — legacy device lock held"
+        )
+        return result
 
-        # Run synchronous pyzk in a thread pool to avoid blocking the event loop
-        try:
-            loop = asyncio.get_event_loop()
-            device_records = await loop.run_in_executor(
-                None, _fetch_attendance_from_device, device.ip_address, device.sdk_port or 4370
-            )
-        except Exception as e:
-            result["errors"].append(f"SDK connection failed: {e}")
-            logger.warning(
-                f"[SDK Poll] Connection failed | device={device.name} "
-                f"({device.serial_number}) | IP={device.ip_address} | error={e}"
-            )
-            return result
+    # Enqueue attendance fetch via the queue manager
+    manager = await DeviceQueueManager.get_instance()
+    job = await manager.enqueue(
+        device_ip=device.ip_address,
+        priority=JobPriority.ATTENDANCE_POLL,
+        job_type="get_attendance",
+        payload={"serial_number": device.serial_number},
+    )
+
+    try:
+        device_records = await job.wait_for_result(timeout=30.0)
+    except asyncio.TimeoutError:
+        result["errors"].append("SDK operation timed out")
+        logger.warning(
+            f"[SDK Poll] Attendance fetch timed out | device={device.name} "
+            f"({device.serial_number}) | IP={device.ip_address}"
+        )
+        return result
+
+    # Handle errors
+    if isinstance(device_records, Exception):
+        result["errors"].append(f"SDK connection failed: {device_records}")
+        logger.warning(
+            f"[SDK Poll] Connection failed | device={device.name} "
+            f"({device.serial_number}) | IP={device.ip_address} | error={device_records}"
+        )
+        return result
 
     if not device_records:
         logger.debug(f"[SDK Poll] No records | device={device.serial_number}")
         return result
 
-    # Filter out old records (>90 days) — no partition exists for them
-    from datetime import timedelta
+    result["records_found"] = len(device_records)
+
+    # Filter out records older than 90 days
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(days=90)
     filtered = []
@@ -102,22 +128,27 @@ async def poll_device(device, db_session_factory) -> dict:
         ts = r.get("timestamp")
         if ts is None:
             continue
-        # Make naive datetimes timezone-aware (assume UTC)
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=timezone.utc)
         if ts > cutoff:
-            r["timestamp"] = ts  # store normalized timestamp
+            r["timestamp"] = ts
             filtered.append(r)
     device_records = filtered
 
-    # Filter out already-processed records using database watermark
+    if not device_records:
+        logger.debug(f"[SDK Poll] All records stale | device={device.serial_number}")
+        return result
+
+    # Filter by database watermark
     last_ts = None
     if device.last_activity:
         try:
-            last_ts = datetime.fromisoformat(device.last_activity).replace(tzinfo=timezone.utc)
+            last_ts = datetime.fromisoformat(device.last_activity).replace(
+                tzinfo=timezone.utc
+            )
         except (ValueError, TypeError):
             pass
-    
+
     if last_ts:
         device_records = [
             r for r in device_records
@@ -133,16 +164,16 @@ async def poll_device(device, db_session_factory) -> dict:
     # Process each record
     async with db_session_factory() as db:
         try:
-            # Update device status
             device_service = DeviceService(db)
-            await device_service.handle_device_connection(device.serial_number, device.ip_address)
+            await device_service.handle_device_connection(
+                device.serial_number, device.ip_address
+            )
 
             ingestion = IngestionService(db)
             unknown_users = set()
 
             for rec in device_records:
                 try:
-                    # Parse timestamp
                     scan_timestamp = rec.get("timestamp")
                     if isinstance(scan_timestamp, str):
                         from app.utils.adms_parser import _parse_timestamp
@@ -150,34 +181,33 @@ async def poll_device(device, db_session_factory) -> dict:
                     if scan_timestamp is None:
                         continue
 
-                    # Make timezone-aware if naive
                     if scan_timestamp.tzinfo is None:
-                        scan_timestamp = scan_timestamp.replace(tzinfo=timezone.utc)
+                        scan_timestamp = scan_timestamp.replace(
+                            tzinfo=timezone.utc
+                        )
 
                     user_id = str(rec.get("user_id", ""))
                     status = rec.get("status", 0)
                     punch = rec.get("punch", 0)
 
-                    # Map punch direction: 0=in, 1=out
-                    raw_punch_state = punch if punch is not None else (0 if status == 0 else 1)
+                    raw_punch_state = (
+                        punch if punch is not None
+                        else (0 if status == 0 else 1)
+                    )
 
-                    # Skip records with timestamps more than 1 day in the future
                     server_now = datetime.now(timezone.utc)
                     if scan_timestamp > server_now + timedelta(days=1):
                         logger.warning(
-                            f"[SDK Poll] Skipping future record: device={scan_timestamp} server={server_now}"
+                            f"[SDK Poll] Skipping future record: "
+                            f"device={scan_timestamp} server={server_now}"
                         )
                         continue
-
-                    # Use device timestamp as-is (don't override with server time)
-                    # The device may have clock drift from power outages, but the
-                    # attendance date should match what the device reported.
 
                     scan_event = await ingestion.ingest(
                         device_serial=device.serial_number,
                         device_user_id=user_id,
                         scan_timestamp=scan_timestamp,
-                        verify_type_code=1,  # fingerprint (default for SDK pulls)
+                        verify_type_code=1,
                         raw_punch_state=raw_punch_state,
                         raw_payload={
                             "user_id": user_id,
@@ -195,7 +225,9 @@ async def poll_device(device, db_session_factory) -> dict:
                         result["records_ingested"] += 1
 
                 except Exception as e:
-                    result["errors"].append(f"Error processing record user={rec.get('user_id')}: {e}")
+                    result["errors"].append(
+                        f"Error processing record user={rec.get('user_id')}: {e}"
+                    )
 
             if unknown_users:
                 result["unknown_users"] = len(unknown_users)
@@ -206,9 +238,12 @@ async def poll_device(device, db_session_factory) -> dict:
 
             await db.commit()
 
-            # Update watermark in database (device.last_activity)
+            # Update watermark
             if device_records:
-                latest_ts = max(r.get("timestamp") for r in device_records if r.get("timestamp"))
+                latest_ts = max(
+                    r.get("timestamp") for r in device_records
+                    if r.get("timestamp")
+                )
                 if latest_ts:
                     from app.models.device import Device
                     from sqlalchemy import update
@@ -221,54 +256,24 @@ async def poll_device(device, db_session_factory) -> dict:
 
         except Exception as e:
             result["errors"].append(f"DB error: {e}")
-            logger.error(f"[SDK Poll] DB error for {device.serial_number}: {e}", exc_info=True)
+            logger.error(
+                f"[SDK Poll] DB error for {device.serial_number}: {e}",
+                exc_info=True,
+            )
             await db.rollback()
 
     return result
 
 
-def _fetch_attendance_from_device(ip: str, port: int) -> list[dict]:
-    """
-    Synchronous: connect to device via TCP SDK and fetch attendance records.
-    Also syncs device time (many ZKTeco devices lose clock on power loss).
-    Returns list of dicts with user_id, timestamp, status, punch.
-    """
-    from datetime import datetime
-    from zk import ZK
-
-    zk = ZK(ip, port=port, timeout=5, password=0, force_udp=False, ommit_ping=True)
-    conn = zk.connect()
-    try:
-        conn.disable_device()
-        # Sync device clock to prevent wrong timestamps
-        try:
-            conn.set_time(datetime.now())
-        except Exception:
-            pass  # time sync is best-effort
-        attendances = conn.get_attendance()
-        conn.enable_device()
-
-        result = []
-        for a in attendances:
-            result.append({
-                "user_id": str(a.user_id),
-                "timestamp": a.timestamp,
-                "status": a.status,
-                "punch": a.punch,
-            })
-        return result
-    finally:
-        conn.disconnect()
-
-
 async def run_sdk_polling_worker(db_session_factory) -> None:
     """
-    Background loop: polls all online devices every POLL_INTERVAL_SECONDS.
+    Background loop: polls all online devices every POLL_INTERVAL_SECONDS
+    via the DeviceQueueManager.
     """
     from sqlalchemy import select
     from app.models.device import Device
 
-    logger.info("[SDKPoll] Starting SDK polling worker")
+    logger.info("[SDKPoll] Starting SDK polling worker (DeviceQueueManager)")
 
     while True:
         try:
@@ -285,7 +290,9 @@ async def run_sdk_polling_worker(db_session_factory) -> None:
 
                 for device in devices:
                     try:
-                        poll_result = await poll_device(device, db_session_factory)
+                        poll_result = await poll_device(
+                            device, db_session_factory
+                        )
 
                         if poll_result["records_ingested"] > 0:
                             logger.info(
@@ -295,17 +302,22 @@ async def run_sdk_polling_worker(db_session_factory) -> None:
                                 f"unknown={poll_result['unknown_users']}"
                             )
 
-                            # Broadcast WebSocket event
                             from app.services.websocket_service import ws_manager
-                            await ws_manager.broadcast("attendance_update", {
-                                "source": "sdk_poll",
-                                "device_serial": device.serial_number,
-                                "records_ingested": poll_result["records_ingested"],
-                            })
+                            await ws_manager.broadcast(
+                                "attendance_update",
+                                {
+                                    "source": "sdk_poll",
+                                    "device_serial": device.serial_number,
+                                    "records_ingested": poll_result[
+                                        "records_ingested"
+                                    ],
+                                },
+                            )
 
                     except Exception as e:
                         logger.error(
-                            f"[SDK Poll] Error polling {device.serial_number}: {e}",
+                            f"[SDK Poll] Error polling "
+                            f"{device.serial_number}: {e}",
                             exc_info=True,
                         )
 

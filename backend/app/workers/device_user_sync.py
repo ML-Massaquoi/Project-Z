@@ -2,7 +2,9 @@
 Project Z - Device User Sync Worker
 Periodically syncs user records from all online devices.
 
-Runs as an asyncio background task inside the FastAPI lifespan.
+Uses DeviceQueueManager for SDK access — this ensures the single-TCP-connection
+constraint is respected across all device communication.
+
 Sync interval: 5 minutes (configurable).
 """
 
@@ -18,11 +20,16 @@ SYNC_INTERVAL_SECONDS = 300  # 5 minutes
 async def sync_all_devices(db_session_factory) -> None:
     """
     Single sync pass: iterate all online devices, fetch users via SDK, sync to DB.
+    Uses DeviceQueueManager for exclusive SDK access.
     """
     from sqlalchemy import select
     from app.models.device import Device
     from app.services.device_user_sync_service import DeviceUserSyncService
-    from app.services.sdk_service import ZKSDKService, get_device_lock
+    from app.services.sdk_service import ZKSDKService
+    from app.services.device_queue_manager import (
+        DeviceQueueManager,
+        JobPriority,
+    )
     from app.services.websocket_service import ws_manager
 
     async with db_session_factory() as session:
@@ -35,6 +42,8 @@ async def sync_all_devices(db_session_factory) -> None:
             return
 
         logger.info(f"[DeviceUserSync] Syncing {len(devices)} online device(s)")
+
+        manager = await DeviceQueueManager.get_instance()
 
         for device in devices:
             if not device.ip_address:
@@ -52,14 +61,7 @@ async def sync_all_devices(db_session_factory) -> None:
                     )
                     continue
 
-                device_lock = get_device_lock(ip)
-                if device_lock.locked():
-                    logger.debug(
-                        f"[DeviceUserSync] Skipping {device.name} — device lock held"
-                    )
-                    continue
-
-                # Quick TCP port check
+                # Quick TCP port check before enqueuing
                 def _check_port():
                     try:
                         with socket.create_connection((ip, port), timeout=3):
@@ -75,14 +77,41 @@ async def sync_all_devices(db_session_factory) -> None:
                     )
                     continue
 
-                async with device_lock:
-                    if ZKSDKService.is_enrollment_active(ip):
+                # Check if worker is busy with higher-priority job
+                worker = manager._workers.get(ip)
+                if worker and worker.state.value == "busy" and worker.current_job:
+                    if worker.current_job.priority >= JobPriority.SYNC_USERS:
                         logger.debug(
-                            f"[DeviceUserSync] Skipping {device.name} — enrollment started"
+                            f"[DeviceUserSync] Skipping {device.name} — "
+                            f"worker busy with {worker.current_job.job_type}"
                         )
                         continue
-                    sdk = ZKSDKService(ip=ip, port=port, timeout=5)
-                    device_users = await loop.run_in_executor(None, sdk.get_users)
+
+                # Enqueue a get_users job and wait for the result
+                job = await manager.enqueue(
+                    device_ip=ip,
+                    priority=JobPriority.DOWNLOAD_USER,
+                    job_type="get_users",
+                    payload={"source": "device_user_sync"},
+                )
+
+                try:
+                    device_users = await job.wait_for_result(timeout=30.0)
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        f"[DeviceUserSync] Timeout fetching users from {device.name}"
+                    )
+                    continue
+
+                if isinstance(device_users, Exception):
+                    logger.warning(
+                        f"[DeviceUserSync] Error fetching users from "
+                        f"{device.name}: {device_users}"
+                    )
+                    continue
+
+                if not device_users:
+                    continue
 
                 svc = DeviceUserSyncService(session)
                 sync_result = await svc.sync_device_users(

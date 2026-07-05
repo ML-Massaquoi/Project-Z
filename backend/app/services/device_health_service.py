@@ -48,7 +48,8 @@ class DeviceHealthService:
         checked_by: str = "health_worker",
     ) -> DeviceHealthLog:
         """Actively probe a device via TCP SDK and record the result."""
-        from app.services.sdk_service import ZKSDKService, get_device_lock
+        from app.services.sdk_service import ZKSDKService
+        from app.services.device_queue_manager import DeviceQueueManager
 
         device = await self.repo.get_by_id(device_id)
         if not device:
@@ -71,19 +72,27 @@ class DeviceHealthService:
                 checked_by=checked_by,
             )
 
-        # Acquire per-device lock
-        device_lock = get_device_lock(device.ip_address) if device.ip_address else None
-        if device_lock and device_lock.locked():
-            logger.debug(f"[DeviceHealth] Skipping {device.name} — device lock held")
-            return DeviceHealthLog(
-                device_id=device.id,
-                check_result=HealthCheckResult.SUCCESS,
-                response_time_ms=0,
-                error_message=None,
-                device_online=True,
-                scan_count_at_check=device.total_scan_count,
-                checked_by=checked_by,
-            )
+        # Check if DeviceQueueManager worker is busy with a high-priority job
+        if device.ip_address:
+            manager = await DeviceQueueManager.get_instance()
+            worker = manager._workers.get(device.ip_address)
+            if worker and worker.state.value == "busy" and worker.current_job:
+                current_priority = worker.current_job.priority
+                from app.services.device_queue_manager import JobPriority
+                if current_priority >= JobPriority.SYNC_USERS:
+                    logger.debug(
+                        f"[DeviceHealth] Skipping {device.name} — "
+                        f"worker busy with {worker.current_job.job_type}"
+                    )
+                    return DeviceHealthLog(
+                        device_id=device.id,
+                        check_result=HealthCheckResult.SUCCESS,
+                        response_time_ms=0,
+                        error_message=None,
+                        device_online=True,
+                        scan_count_at_check=device.total_scan_count,
+                        checked_by=checked_by,
+                    )
 
         try:
             ip = device.ip_address
@@ -104,20 +113,26 @@ class DeviceHealthService:
                 check_result = HealthCheckResult.CONNECTION_REFUSED
                 error_message = f"SDK port {port} not reachable"
             else:
-                sdk = ZKSDKService(ip=ip, port=port, timeout=5)
-                # Run sync SDK call in thread pool to avoid blocking event loop
-                users = await loop.run_in_executor(None, sdk.get_users)
-                elapsed_ms = int((time.monotonic() - start_time) * 1000)
+                # Use run_sdk_operations for minimal SDK interaction
+                def _health_sdk_op(sdk):
+                    """Get users count as a basic health check."""
+                    users = sdk.get_users()
+                    return len(users)
 
-                check_result = HealthCheckResult.SUCCESS
-                error_message = None
-
-                # Update firmware version if not set
-                if not device.firmware_version and hasattr(sdk, 'firmware_version'):
-                    try:
-                        device.firmware_version = sdk.firmware_version
-                    except Exception:
-                        pass
+                try:
+                    user_count = await manager.run_sdk_operations(
+                        device_ip=ip,
+                        port=port,
+                        timeout=10,
+                        handler=_health_sdk_op,
+                    )
+                    elapsed_ms = int((time.monotonic() - start_time) * 1000)
+                    check_result = HealthCheckResult.SUCCESS
+                    error_message = None
+                except Exception as e:
+                    elapsed_ms = int((time.monotonic() - start_time) * 1000)
+                    check_result = HealthCheckResult.SDK_ERROR
+                    error_message = str(e)[:500]
 
         except TimeoutError:
             elapsed_ms = int((time.monotonic() - start_time) * 1000)
@@ -152,7 +167,6 @@ class DeviceHealthService:
         )
 
         if not is_success and health_status != DeviceHealthStatus.CRITICAL:
-            # Check response time for degraded status
             if elapsed_ms > RESPONSE_TIME_DEGRADED_MS:
                 health_status = DeviceHealthStatus.CRITICAL
             elif elapsed_ms > RESPONSE_TIME_HEALTHY_MS:

@@ -150,8 +150,8 @@ class EnrollmentService:
         ip = device.ip_address
         port = device.sdk_port or 4370
 
-        # Mark enrollment active to prevent SDK polling from connecting
-        from app.services.sdk_service import ZKSDKService, get_device_lock
+        # Mark enrollment active to prevent DeviceQueueManager workers from connecting
+        from app.services.sdk_service import ZKSDKService
         ZKSDKService.mark_enrollment_active(ip)
 
         loop = asyncio.get_event_loop()

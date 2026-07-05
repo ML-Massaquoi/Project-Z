@@ -402,6 +402,7 @@ export default function Employees() {
       department_id: selectedDept !== 'all' ? selectedDept : undefined,
       only_enrolled: true,
     })).data,
+    refetchInterval: 15000,
   })
 
   const { data: deptData } = useQuery({
@@ -716,6 +717,7 @@ export default function Employees() {
         onClose={() => {
           setShowAddModal(false)
           queryClient.invalidateQueries({ queryKey: ['employees'] })
+          queryClient.refetchQueries({ queryKey: ['employees'] })
         }}
       />
 

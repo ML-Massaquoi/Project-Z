@@ -56,6 +56,7 @@ class ShiftCreate(BaseModel):
     start_time: time
     end_time: time
     grace_period_minutes: int = 15
+    late_threshold_minutes: int = 0
     break_duration_minutes: int = 60
     working_hours: float = 8.0
     description: Optional[str] = None
@@ -68,6 +69,7 @@ class ShiftUpdate(BaseModel):
     start_time: Optional[time] = None
     end_time: Optional[time] = None
     grace_period_minutes: Optional[int] = None
+    late_threshold_minutes: Optional[int] = None
     break_duration_minutes: Optional[int] = None
     working_hours: Optional[float] = None
     description: Optional[str] = None
@@ -82,6 +84,7 @@ class ShiftResponse(BaseModel):
     start_time: time
     end_time: time
     grace_period_minutes: int
+    late_threshold_minutes: int
     break_duration_minutes: int
     working_hours: Optional[float] = None
     description: Optional[str] = None

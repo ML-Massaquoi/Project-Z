@@ -9,10 +9,15 @@ Supports:
   - Live enrollment
 
 IMPORTANT: ZKTeco devices only support ONE concurrent TCP connection.
-A per-device asyncio.Lock prevents connection conflicts between:
-  - SDK Polling Worker
-  - Device Health Worker
-  - Enrollment commands
+
+ARCHITECTURE NOTE (2026-07-04):
+  The new DeviceQueueManager (device_queue_manager.py) replaces the per-device
+  asyncio.Lock pattern. It uses per-device DeviceWorker instances that each
+  own a single TCP connection and process jobs from a priority queue.
+
+  NEW CODE should use DeviceQueueManager instead of get_device_lock().
+  The old get_device_lock() is retained for backward compatibility during
+  migration but will be removed in a future cleanup.
 """
 
 import asyncio
@@ -23,14 +28,19 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+# Deprecated: Use DeviceQueueManager instead.
 # Per-device locks keyed by IP address to prevent concurrent TCP connections.
-# ZKTeco devices only accept one TCP session at a time — a second connect()
-# will either fail or silently drop the first connection.
 _device_locks: dict[str, asyncio.Lock] = {}
 
 
 def get_device_lock(ip: str) -> asyncio.Lock:
-    """Get or create an asyncio.Lock for a specific device IP."""
+    """
+    DEPRECATED: Use DeviceQueueManager instead.
+
+    Get or create an asyncio.Lock for a specific device IP.
+    The new DeviceQueueManager uses per-device workers with priority queues
+    instead of this per-device lock pattern.
+    """
     if ip not in _device_locks:
         _device_locks[ip] = asyncio.Lock()
     return _device_locks[ip]
@@ -489,6 +499,52 @@ class ZKSDKService:
             return result
         except Exception as e:
             logger.error(f"SDK enroll_user error on {self.ip}: {e}")
+            return False
+
+    def enroll_face(self, uid: int = 0, user_id: str = "") -> bool:
+        """
+        Initiate a face enrollment session on the device.
+
+        Sends STARTENROLL command with face biometric flag (2) to trigger
+        the device's face capture mode. The device will prompt the user to
+        look at the camera.
+
+        Note: This method triggers face enrollment but does NOT receive
+        face template data back (the device stores it locally).
+
+        IMPORTANT: Uses the existing connection via _get_connection.
+        """
+        try:
+            conn = self._get_connection()
+            from zk import const
+            from struct import pack
+
+            if not user_id:
+                users = conn.get_users()
+                users = [u for u in users if u.uid == uid]
+                if users:
+                    user_id = users[0].user_id
+                else:
+                    logger.warning(f"enroll_face: uid {uid} not found on {self.ip}")
+                    return False
+
+            conn.cancel_capture()
+
+            if conn.tcp:
+                command_string = pack('<24sbb', str(user_id).encode(), 0, 2)
+            else:
+                command_string = pack('<Ib', int(user_id), 2)
+
+            cmd_response = conn._ZK__send_command(const.CMD_STARTENROLL, command_string)
+            if not cmd_response.get('status'):
+                logger.warning(f"enroll_face: device rejected face enrollment on {self.ip}")
+                return False
+
+            logger.info(f"Face enrollment triggered on {self.ip} for user {user_id}")
+            return True
+
+        except Exception as e:
+            logger.error(f"enroll_face error on {self.ip}: {e}")
             return False
 
     def test_connection(self) -> dict:

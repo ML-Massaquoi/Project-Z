@@ -38,6 +38,7 @@ class DeviceResponse(BaseModel):
 
 class DeviceUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=255)
+    ip_address: Optional[str] = Field(None, max_length=45)
     office_id: Optional[UUID] = None
     department_id: Optional[UUID] = None
     is_active: Optional[bool] = None

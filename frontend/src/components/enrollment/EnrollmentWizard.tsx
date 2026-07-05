@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   User, Monitor, Fingerprint, CheckCircle2, ArrowRight,
@@ -12,12 +12,13 @@ import { toast } from 'sonner'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import type { Department } from '@/types'
 
-type WizardStep = 'personal' | 'employment' | 'fingerprint' | 'complete'
+type WizardStep = 'personal' | 'employment' | 'fingerprint' | 'face' | 'complete'
 
 const STEPS: { key: WizardStep; label: string; icon: React.ElementType }[] = [
   { key: 'personal', label: 'Personal', icon: User },
   { key: 'employment', label: 'Employment', icon: Monitor },
   { key: 'fingerprint', label: 'Fingerprint', icon: Fingerprint },
+  { key: 'face', label: 'Face', icon: Monitor },
   { key: 'complete', label: 'Complete', icon: CheckCircle2 },
 ]
 
@@ -51,6 +52,8 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
   const [fingerprintData, setFingerprintData] = useState<string | null>(null)
   const [enrollmentStatus, setEnrollmentStatus] = useState<string>('idle')
   const [enrollmentMessage, setEnrollmentMessage] = useState<string>('')
+  const [faceStatus, setFaceStatus] = useState<'idle' | 'triggering' | 'triggered' | 'not_supported' | 'error' | 'done'>('idle')
+  const [faceMessage, setFaceMessage] = useState<string>('')
 
   const { lastEvent } = useWebSocket(null)
 
@@ -58,6 +61,21 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
   const [syncMessage, setSyncMessage] = useState('')
   const [syncedDevices, setSyncedDevices] = useState(0)
   const [totalDevices, setTotalDevices] = useState(0)
+
+  useEffect(() => {
+    if (!fullName.trim()) { setFirstName(''); setLastName(''); return }
+    const parts = fullName.trim().split(/\s+/)
+    setFirstName(parts[0] || '')
+    setLastName(parts.slice(1).join(' ') || '')
+  }, [fullName])
+
+  useEffect(() => {
+    if (step === 'face' && sessionId && faceStatus === 'idle' && !triggerFaceMutation.isPending) {
+      setFaceStatus('triggering')
+      setFaceMessage('Starting face enrollment on device...')
+      triggerFaceMutation.mutate(sessionId)
+    }
+  }, [step, sessionId, faceStatus])
 
   useEffect(() => {
     if (!lastEvent) return
@@ -160,6 +178,27 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to save fingerprint'),
   })
 
+  const triggerFaceMutation = useMutation({
+    mutationFn: (sid: string) => enrollmentAPI.triggerFace(sid),
+    onSuccess: (data: any) => {
+      const status = data.data?.status
+      if (status === 'triggered') {
+        setFaceStatus('triggered')
+        setFaceMessage('Face enrollment started — please look at the device camera')
+      } else if (status === 'not_supported') {
+        setFaceStatus('not_supported')
+        setFaceMessage('Device does not support automated face enrollment. Click "Done" when face is enrolled.')
+      } else {
+        setFaceStatus('error')
+        setFaceMessage(data.data?.message || 'Face enrollment could not be triggered')
+      }
+    },
+    onError: (err: any) => {
+      setFaceStatus('error')
+      setFaceMessage(err.response?.data?.detail || 'Failed to trigger face enrollment')
+    },
+  })
+
   const completeMutation = useMutation({
     mutationFn: (sid: string) => enrollmentAPI.completeSession(sid),
     onSuccess: () => {
@@ -198,9 +237,7 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
           toast.error('Please select a device')
           return
         }
-        if (sessionId && fingerprintCaptured) {
-          completeMutation.mutate(sessionId)
-        } else if (!sessionId) {
+        if (!sessionId) {
           createMutation.mutate({
             employee_code: employeeCode.trim(),
             full_name: fullName.trim(),
@@ -215,8 +252,17 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
             shift_id: shiftId || undefined,
             device_id: selectedDeviceId,
           })
+        } else if (fingerprintCaptured) {
+          goToStep('face')
         } else {
           toast.error('Please capture fingerprint first')
+        }
+        break
+      case 'face':
+        if (faceStatus === 'done') {
+          completeMutation.mutate(sessionId!)
+        } else {
+          toast.error('Please confirm face was captured first')
         }
         break
     }
@@ -230,11 +276,17 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
         return
       }
       goToStep('employment')
+    } else if (step === 'face') {
+      goToStep('fingerprint')
     }
   }
 
   const handleClose = () => {
-    if (sessionId && !fingerprintCaptured) {
+    if (sessionId && step !== 'complete') {
+      const confirmed = window.confirm(
+        'Enrollment is in progress. Are you sure you want to cancel and lose all progress?'
+      )
+      if (!confirmed) return
       cancelMutation.mutate(sessionId)
     }
     resetState()
@@ -262,6 +314,8 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
     setFingerprintData(null)
     setEnrollmentStatus('idle')
     setEnrollmentMessage('')
+    setFaceStatus('idle')
+    setFaceMessage('')
     setSyncStatus('idle')
     setSyncMessage('')
     setSyncedDevices(0)
@@ -269,7 +323,7 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
   }
 
   const selectedDevice = devicesData?.devices?.find((d: any) => d.id === selectedDeviceId)
-  const isPending = createMutation.isPending || sendFingerprintMutation.isPending || completeMutation.isPending
+  const isPending = createMutation.isPending || sendFingerprintMutation.isPending || triggerFaceMutation.isPending || completeMutation.isPending
 
   return (
     <Modal
@@ -287,20 +341,28 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
             </Button>
             <Button
               variant="default" size="lg" onClick={handleNext}
-              disabled={isPending || (step === 'fingerprint' && !selectedDeviceId) || (step === 'fingerprint' && !!sessionId && !fingerprintCaptured)}
+              disabled={isPending || (step === 'fingerprint' && !selectedDeviceId) || (step === 'fingerprint' && !!sessionId && !fingerprintCaptured) || (step === 'face' && faceStatus !== 'done' && faceStatus !== 'not_supported' && faceStatus !== 'error')}
             >
               {createMutation.isPending ? (
                 <><Loader2 size={16} className="animate-spin" /> Creating Employee...</>
               ) : sendFingerprintMutation.isPending ? (
                 <><Loader2 size={16} className="animate-spin" /> Saving...</>
+              ) : triggerFaceMutation.isPending ? (
+                <><Loader2 size={16} className="animate-spin" /> Starting Face Enrollment...</>
               ) : completeMutation.isPending ? (
                 <><Loader2 size={16} className="animate-spin" /> Completing...</>
               ) : step === 'fingerprint' && sessionId && fingerprintCaptured ? (
-                <><CheckCircle2 size={16} /> Complete Enrollment</>
+                <><Monitor size={16} /> Next: Face Enrollment</>
               ) : step === 'fingerprint' && !sessionId ? (
                 <><Send size={16} /> Send Enrollment Command</>
               ) : step === 'fingerprint' && sessionId && !fingerprintCaptured ? (
                 <><Loader2 size={16} className="animate-spin" /> Enrolling...</>
+              ) : step === 'face' && (faceStatus === 'triggered' || faceStatus === 'done') ? (
+                <><CheckCircle2 size={16} /> Complete Enrollment</>
+              ) : step === 'face' && faceStatus === 'not_supported' ? (
+                <><ArrowRight size={16} /> Skip Face & Complete</>
+              ) : step === 'face' && faceStatus === 'error' ? (
+                <><ArrowRight size={16} /> Continue Without Face</>
               ) : (
                 <><ArrowRight size={16} /> Next</>
               )}
@@ -649,7 +711,90 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
           </div>
         )}
 
-        {/* ── Step 4: Complete ──────────────────────────────── */}
+        {/* ── Step 4: Face Enrollment ──────────────────────── */}
+        {step === 'face' && (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={{ padding: '24px', borderRadius: '12px', background: 'var(--pz-surface-2)', border: '1px solid var(--pz-border)', flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '18px' }}>
+                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(139,92,246,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Monitor size={15} color="#8B5CF6" />
+                </div>
+                <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--pz-text-secondary)', margin: 0 }}>Face Enrollment</p>
+              </div>
+
+              {faceStatus === 'idle' || faceStatus === 'triggering' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', padding: '40px 20px' }}>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(139,92,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Loader2 size={32} className="animate-spin" style={{ color: '#8B5CF6' }} />
+                  </div>
+                  <p style={{ fontSize: '15px', fontWeight: 600, color: 'var(--pz-text)', margin: 0 }}>Starting Face Enrollment...</p>
+                  <p style={{ fontSize: '13px', color: 'var(--pz-text-muted)', textAlign: 'center', maxWidth: '400px', lineHeight: 1.5, margin: 0 }}>
+                    {faceMessage || 'Sending face enrollment command to device...'}
+                  </p>
+                </div>
+              ) : faceStatus === 'triggered' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', padding: '40px 20px' }}>
+                  <div style={{ width: '88px', height: '88px', borderRadius: '50%', background: 'rgba(16,185,129,0.1)', border: '2px solid rgba(16,185,129,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Monitor size={48} style={{ color: '#10B981' }} />
+                  </div>
+                  <p style={{ fontSize: '15px', fontWeight: 600, color: 'var(--pz-text)', margin: 0 }}>Face Enrollment Started</p>
+                  <p style={{ fontSize: '13px', color: 'var(--pz-text-muted)', textAlign: 'center', maxWidth: '420px', lineHeight: 1.5, margin: 0 }}>
+                    The device is now in face enrollment mode. Please look at the device camera to capture your face.
+                  </p>
+                  <div style={{ marginTop: '8px', padding: '12px 20px', borderRadius: '8px', background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.15)', maxWidth: '420px' }}>
+                    <p style={{ fontSize: '12px', color: 'var(--pz-text-muted)', margin: 0, lineHeight: 1.5 }}>
+                      <strong>Tip:</strong> Stand directly in front of the device at about arm's length. Ensure your face is well-lit and centered in the camera view.
+                    </p>
+                  </div>
+                  <Button
+                    variant="default" size="lg"
+                    onClick={() => { setFaceStatus('done'); setFaceMessage('Face captured!') }}
+                    style={{ marginTop: '12px' }}
+                  >
+                    <CheckCircle2 size={16} /> Face Captured
+                  </Button>
+                </div>
+              ) : faceStatus === 'not_supported' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', padding: '40px 20px' }}>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(245,158,11,0.1)', border: '2px solid rgba(245,158,11,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <AlertCircle size={32} style={{ color: '#F59E0B' }} />
+                  </div>
+                  <p style={{ fontSize: '15px', fontWeight: 600, color: 'var(--pz-text)', margin: 0 }}>Automated Face Enrollment Not Available</p>
+                  <p style={{ fontSize: '13px', color: 'var(--pz-text-muted)', textAlign: 'center', maxWidth: '420px', lineHeight: 1.5, margin: 0 }}>
+                    {faceMessage}
+                  </p>
+                  <div style={{ marginTop: '8px', padding: '12px 20px', borderRadius: '8px', background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.15)', maxWidth: '420px' }}>
+                    <p style={{ fontSize: '12px', color: 'var(--pz-text-muted)', margin: 0, lineHeight: 1.5 }}>
+                      You can still enroll a face later through the device menu: <strong>Menu → User Mgmt → Select User → Enroll Face</strong>
+                    </p>
+                  </div>
+                </div>
+              ) : faceStatus === 'error' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', padding: '40px 20px' }}>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(239,68,68,0.1)', border: '2px solid rgba(239,68,68,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <AlertCircle size={32} style={{ color: '#EF4444' }} />
+                  </div>
+                  <p style={{ fontSize: '15px', fontWeight: 600, color: 'var(--pz-text)', margin: 0 }}>Face Enrollment Failed</p>
+                  <p style={{ fontSize: '13px', color: 'var(--pz-text-muted)', textAlign: 'center', maxWidth: '420px', lineHeight: 1.5, margin: 0 }}>
+                    {faceMessage}
+                  </p>
+                </div>
+              ) : faceStatus === 'done' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', padding: '40px 20px' }}>
+                  <div style={{ width: '88px', height: '88px', borderRadius: '50%', background: 'rgba(16,185,129,0.1)', border: '2px solid rgba(16,185,129,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <CheckCircle2 size={48} style={{ color: '#10B981' }} />
+                  </div>
+                  <p style={{ fontSize: '15px', fontWeight: 600, color: 'var(--pz-text)', margin: 0 }}>Face Captured!</p>
+                  <p style={{ fontSize: '13px', color: 'var(--pz-text-muted)', textAlign: 'center', maxWidth: '420px', lineHeight: 1.5, margin: 0 }}>
+                    Face has been successfully enrolled. Click <strong>Complete Enrollment</strong> to finish.
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )}
+
+        {/* ── Step 5: Complete ──────────────────────────────── */}
         {step === 'complete' && (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '40px 20px' }}>
             <div style={{ width: '88px', height: '88px', borderRadius: '50%', background: 'rgba(16,185,129,0.1)', border: '2px solid rgba(16,185,129,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px' }}>

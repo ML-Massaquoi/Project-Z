@@ -966,6 +966,7 @@ export default function Devices() {
 function EditDeviceModal({ device, onClose }: { device: Device | null; onClose: () => void }) {
   const queryClient = useQueryClient()
   const [name, setName] = useState('')
+  const [ipAddress, setIpAddress] = useState('')
   const [officeId, setOfficeId] = useState('')
   const [departmentId, setDepartmentId] = useState('')
   const [locationDescription, setLocationDescription] = useState('')
@@ -986,6 +987,7 @@ function EditDeviceModal({ device, onClose }: { device: Device | null; onClose: 
   useEffect(() => {
     if (device) {
       setName(device.name || '')
+      setIpAddress(device.ip_address || '')
       setOfficeId(device.office_id || '')
       setDepartmentId(device.department_id || '')
       setLocationDescription('')
@@ -1002,9 +1004,28 @@ function EditDeviceModal({ device, onClose }: { device: Device | null; onClose: 
     onError: (err: any) => toast.error(err?.response?.data?.detail || 'Failed to update device'),
   })
 
+  const isValidIp = (ip: string) => {
+    if (!ip) return true
+    const parts = ip.split('.')
+    if (parts.length !== 4) return false
+    return parts.every(p => {
+      const n = Number(p)
+      return !isNaN(n) && n >= 0 && n <= 255
+    })
+  }
+
   const handleSave = () => {
     const data: Record<string, unknown> = {}
     if (name.trim()) data.name = name.trim()
+    if (ipAddress.trim()) {
+      if (!isValidIp(ipAddress.trim())) {
+        toast.error('Invalid IP address format')
+        return
+      }
+      data.ip_address = ipAddress.trim()
+    } else {
+      data.ip_address = null
+    }
     data.office_id = officeId || null
     data.department_id = departmentId || null
     if (locationDescription.trim()) data.location_description = locationDescription.trim()
@@ -1034,6 +1055,13 @@ function EditDeviceModal({ device, onClose }: { device: Device | null; onClose: 
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. I.T Department Device"
+            />
+            <Input
+              label="IP Address"
+              value={ipAddress}
+              onChange={(e) => setIpAddress(e.target.value)}
+              placeholder="e.g. 172.16.40.12"
+              hint="Changing the IP will require the device to re-handshake via ADMS"
             />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
               <div className="flex flex-col gap-1.5">

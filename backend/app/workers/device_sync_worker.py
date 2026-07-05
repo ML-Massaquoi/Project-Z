@@ -33,6 +33,8 @@ async def run_device_sync_worker(session_factory: async_sessionmaker) -> None:
     Runs as an asyncio task inside the FastAPI lifespan.
     Never blocks attendance ingestion — all sync operations
     use separate SDK connections and run asynchronously.
+
+    Uses DeviceQueueManager for coordinated SDK access.
     """
     logger.info("[DeviceSyncWorker] Starting...")
 
@@ -51,8 +53,6 @@ async def run_device_sync_worker(session_factory: async_sessionmaker) -> None:
                 from app.models.device import Device
                 from app.models.device_sync_status import DeviceSyncStatus
 
-                # Get all active devices — extract plain data to avoid
-                # lazy-load issues after session rollback
                 result = await session.execute(
                     select(Device).where(Device.is_active == True)
                 )
@@ -63,7 +63,6 @@ async def run_device_sync_worker(session_factory: async_sessionmaker) -> None:
                     await asyncio.sleep(WORKER_INTERVAL)
                     continue
 
-                # Snapshot device data as plain tuples (detached from ORM)
                 device_snapshots = [
                     (d.id, d.ip_address, d.name, d.serial_number)
                     for d in devices
@@ -80,21 +79,29 @@ async def run_device_sync_worker(session_factory: async_sessionmaker) -> None:
 
             for device_id, device_ip, device_name, device_sn in device_snapshots:
                 try:
-                    # Skip if device is locked for enrollment or another operation
-                    from app.services.sdk_service import ZKSDKService, get_device_lock
+                    from app.services.sdk_service import ZKSDKService
+                    from app.services.device_queue_manager import (
+                        DeviceQueueManager,
+                        JobPriority,
+                    )
+
+                    # Skip if device is busy
                     if ZKSDKService.is_enrollment_active(device_ip):
                         logger.info(
                             f"[DeviceSyncWorker] Skipping {device_name}: enrollment active"
                         )
                         continue
-                    device_lock = get_device_lock(device_ip)
-                    if device_lock.locked():
-                        logger.info(
-                            f"[DeviceSyncWorker] Skipping {device_name}: device locked"
-                        )
-                        continue
 
-                    # Use a FRESH session per device to prevent greenlet contamination
+                    manager = await DeviceQueueManager.get_instance()
+                    worker = manager._workers.get(device_ip)
+                    if worker and worker.state.value == "busy" and worker.current_job:
+                        if worker.current_job.priority >= JobPriority.SYNC_USERS:
+                            logger.info(
+                                f"[DeviceSyncWorker] Skipping {device_name}: "
+                                f"worker busy with {worker.current_job.job_type}"
+                            )
+                            continue
+
                     async with session_factory() as dev_session:
                         from app.services.device_sync_service import DeviceSyncService
                         from app.services.device_provisioning_service import DeviceProvisioningService
@@ -102,7 +109,6 @@ async def run_device_sync_worker(session_factory: async_sessionmaker) -> None:
                         sync_svc = DeviceSyncService(dev_session)
                         prov_svc = DeviceProvisioningService(dev_session)
 
-                        # Check if device needs provisioning
                         status_result = await dev_session.execute(
                             select(DeviceSyncStatus).where(
                                 DeviceSyncStatus.device_id == device_id
@@ -121,18 +127,11 @@ async def run_device_sync_worker(session_factory: async_sessionmaker) -> None:
                             )
                             provisioned_count += 1
                         else:
-                            # Check enrollment BEFORE each lock block so enrollment
-                            # doesn't wait for a sync operation that would be skipped anyway.
-                            async with device_lock:
-                                if ZKSDKService.is_enrollment_active(device_ip):
-                                    logger.info(
-                                        f"[DeviceSyncWorker] Yielding {device_name}: enrollment active"
-                                    )
-                                else:
-                                    await sync_svc.pull_users_from_device(
-                                        device_id,
-                                        initiated_by="sync_worker",
-                                    )
+                            if not ZKSDKService.is_enrollment_active(device_ip):
+                                await sync_svc.pull_users_from_device(
+                                    device_id,
+                                    initiated_by="sync_worker",
+                                )
 
                             if ZKSDKService.is_enrollment_active(device_ip):
                                 logger.info(
@@ -140,16 +139,11 @@ async def run_device_sync_worker(session_factory: async_sessionmaker) -> None:
                                 )
                                 continue
 
-                            async with device_lock:
-                                if ZKSDKService.is_enrollment_active(device_ip):
-                                    logger.info(
-                                        f"[DeviceSyncWorker] Yielding {device_name}: enrollment active"
-                                    )
-                                else:
-                                    await sync_svc.pull_templates_from_device(
-                                        device_id,
-                                        initiated_by="sync_worker",
-                                    )
+                            if not ZKSDKService.is_enrollment_active(device_ip):
+                                await sync_svc.pull_templates_from_device(
+                                    device_id,
+                                    initiated_by="sync_worker",
+                                )
 
                             if ZKSDKService.is_enrollment_active(device_ip):
                                 logger.info(
@@ -157,7 +151,6 @@ async def run_device_sync_worker(session_factory: async_sessionmaker) -> None:
                                 )
                                 continue
 
-                            # Refresh status and push pending templates
                             status_result = await dev_session.execute(
                                 select(DeviceSyncStatus).where(
                                     DeviceSyncStatus.device_id == device_id
@@ -165,16 +158,11 @@ async def run_device_sync_worker(session_factory: async_sessionmaker) -> None:
                             )
                             status = status_result.scalar_one_or_none()
                             if status and status.pending_push_templates > 0:
-                                async with device_lock:
-                                    if ZKSDKService.is_enrollment_active(device_ip):
-                                        logger.info(
-                                            f"[DeviceSyncWorker] Yielding {device_name}: enrollment active"
-                                        )
-                                    else:
-                                        await sync_svc.push_templates_to_device(
-                                            device_id,
-                                            initiated_by="sync_worker",
-                                        )
+                                if not ZKSDKService.is_enrollment_active(device_ip):
+                                    await sync_svc.push_templates_to_device(
+                                        device_id,
+                                        initiated_by="sync_worker",
+                                    )
 
                             synced_count += 1
 

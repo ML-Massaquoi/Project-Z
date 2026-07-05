@@ -538,6 +538,12 @@ def compute_checkin_status(
 ) -> tuple[float, float, str]:
     """
     Compute (late_minutes, early_minutes, status) for a check-in scan.
+
+    Status decision tree:
+      - early_arrival: more than 30 min before shift start
+      - present: within grace_period_minutes of shift start
+      - present (with late_minutes): between grace and (grace + late_threshold)
+      - late: after grace + late_threshold
     """
     shift_start = datetime.combine(check_in.date(), template.start_time)
     t = check_in.replace(tzinfo=None) if check_in.tzinfo else check_in
@@ -547,13 +553,22 @@ def compute_checkin_status(
         early_min = math.floor((shift_start - t).total_seconds() / 60)
         return 0.0, float(early_min), "early_arrival"
 
-    # On time: within grace period
     grace_cutoff = shift_start + timedelta(minutes=grace_period_minutes)
+
+    # On time: within grace period
     if t <= grace_cutoff:
         return 0.0, 0.0, "present"
 
-    # Late
     late_min = math.floor((t - shift_start).total_seconds() / 60)
+    late_threshold = getattr(template, 'late_threshold_minutes', 0) or 0
+
+    # Within late threshold: record late_minutes but keep status 'present'
+    if late_threshold > 0:
+        threshold_cutoff = grace_cutoff + timedelta(minutes=late_threshold)
+        if t <= threshold_cutoff:
+            return float(late_min), 0.0, "present"
+
+    # Beyond threshold: mark as late
     return float(late_min), 0.0, "late"
 
 

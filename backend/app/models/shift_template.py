@@ -29,6 +29,10 @@ class ShiftTemplate(BaseModel):
             name="chk_shift_templates_grace_period",
         ),
         CheckConstraint(
+            "late_threshold_minutes BETWEEN 0 AND 240",
+            name="chk_shift_templates_late_threshold",
+        ),
+        CheckConstraint(
             "break_duration_minutes BETWEEN 0 AND 480",
             name="chk_shift_templates_break_duration",
         ),
@@ -54,6 +58,10 @@ class ShiftTemplate(BaseModel):
     # Grace and working time
     grace_period_minutes: Mapped[int] = mapped_column(
         Integer, nullable=False, default=15
+    )
+    late_threshold_minutes: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0,
+        comment="Extra minutes after grace where status is still 'present' but late_minutes is recorded. 0 = disabled."
     )
     break_duration_minutes: Mapped[int] = mapped_column(
         Integer, nullable=False, default=60

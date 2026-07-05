@@ -349,6 +349,14 @@ async def lifespan(app: FastAPI):
     )
     for task in all_tasks:
         task.cancel()
+
+    # Shutdown DeviceQueueManager workers
+    try:
+        from app.services.device_queue_manager import shutdown_all_workers
+        await shutdown_all_workers()
+    except Exception:
+        pass
+
     for task in all_tasks:
         try:
             await task

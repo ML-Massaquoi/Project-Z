@@ -107,7 +107,35 @@ async def get_expected_worker_ids(
 
     excluded_ids = on_leave_ids | off_duty_ids
 
-    # 5. Determine who should work today
+    # 5. Check for holidays (organization-wide and department-scoped)
+    try:
+        from app.models.holiday_calendar import HolidayCalendar, HolidayScope
+        holiday_result = await db.execute(
+            select(HolidayCalendar).where(HolidayCalendar.date == target_date)
+        )
+        holidays = holiday_result.scalars().all()
+        org_holiday = any(h.scope == HolidayScope.ORGANIZATION for h in holidays)
+        if org_holiday:
+            logger.info(f"Organization-wide holiday on {target_date} — no employees expected")
+            return set()
+
+        dept_holidays = {h.department_id for h in holidays if h.scope == HolidayScope.DEPARTMENT and h.department_id}
+        if dept_holidays:
+            holiday_dept_result = await db.execute(
+                select(Employee.id).where(
+                    and_(
+                        Employee.id.in_(employee_ids),
+                        Employee.department_id.in_(dept_holidays),
+                    )
+                )
+            )
+            holiday_emp_ids = set(holiday_dept_result.scalars().all())
+            excluded_ids |= holiday_emp_ids
+            logger.info(f"Department holiday on {target_date}: excluding {len(holiday_emp_ids)} employees")
+    except Exception:
+        pass
+
+    # 6. Determine who should work today
     expected_ids = set()
     for emp in employees:
         if emp.id in excluded_ids:
