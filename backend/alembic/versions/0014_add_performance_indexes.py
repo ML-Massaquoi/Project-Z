@@ -100,7 +100,7 @@ def upgrade() -> None:
     # ── Department Shift Rules Indexes ────────────────────────
     op.create_index(
         "ix_dept_shift_rules_department_id",
-        "dept_shift_rules",
+        "department_shift_rules",
         ["department_id"],
         unique=True,
     )
@@ -115,7 +115,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_index("ix_employee_shift_assignments_employee_id", table_name="employee_shift_assignments")
-    op.drop_index("ix_dept_shift_rules_department_id", table_name="dept_shift_rules")
+    op.drop_index("ix_dept_shift_rules_department_id", table_name="department_shift_rules")
     op.drop_index("ix_shift_templates_code", table_name="shift_templates")
     op.drop_index("ix_audit_logs_action_entity_created", table_name="audit_logs")
     op.drop_index("ix_audit_logs_created_at", table_name="audit_logs")
