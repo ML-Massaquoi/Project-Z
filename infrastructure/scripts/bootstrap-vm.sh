@@ -53,7 +53,7 @@ cd /opt/project-z
 
 # ── Create .env ─────────────────────────────
 echo -e "${YELLOW}[3/5] Creating environment config...${NC}"
-cat > docker/.env << EOF
+cat > .env << EOF
 APP_ENV=production
 DEBUG=false
 
