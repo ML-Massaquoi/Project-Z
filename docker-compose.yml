@@ -151,8 +151,6 @@ services:
       DEFAULT_GRACE_PERIOD_MINUTES: ${DEFAULT_GRACE_PERIOD_MINUTES:-15}
       APP_ENV: ${APP_ENV:-development}
       DEBUG: ${DEBUG:-false}
-    ports:
-      - "8081:8081"
     depends_on:
       postgres:
         condition: service_healthy
