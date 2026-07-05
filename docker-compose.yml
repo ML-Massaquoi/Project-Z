@@ -145,6 +145,7 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-projectz}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-projectz}
+      DATABASE_URL_SYNC: postgresql://${POSTGRES_USER:-projectz}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-projectz}
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set in .env}
       TIMEZONE: ${TIMEZONE}
@@ -152,6 +153,9 @@ services:
       DEFAULT_GRACE_PERIOD_MINUTES: ${DEFAULT_GRACE_PERIOD_MINUTES:-15}
       APP_ENV: ${APP_ENV:-development}
       DEBUG: ${DEBUG:-false}
+      DEFAULT_ADMIN_USERNAME: ${DEFAULT_ADMIN_USERNAME:-admin}
+      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:?DEFAULT_ADMIN_PASSWORD must be set in .env}
+      DEFAULT_ADMIN_EMAIL: ${DEFAULT_ADMIN_EMAIL:-admin@projectz.local}
     depends_on:
       postgres:
         condition: service_healthy

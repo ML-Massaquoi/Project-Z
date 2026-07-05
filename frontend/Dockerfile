@@ -55,6 +55,15 @@ RUN echo 'server { \
 # Copy built assets from builder
 COPY --from=builder /app/dist /usr/share/nginx/html
 
+# Create nginx temp directories and assign ownership to appuser
+RUN mkdir -p /var/cache/nginx/client_temp \
+    /var/cache/nginx/proxy_temp \
+    /var/cache/nginx/fastcgi_temp \
+    /var/cache/nginx/uwsgi_temp \
+    /var/cache/nginx/scgi_temp \
+    /var/run && \
+    chown -R appuser:appuser /var/cache/nginx /var/run
+
 EXPOSE 3000
 
 # Switch to non-root user
