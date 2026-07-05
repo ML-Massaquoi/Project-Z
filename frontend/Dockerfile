@@ -61,8 +61,9 @@ RUN mkdir -p /var/cache/nginx/client_temp \
     /var/cache/nginx/fastcgi_temp \
     /var/cache/nginx/uwsgi_temp \
     /var/cache/nginx/scgi_temp \
-    /var/run && \
-    chown -R appuser:appuser /var/cache/nginx /var/run
+    /var/run \
+    /run && \
+    chown -R appuser:appuser /var/cache/nginx /var/run /run
 
 EXPOSE 3000
 
