@@ -1211,15 +1211,17 @@ def _fingerprint_enrollment_handler(sdk, payload: dict) -> dict:
         f"(existing fids on device: {sorted(existing_fids)})"
     )
 
-    # Phase 2: Send enrollment command
+    # Phase 2: Send enrollment command + verify on SAME connection
     # ZMM220_TFT requires disable_device before enroll_user.
-    # Use SAME connection as Phase 1 — no disconnect/reconnect cycle,
-    # which causes TCP session conflicts on ZMM220_TFT firmware.
+    # IMPORTANT: keep device disabled during verification so the scan
+    # window stays active (enroll_user returns immediately on ZMM220_TFT).
     enrollment_error = None
+    device_disabled = False
 
     try:
         conn = sdk._get_connection()
         conn.disable_device()
+        device_disabled = True
         # Give device time to settle after disable_device
         time.sleep(1.0)
         # Retry enroll_user once if it fails (intermittent ZMM220_TFT quirk)
@@ -1241,11 +1243,6 @@ def _fingerprint_enrollment_handler(sdk, payload: dict) -> dict:
     except Exception as e:
         enrollment_error = str(e)
         logger.error(f"[EnrollmentSDK] Enrollment command error: {e}")
-    finally:
-        try:
-            conn.enable_device()
-        except Exception:
-            pass
 
     if enrollment_error:
         logger.warning(
@@ -1253,64 +1250,60 @@ def _fingerprint_enrollment_handler(sdk, payload: dict) -> dict:
             f"but continuing verification — templates may still have been captured"
         )
 
-    # Phase 3: Verify enrollment by checking templates with retry
-    # Reuse single connection — don't reconnect per attempt
-    MAX_VERIFY_RETRIES = 5
+    # Phase 3: Verify enrollment by polling templates
+    # Use get_templates_light (no disable/enable cycle) on the SAME connection
+    # so the device stays in enrollment/disabled mode for the user to scan.
+    MAX_VERIFY_RETRIES = 15
     VERIFY_DELAY = 2
 
-    try:
-        sdk._connect_with_retry(2, 1.0)
-        for attempt in range(1, MAX_VERIFY_RETRIES + 1):
-            time.sleep(VERIFY_DELAY)
-            try:
-                all_templates = sdk.get_templates()
-                user_templates = [
-                    t for t in all_templates
-                    if t["uid"] == device_uid and t["valid"] and t.get("template")
-                ]
+    for attempt in range(1, MAX_VERIFY_RETRIES + 1):
+        time.sleep(VERIFY_DELAY)
+        try:
+            all_templates = sdk.get_templates_light()
+            user_templates = [
+                t for t in all_templates
+                if t["uid"] == device_uid and t["valid"] and t.get("template")
+            ]
 
-                captured = []
-                for t in user_templates:
-                    key = (t["uid"], t["fid"])
-                    current_hash = hashlib.md5(t["template"]).hexdigest()
-                    if key not in baseline_hashes or baseline_hashes[key] != current_hash:
-                        template_bytes = t["template"]
-                        template_b64 = (
-                            base64.b64encode(template_bytes).decode()
-                            if isinstance(template_bytes, bytes)
-                            else str(template_bytes)
-                        )
-                        captured.append({
-                            "template_data": template_b64,
-                            "finger_index": t["fid"],
-                            "quality": 0,
-                        })
-
-                if captured:
-                    tmpl = captured[0]
-                    logger.info(
-                        f"[EnrollmentSDK] Verified on attempt {attempt}: "
-                        f"uid={device_uid}, fid={tmpl['finger_index']}"
+            captured = []
+            for t in user_templates:
+                key = (t["uid"], t["fid"])
+                current_hash = hashlib.md5(t["template"]).hexdigest()
+                if key not in baseline_hashes or baseline_hashes[key] != current_hash:
+                    template_bytes = t["template"]
+                    template_b64 = (
+                        base64.b64encode(template_bytes).decode()
+                        if isinstance(template_bytes, bytes)
+                        else str(template_bytes)
                     )
-                    return {
-                        "status": "captured",
-                        "template_data": tmpl["template_data"],
-                        "finger_index": tmpl["finger_index"],
-                        "quality": tmpl["quality"],
-                        "device_user_id": device_user_id,
-                        "device_uid": device_uid,
-                    }
+                    captured.append({
+                        "template_data": template_b64,
+                        "finger_index": t["fid"],
+                        "quality": 0,
+                    })
 
+            if captured:
+                tmpl = captured[0]
                 logger.info(
-                    f"[EnrollmentSDK] Verify attempt {attempt}/{MAX_VERIFY_RETRIES}: "
-                    f"no new templates yet"
+                    f"[EnrollmentSDK] Verified on attempt {attempt}: "
+                    f"uid={device_uid}, fid={tmpl['finger_index']}"
                 )
+                return {
+                    "status": "captured",
+                    "template_data": tmpl["template_data"],
+                    "finger_index": tmpl["finger_index"],
+                    "quality": tmpl["quality"],
+                    "device_user_id": device_user_id,
+                    "device_uid": device_uid,
+                }
 
-            except Exception as e:
-                logger.warning(f"[EnrollmentSDK] Verify attempt {attempt} error: {e}")
+            logger.info(
+                f"[EnrollmentSDK] Verify attempt {attempt}/{MAX_VERIFY_RETRIES}: "
+                f"no new templates yet"
+            )
 
-    except Exception as e:
-        logger.error(f"[EnrollmentSDK] Verification connection failed: {e}")
+        except Exception as e:
+            logger.warning(f"[EnrollmentSDK] Verify attempt {attempt} error: {e}")
 
     return {
         "status": "timeout",
