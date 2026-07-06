@@ -29,19 +29,14 @@ class DeviceRepository(BaseRepository[Device]):
     ) -> Optional[Device]:
         """Update device last_seen timestamp and set online.
 
-        IP address is only updated if the device doesn't already have one.
-        Once a device has a real IP (set via manual registration), heartbeats
-        will never overwrite it with the proxy IP.
+        IP address is NEVER updated from ADMS heartbeats because the proxy
+        (nginx/Docker/portproxy) IP is never the real device IP. Only manual
+        registration via the Discovery tab sets the correct IP.
         """
-        existing = await self.get_by_serial(serial_number)
         values = {
             "last_seen": datetime.now(timezone.utc),
             "is_online": True,
         }
-        # Only set IP if device has none (allows manual registration to stick)
-        if ip_address and existing and not existing.ip_address:
-            values["ip_address"] = ip_address
-
         await self.session.execute(
             update(Device)
             .where(Device.serial_number == serial_number)
