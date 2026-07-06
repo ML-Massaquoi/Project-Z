@@ -75,22 +75,20 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
       try {
         const res = await enrollmentAPI.wizardCaptureTemplate(sessionId)
         if (res.data.status === 'captured') {
-          if (pollIntervalRef.current) clearTimeout(pollIntervalRef.current)
           sendFingerprintMutation.mutate({
             session_id: sessionId,
             template_data: res.data.template_data,
             finger_index: res.data.finger_index,
           })
+          return // don't schedule next poll — onSuccess will set fingerprintCaptured which triggers cleanup
         } else if (res.data.status === 'not_found') {
           failureCount = 0
         }
       } catch {
         failureCount++
       }
-      // Schedule next poll 3s after this one completes
-      if (!fingerprintCaptured) {
-        pollIntervalRef.current = setTimeout(poll, 3000)
-      }
+      // Only schedule next poll when template NOT yet found
+      pollIntervalRef.current = setTimeout(poll, 3000)
     }
     // First poll after 1s delay
     const initialDelay = setTimeout(poll, 1000)
