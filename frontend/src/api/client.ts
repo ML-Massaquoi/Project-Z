@@ -592,6 +592,8 @@ export const enrollmentAPI = {
       { timeout: (seconds + 120) * 1000 },
     )
   },
+  wizardCaptureTemplate: (sessionId: string) =>
+    api.post(`/enrollment/wizard/capture-template/${sessionId}`, null, { timeout: 30000 }),
   checkDeviceReadiness: (deviceId: string) =>
     api.get(`/enrollment/devices/${deviceId}/readiness`, { timeout: 20000 }),
 }

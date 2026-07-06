@@ -59,6 +59,9 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
   const [deviceInfo, setDeviceInfo] = useState<any>(null)
   const [readinessError, setReadinessError] = useState<string>('')
 
+  const [enrollmentMode, setEnrollmentMode] = useState<'sdk' | 'manual' | null>(null)
+  const [manualCapturing, setManualCapturing] = useState(false)
+
   const { lastEvent } = useWebSocket(null)
 
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'completed' | 'failed'>('idle')
@@ -165,6 +168,12 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
       setEnrollmentMessage('')
       setFingerprintCaptured(false)
       toast.success(`Employee ${data.data.employee_code} created`)
+      if (data.data.status === 'user_registered') {
+        setEnrollmentMode('manual')
+        setEnrollmentMessage('User registered. Enroll fingerprint on the device LCD, then click "Check for Template".')
+      } else {
+        setEnrollmentMode('sdk')
+      }
       goToStep('fingerprint')
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to create employee'),
@@ -180,6 +189,22 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
       toast.success('Fingerprint captured and saved!')
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to save fingerprint'),
+  })
+
+  const captureTemplateMutation = useMutation({
+    mutationFn: (sid: string) => enrollmentAPI.wizardCaptureTemplate(sid),
+    onSuccess: (data: any) => {
+      if (data.data.status === 'captured') {
+        sendFingerprintMutation.mutate({
+          session_id: sessionId!,
+          template_data: data.data.template_data,
+          finger_index: data.data.finger_index,
+        })
+      } else if (data.data.status === 'not_found') {
+        toast.error(data.data.message || 'No template found. Please enroll on the device first.')
+      }
+    },
+    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to capture template'),
   })
 
   const triggerFaceMutation = useMutation({
@@ -327,6 +352,8 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
     setDeviceReadiness('idle')
     setDeviceInfo(null)
     setReadinessError('')
+    setEnrollmentMode(null)
+    setManualCapturing(false)
     setSyncStatus('idle')
     setSyncMessage('')
     setSyncedDevices(0)
@@ -793,6 +820,40 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
                         </div>
                       </div>
                     )}
+                  </div>
+                ) : enrollmentMode === 'manual' ? (
+                  /* Manual enrollment UI — ZMM220_TFT doesn't support SDK enroll_user */
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div style={{ padding: '24px', borderRadius: '12px', border: '1px solid #F59E0B', background: 'rgba(245,158,11,0.06)' }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                        <Monitor size={20} style={{ color: '#F59E0B', marginTop: '2px', flexShrink: 0 }} />
+                        <div>
+                          <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--pz-text)', margin: 0 }}>Manual Enrollment Required</p>
+                          <p style={{ fontSize: '12px', color: 'var(--pz-text-muted)', marginTop: '6px', marginBottom: 0, lineHeight: 1.5 }}>
+                            This device does not support remote fingerprint enrollment. Please enroll manually:
+                          </p>
+                          <ol style={{ fontSize: '12px', color: 'var(--pz-text-secondary)', marginTop: '8px', marginBottom: 0, paddingLeft: '18px', lineHeight: 1.8 }}>
+                            <li>Go to the device at <strong>{selectedDevice?.name}</strong></li>
+                            <li>Press <strong>Menu</strong> on the device</li>
+                            <li>Select <strong>User Mgmt</strong> → find your name</li>
+                            <li>Select <strong>Enroll Fingerprint</strong></li>
+                            <li>Scan your fingerprint when prompted</li>
+                          </ol>
+                        </div>
+                      </div>
+                    </div>
+                    <Button
+                      variant="default" size="lg"
+                      onClick={() => captureTemplateMutation.mutate(sessionId!)}
+                      disabled={captureTemplateMutation.isPending}
+                      style={{ width: '100%' }}
+                    >
+                      {captureTemplateMutation.isPending ? (
+                        <><Loader2 size={16} className="animate-spin" /> Checking for Template...</>
+                      ) : (
+                        <><Fingerprint size={16} /> Check for Template</>
+                      )}
+                    </Button>
                   </div>
                 ) : (
                   <FingerprintCapturePanel
