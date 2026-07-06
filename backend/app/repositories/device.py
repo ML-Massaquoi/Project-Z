@@ -29,24 +29,18 @@ class DeviceRepository(BaseRepository[Device]):
     ) -> Optional[Device]:
         """Update device last_seen timestamp and set online.
 
-        Never overwrite a real device IP (e.g. 172.16.x.x) with a proxy
-        address (127.0.0.1). Only update IP when the source is a real
-        network address or the device currently has no IP set.
+        IP address is only updated if the device doesn't already have one.
+        Once a device has a real IP (set via manual registration), heartbeats
+        will never overwrite it with the proxy IP.
         """
+        existing = await self.get_by_serial(serial_number)
         values = {
             "last_seen": datetime.now(timezone.utc),
             "is_online": True,
         }
-        if ip_address:
-            # Only update IP if it's not a loopback/proxy address
-            # and the device doesn't already have a real IP
-            if ip_address not in ("127.0.0.1", "::1", "localhost"):
-                values["ip_address"] = ip_address
-            else:
-                # Check if device needs an IP at all (first connection)
-                existing = await self.get_by_serial(serial_number)
-                if existing and not existing.ip_address:
-                    values["ip_address"] = ip_address
+        # Only set IP if device has none (allows manual registration to stick)
+        if ip_address and existing and not existing.ip_address:
+            values["ip_address"] = ip_address
 
         await self.session.execute(
             update(Device)
@@ -59,14 +53,20 @@ class DeviceRepository(BaseRepository[Device]):
     async def auto_register(
         self, serial_number: str, ip_address: Optional[str] = None
     ) -> Device:
-        """Auto-register a new device when it first connects."""
+        """Auto-register a new device when it first connects.
+
+        IP is NOT stored from ADMS heartbeats because the proxy (nginx/Docker)
+        IP is not the real device IP. The user must set the correct IP via
+        manual registration in the Discovery tab.
+        """
         device = Device(
             serial_number=serial_number,
             name=f"Device {serial_number}",
-            ip_address=ip_address,
-            is_online=True,
+            ip_address=None,
+            is_online=False,
+            is_provisioned=False,
             last_seen=datetime.now(timezone.utc),
-            last_activity="Auto-registered via ADMS",
+            last_activity="Auto-registered via ADMS (provision via Discovery tab)",
         )
         self.session.add(device)
         await self.session.flush()

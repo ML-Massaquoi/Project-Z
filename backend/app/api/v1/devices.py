@@ -31,6 +31,7 @@ async def list_devices(
     result = await db.execute(
         select(Device)
         .options(joinedload(Device.office), joinedload(Device.department))
+        .where(Device.is_provisioned == True)
         .order_by(Device.created_at.desc())
     )
     devices = result.unique().scalars().all()

@@ -102,7 +102,35 @@ async def register_discovered_device(
         select(Device).where(Device.serial_number == req.serial_number)
     )).scalar_one_or_none()
     if existing:
-        raise HTTPException(409, f"Device with serial {req.serial_number} already registered")
+        if existing.is_provisioned:
+            raise HTTPException(409, f"Device with serial {req.serial_number} already registered")
+        # Update the auto-registered device with real data
+        existing.name = req.name
+        existing.ip_address = req.ip_address
+        existing.model = req.model
+        existing.firmware_version = req.firmware_version
+        existing.platform = req.platform or "ZMM220_TFT"
+        existing.sdk_port = req.port
+        existing.adms_port = 8081
+        existing.is_online = True
+        existing.is_active = True
+        existing.health_status = "unknown"
+        existing.is_provisioned = True
+        existing.last_seen = datetime.now(timezone.utc)
+        existing.last_activity = "Provisioned via Discovery"
+        existing.department_id = req.department_id
+        existing.office_id = req.office_id
+        await db.flush()
+        await db.refresh(existing)
+        logger.info(f"Device provisioned: {existing.name} ({existing.serial_number}) at {existing.ip_address}")
+        return {
+            "id": str(existing.id),
+            "serial_number": existing.serial_number,
+            "name": existing.name,
+            "ip_address": existing.ip_address,
+            "model": existing.model,
+            "status": "provisioned",
+        }
 
     device = Device(
         serial_number=req.serial_number,
@@ -115,6 +143,7 @@ async def register_discovered_device(
         adms_port=8081,
         is_online=True,
         is_active=True,
+        is_provisioned=True,
         health_status="unknown",
         last_seen=datetime.now(timezone.utc),
         department_id=req.department_id,
