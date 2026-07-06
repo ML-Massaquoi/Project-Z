@@ -259,10 +259,10 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
         }
         break
       case 'face':
-        if (faceStatus === 'done') {
+        if (faceStatus === 'done' || faceStatus === 'not_supported' || faceStatus === 'skipped') {
           completeMutation.mutate(sessionId!)
         } else {
-          toast.error('Please confirm face was captured first')
+          toast.error('Please complete or skip face enrollment first')
         }
         break
     }
