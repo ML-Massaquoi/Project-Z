@@ -30,6 +30,7 @@ export function NetworkDiscovery() {
   const [cidr, setCidr] = useState('172.16.40.0/24')
   const [scanResult, setScanResult] = useState<ScanResult | null>(null)
   const [registeringIp, setRegisteringIp] = useState<string | null>(null)
+  const [registeringSerial, setRegisteringSerial] = useState('')
   const [deviceName, setDeviceName] = useState('')
 
   const scanMutation = useMutation({
@@ -46,23 +47,10 @@ export function NetworkDiscovery() {
   const quickScanMutation = useMutation({
     mutationFn: () => deviceDiscoveryAPI.quickScan(cidr),
     onSuccess: (data) => {
-      setScanResult({
-        ...data.data,
-        devices: data.data.devices.map((d: any) => ({
-          ...d,
-          serial_number: '',
-          model: 'Unknown',
-          firmware_version: '',
-          platform: '',
-          mac_address: '',
-          is_registered: false,
-          device_id: null,
-          device_name: null,
-        })),
-      })
-      toast.success(`Quick scan: ${data.data.reachable} hosts reachable in ${data.data.duration_ms}ms`)
+      setScanResult(data.data)
+      toast.success(`Quick scan: ${data.data.discovered} hosts reachable in ${data.data.duration_ms}ms`)
     },
-    onError: (err: any) => toast.error('Quick scan failed'),
+    onError: (err: any) => toast.error(err.response?.data?.detail || 'Quick scan failed'),
   })
 
   const registerMutation = useMutation({
@@ -71,6 +59,7 @@ export function NetworkDiscovery() {
       queryClient.invalidateQueries({ queryKey: ['devices'] })
       toast.success('Device registered successfully')
       setRegisteringIp(null)
+      setRegisteringSerial('')
       setDeviceName('')
       // Update local state
       if (scanResult && registeringIp) {
@@ -87,16 +76,17 @@ export function NetworkDiscovery() {
 
   const handleRegister = (device: DiscoveredDevice) => {
     setRegisteringIp(device.ip)
+    setRegisteringSerial(device.serial_number || '')
     setDeviceName(`${device.model || 'Device'} - ${device.ip}`)
   }
 
   const confirmRegister = () => {
-    if (!registeringIp || !deviceName.trim()) return
+    if (!registeringIp || !deviceName.trim() || !registeringSerial.trim()) return
     const device = scanResult?.devices.find(d => d.ip === registeringIp)
     if (!device) return
     registerMutation.mutate({
       ip_address: device.ip,
-      serial_number: device.serial_number,
+      serial_number: registeringSerial.trim(),
       name: deviceName.trim(),
       model: device.model,
       firmware_version: device.firmware_version,
@@ -186,26 +176,31 @@ export function NetworkDiscovery() {
                   {registeringIp === device.ip ? (
                     <div className="flex items-center gap-3">
                       <Monitor size={18} className="text-amber-400 flex-shrink-0" />
-                      <div className="flex-1">
+                      <div className="flex-1 space-y-2">
                         <input
                           value={deviceName}
                           onChange={(e) => setDeviceName(e.target.value)}
                           placeholder="Device name"
                           className="w-full px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-sm text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50"
                           autoFocus
-                          onKeyDown={(e) => e.key === 'Enter' && confirmRegister()}
+                        />
+                        <input
+                          value={registeringSerial}
+                          onChange={(e) => setRegisteringSerial(e.target.value)}
+                          placeholder="Serial number"
+                          className="w-full px-3 py-2 rounded-lg bg-[var(--pz-surface-2)] border border-[var(--pz-border)] text-sm font-mono text-[var(--pz-text)] focus:outline-none focus:border-blue-500/50"
                         />
                       </div>
                       <button
                         onClick={confirmRegister}
-                        disabled={!deviceName.trim() || registerMutation.isPending}
+                        disabled={!deviceName.trim() || !registeringSerial.trim() || registerMutation.isPending}
                         className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors disabled:opacity-50"
                       >
                         {registerMutation.isPending ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />}
                         Register
                       </button>
                       <button
-                        onClick={() => { setRegisteringIp(null); setDeviceName('') }}
+                        onClick={() => { setRegisteringIp(null); setRegisteringSerial(''); setDeviceName('') }}
                         className="px-3 py-2 rounded-lg text-xs font-semibold text-[var(--pz-text-muted)] hover:text-[var(--pz-text)]"
                       >
                         Cancel

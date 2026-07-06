@@ -198,11 +198,27 @@ async def quick_scan(ip_range: str = "172.16.40.0/24", port: int = ZKTECO_SDK_PO
     tasks = [_check(ip) for ip in ips]
     await asyncio.gather(*tasks, return_exceptions=True)
 
+    discovered_devices = [
+        {
+            "ip": ip,
+            "port": port,
+            "serial_number": f"unknown-{ip.split('.')[-1]}",
+            "model": "Unknown",
+            "firmware_version": "",
+            "platform": "",
+            "mac_address": "",
+            "is_registered": False,
+            "device_id": None,
+            "device_name": None,
+        }
+        for ip in sorted(reachable)
+    ]
+
     duration_ms = int((time.monotonic() - start_time) * 1000)
     return {
-        "range": ip_range,
-        "total_hosts": total,
-        "reachable": len(reachable),
-        "devices": [{"ip": ip, "port": port} for ip in sorted(reachable)],
+        "cidr": ip_range,
+        "scanned": total,
+        "discovered": len(discovered_devices),
+        "devices": discovered_devices,
         "duration_ms": duration_ms,
     }

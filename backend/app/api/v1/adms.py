@@ -51,6 +51,15 @@ _LAST_SEEN_WRITE_INTERVAL = 30  # seconds
 _OPTIONS_REFRESH_INTERVAL = 3600  # send OPTIONS command to force re-read every hour
 
 
+def _get_client_ip(request: Request) -> Optional[str]:
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    if request.client:
+        return request.client.host
+    return None
+
+
 async def _validate_device_ip(db: AsyncSession, serial_number: str, client_ip: str) -> bool:
     """
     Validate that the client IP matches the registered device IP.
@@ -165,7 +174,7 @@ async def adms_getrequest(
     Throttled DB write: only updates last_seen every 30s per device.
     Resilient: always returns OK even if DB is temporarily unavailable.
     """
-    client_ip = request.client.host if request.client else None
+    client_ip = _get_client_ip(request)
 
     if not SN:
         return Response(content="OK", media_type="text/plain")
@@ -251,7 +260,7 @@ async def adms_handshake(
     Resilient: always returns a valid response even if DB is temporarily unavailable.
     Devices will retry if they don't get a response.
     """
-    client_ip = request.client.host if request.client else None
+    client_ip = _get_client_ip(request)
 
     if not SN:
         return Response(content="ERROR: No serial number", media_type="text/plain")
@@ -453,7 +462,7 @@ async def adms_receive_attendance(
     """
     body = await request.body()
     body_str = body.decode("utf-8", errors="replace")
-    client_ip = request.client.host if request.client else None
+    client_ip = _get_client_ip(request)
 
     logger.info(
         f"[ADMS] DATA PUSH | SN={SN} | table={table} | Stamp={Stamp} "
