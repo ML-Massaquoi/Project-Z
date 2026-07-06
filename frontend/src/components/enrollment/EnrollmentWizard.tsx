@@ -168,12 +168,6 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
       setEnrollmentMessage('')
       setFingerprintCaptured(false)
       toast.success(`Employee ${data.data.employee_code} created`)
-      if (data.data.status === 'user_registered') {
-        setEnrollmentMode('manual')
-        setEnrollmentMessage('User registered. Enroll fingerprint on the device LCD, then click "Check for Template".')
-      } else {
-        setEnrollmentMode('sdk')
-      }
       goToStep('fingerprint')
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to create employee'),
@@ -869,6 +863,10 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
                         finger_index: data.finger_index,
                       })
                     }}
+                    onManualRequired={(msg) => {
+                      setEnrollmentMode('manual')
+                      setEnrollmentMessage(msg)
+                    }}
                   />
                 )}
               </div>
@@ -983,12 +981,13 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
 }
 
 
-function FingerprintCapturePanel({ sessionId, deviceName, status, message, onCaptured }: {
+function FingerprintCapturePanel({ sessionId, deviceName, status, message, onCaptured, onManualRequired }: {
   sessionId: string | null
   deviceName?: string
   status: string
   message: string
   onCaptured: (data: { template_data: string; finger_index: number }) => void
+  onManualRequired?: (msg: string) => void
 }) {
   const [enrolling, setEnrolling] = useState(false)
   const [countdown, setCountdown] = useState(45)
@@ -1082,6 +1081,10 @@ function FingerprintCapturePanel({ sessionId, deviceName, status, message, onCap
           template_data: result.data.template_data,
           finger_index: result.data.finger_index || 0,
         })
+      } else if (result.data.status === 'user_registered') {
+        if (onManualRequired) {
+          onManualRequired(result.data.message || 'User registered. Enroll via device LCD.')
+        }
       } else {
         toast.info(result.data.message || 'No fingerprint detected - try again')
       }
@@ -1092,7 +1095,7 @@ function FingerprintCapturePanel({ sessionId, deviceName, status, message, onCap
       setEnrolling(false)
       setCountdownActive(false)
     }
-  }, [sessionId, handleCaptured])
+  }, [sessionId, handleCaptured, onManualRequired])
 
   const getStatusIcon = () => {
     if (enrolling && status === 'idle') {
