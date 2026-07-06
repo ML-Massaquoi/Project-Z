@@ -61,6 +61,93 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
 
   const [enrollmentMode, setEnrollmentMode] = useState<'sdk' | 'manual' | null>(null)
   const [manualCapturing, setManualCapturing] = useState(false)
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const facePollIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const autoAdvanceRef = useRef<NodeJS.Timeout | null>(null)
+  const autoCompleteRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Auto-poll for fingerprint template when in manual mode
+  useEffect(() => {
+    if (enrollmentMode !== 'manual' || !sessionId || fingerprintCaptured) return
+    setManualCapturing(true)
+    let failureCount = 0
+    const poll = async () => {
+      try {
+        const res = await enrollmentAPI.wizardCaptureTemplate(sessionId)
+        if (res.data.status === 'captured') {
+          if (pollIntervalRef.current) clearTimeout(pollIntervalRef.current)
+          sendFingerprintMutation.mutate({
+            session_id: sessionId,
+            template_data: res.data.template_data,
+            finger_index: res.data.finger_index,
+          })
+        } else if (res.data.status === 'not_found') {
+          failureCount = 0
+        }
+      } catch {
+        failureCount++
+      }
+      // Schedule next poll 3s after this one completes
+      if (!fingerprintCaptured) {
+        pollIntervalRef.current = setTimeout(poll, 3000)
+      }
+    }
+    // First poll after 1s delay
+    const initialDelay = setTimeout(poll, 1000)
+    return () => {
+      clearTimeout(initialDelay)
+      if (pollIntervalRef.current) clearTimeout(pollIntervalRef.current)
+    }
+  }, [enrollmentMode, sessionId, fingerprintCaptured])
+
+  // Auto-advance to face step after fingerprint captured
+  useEffect(() => {
+    if (fingerprintCaptured && step === 'fingerprint') {
+      autoAdvanceRef.current = setTimeout(() => goToStep('face'), 1500)
+    }
+    return () => {
+      if (autoAdvanceRef.current) clearTimeout(autoAdvanceRef.current)
+    }
+  }, [fingerprintCaptured, step])
+
+  // Auto-poll for face template after face enrollment triggered
+  useEffect(() => {
+    if (faceStatus !== 'triggered' || !sessionId) return
+    const pollFace = async () => {
+      try {
+        const res = await enrollmentAPI.wizardCaptureTemplate(sessionId)
+        if (res.data.status === 'captured') {
+          if (facePollIntervalRef.current) clearTimeout(facePollIntervalRef.current)
+          setFaceStatus('done')
+          setFaceMessage('Face captured successfully!')
+          autoCompleteRef.current = setTimeout(() => {
+            completeMutation.mutate(sessionId)
+          }, 1500)
+          return
+        }
+      } catch {
+        // keep polling
+      }
+      // Schedule next poll 3s after this one completes
+      facePollIntervalRef.current = setTimeout(pollFace, 3000)
+    }
+    facePollIntervalRef.current = setTimeout(pollFace, 3000)
+    return () => {
+      if (facePollIntervalRef.current) clearTimeout(facePollIntervalRef.current)
+    }
+  }, [faceStatus, sessionId])
+
+  // Auto-complete when face is not_supported (ZMM220_TFT)
+  useEffect(() => {
+    if (faceStatus === 'not_supported' && sessionId) {
+      autoCompleteRef.current = setTimeout(() => {
+        completeMutation.mutate(sessionId)
+      }, 1500)
+    }
+    return () => {
+      if (autoCompleteRef.current) clearTimeout(autoCompleteRef.current)
+    }
+  }, [faceStatus, sessionId])
 
   const { lastEvent } = useWebSocket(null)
 
@@ -185,22 +272,6 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to save fingerprint'),
   })
 
-  const captureTemplateMutation = useMutation({
-    mutationFn: (sid: string) => enrollmentAPI.wizardCaptureTemplate(sid),
-    onSuccess: (data: any) => {
-      if (data.data.status === 'captured') {
-        sendFingerprintMutation.mutate({
-          session_id: sessionId!,
-          template_data: data.data.template_data,
-          finger_index: data.data.finger_index,
-        })
-      } else if (data.data.status === 'not_found') {
-        toast.error(data.data.message || 'No template found. Please enroll on the device first.')
-      }
-    },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to capture template'),
-  })
-
   const triggerFaceMutation = useMutation({
     mutationFn: (sid: string) => enrollmentAPI.triggerFace(sid),
     onSuccess: (data: any) => {
@@ -286,10 +357,8 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
         }
         break
       case 'face':
-        if (faceStatus === 'done' || faceStatus === 'not_supported') {
+        if (faceStatus === 'error') {
           completeMutation.mutate(sessionId!)
-        } else {
-          toast.error('Please complete or skip face enrollment first')
         }
         break
     }
@@ -392,30 +461,30 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
             </Button>
             <Button
               variant="default" size="lg" onClick={handleNext}
-              disabled={isPending || (step === 'fingerprint' && !selectedDeviceId) || (step === 'fingerprint' && deviceReadiness === 'checking') || (step === 'fingerprint' && !!sessionId && !fingerprintCaptured) || (step === 'face' && faceStatus !== 'done' && faceStatus !== 'not_supported' && faceStatus !== 'error')}
+              disabled={isPending || (step === 'fingerprint' && !selectedDeviceId) || (step === 'fingerprint' && deviceReadiness === 'checking') || (step === 'fingerprint' && !!sessionId && !fingerprintCaptured) || (step === 'face' && faceStatus === 'idle' && !triggerFaceMutation.isPending)}
             >
               {createMutation.isPending ? (
                 <><Loader2 size={16} className="animate-spin" /> Creating Employee...</>
               ) : sendFingerprintMutation.isPending ? (
-                <><Loader2 size={16} className="animate-spin" /> Saving...</>
+                <><Loader2 size={16} className="animate-spin" /> Saving Fingerprint...</>
               ) : triggerFaceMutation.isPending ? (
                 <><Loader2 size={16} className="animate-spin" /> Starting Face Enrollment...</>
               ) : completeMutation.isPending ? (
-                <><Loader2 size={16} className="animate-spin" /> Completing...</>
+                <><Loader2 size={16} className="animate-spin" /> Completing Enrollment...</>
               ) : step === 'fingerprint' && deviceReadiness === 'checking' ? (
                 <><Loader2 size={16} className="animate-spin" /> Checking Device...</>
               ) : step === 'fingerprint' && deviceReadiness === 'idle' ? (
                 <><Info size={16} /> Check Device First</>
               ) : step === 'fingerprint' && deviceReadiness === 'ready' && !sessionId ? (
                 <><Send size={16} /> Send Enrollment Command</>
-              ) : step === 'fingerprint' && sessionId && fingerprintCaptured ? (
-                <><Monitor size={16} /> Next: Face Enrollment</>
               ) : step === 'fingerprint' && sessionId && !fingerprintCaptured ? (
-                <><Loader2 size={16} className="animate-spin" /> Enrolling...</>
-              ) : step === 'face' && (faceStatus === 'triggered' || faceStatus === 'done') ? (
-                <><CheckCircle2 size={16} /> Complete Enrollment</>
-              ) : step === 'face' && faceStatus === 'not_supported' ? (
-                <><ArrowRight size={16} /> Skip Face & Complete</>
+                <><Loader2 size={16} className="animate-spin" /> Waiting for Fingerprint...</>
+              ) : step === 'fingerprint' && fingerprintCaptured ? (
+                <><ArrowRight size={16} /> Proceeding to Face...</>
+              ) : step === 'face' && faceStatus === 'triggered' ? (
+                <><Loader2 size={16} className="animate-spin" /> Waiting for Face...</>
+              ) : step === 'face' && (faceStatus === 'done' || faceStatus === 'not_supported') ? (
+                <><CheckCircle2 size={16} /> Completing...</>
               ) : step === 'face' && faceStatus === 'error' ? (
                 <><ArrowRight size={16} /> Continue Without Face</>
               ) : (
@@ -818,36 +887,47 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
                 ) : enrollmentMode === 'manual' ? (
                   /* Manual enrollment UI — ZMM220_TFT doesn't support SDK enroll_user */
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    <div style={{ padding: '24px', borderRadius: '12px', border: '1px solid #F59E0B', background: 'rgba(245,158,11,0.06)' }}>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                        <Monitor size={20} style={{ color: '#F59E0B', marginTop: '2px', flexShrink: 0 }} />
-                        <div>
-                          <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--pz-text)', margin: 0 }}>Manual Enrollment Required</p>
-                          <p style={{ fontSize: '12px', color: 'var(--pz-text-muted)', marginTop: '6px', marginBottom: 0, lineHeight: 1.5 }}>
-                            This device does not support remote fingerprint enrollment. Please enroll manually:
-                          </p>
-                          <ol style={{ fontSize: '12px', color: 'var(--pz-text-secondary)', marginTop: '8px', marginBottom: 0, paddingLeft: '18px', lineHeight: 1.8 }}>
-                            <li>Go to the device at <strong>{selectedDevice?.name}</strong></li>
-                            <li>Press <strong>Menu</strong> on the device</li>
-                            <li>Select <strong>User Mgmt</strong> → find your name</li>
-                            <li>Select <strong>Enroll Fingerprint</strong></li>
-                            <li>Scan your fingerprint when prompted</li>
-                          </ol>
+                    {fingerprintCaptured ? (
+                      /* ── Success state (auto-advancing) ── */
+                      <div style={{ padding: '24px', borderRadius: '12px', border: '1px solid #10B981', background: 'rgba(16,185,129,0.06)', textAlign: 'center' }}>
+                        <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(16,185,129,0.1)', border: '2px solid rgba(16,185,129,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                          <CheckCircle2 size={32} style={{ color: '#10B981' }} />
+                        </div>
+                        <p style={{ fontSize: '15px', fontWeight: 600, color: 'var(--pz-text)', margin: 0 }}>Fingerprint Captured!</p>
+                        <p style={{ fontSize: '13px', color: 'var(--pz-text-muted)', marginTop: '6px', marginBottom: 0 }}>
+                          Advancing to face enrollment...
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                      <div style={{ padding: '24px', borderRadius: '12px', border: '1px solid #F59E0B', background: 'rgba(245,158,11,0.06)' }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                          <Monitor size={20} style={{ color: '#F59E0B', marginTop: '2px', flexShrink: 0 }} />
+                          <div>
+                            <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--pz-text)', margin: 0 }}>Manual Enrollment Required</p>
+                            <p style={{ fontSize: '12px', color: 'var(--pz-text-muted)', marginTop: '6px', marginBottom: 0, lineHeight: 1.5 }}>
+                              This device does not support remote fingerprint enrollment. Please enroll manually:
+                            </p>
+                            <ol style={{ fontSize: '12px', color: 'var(--pz-text-secondary)', marginTop: '8px', marginBottom: 0, paddingLeft: '18px', lineHeight: 1.8 }}>
+                              <li>Go to the device at <strong>{selectedDevice?.name}</strong></li>
+                              <li>Press <strong>Menu</strong> on the device</li>
+                              <li>Select <strong>User Mgmt</strong> → find your name</li>
+                              <li>Select <strong>Enroll Fingerprint</strong></li>
+                              <li>Scan your fingerprint when prompted</li>
+                            </ol>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <Button
-                      variant="default" size="lg"
-                      onClick={() => captureTemplateMutation.mutate(sessionId!)}
-                      disabled={captureTemplateMutation.isPending}
-                      style={{ width: '100%' }}
-                    >
-                      {captureTemplateMutation.isPending ? (
-                        <><Loader2 size={16} className="animate-spin" /> Checking for Template...</>
-                      ) : (
-                        <><Fingerprint size={16} /> Check for Template</>
-                      )}
-                    </Button>
+                      <div style={{ padding: '16px', borderRadius: '8px', background: 'rgba(37,99,235,0.06)', border: '1px solid rgba(37,99,235,0.15)', textAlign: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                          <Loader2 size={16} className="animate-spin" style={{ color: '#2563EB' }} />
+                          <p style={{ fontSize: '13px', fontWeight: 500, color: 'var(--pz-text-secondary)', margin: 0 }}>
+                            Waiting for template — the system will detect it automatically once enrolled
+                          </p>
+                        </div>
+                      </div>
+                      </>
+                    )}
                   </div>
                 ) : (
                   <FingerprintCapturePanel
@@ -904,33 +984,22 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
                   <p style={{ fontSize: '13px', color: 'var(--pz-text-muted)', textAlign: 'center', maxWidth: '420px', lineHeight: 1.5, margin: 0 }}>
                     The device is now in face enrollment mode. Please look at the device camera to capture your face.
                   </p>
-                  <div style={{ marginTop: '8px', padding: '12px 20px', borderRadius: '8px', background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.15)', maxWidth: '420px' }}>
-                    <p style={{ fontSize: '12px', color: 'var(--pz-text-muted)', margin: 0, lineHeight: 1.5 }}>
-                      <strong>Tip:</strong> Stand directly in front of the device at about arm's length. Ensure your face is well-lit and centered in the camera view.
+                  <div style={{ padding: '12px 20px', borderRadius: '8px', background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.15)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Loader2 size={16} className="animate-spin" style={{ color: '#2563EB' }} />
+                    <p style={{ fontSize: '12px', color: 'var(--pz-text-muted)', margin: 0 }}>
+                      Polling for face template — will auto-detect when enrolled
                     </p>
                   </div>
-                  <Button
-                    variant="default" size="lg"
-                    onClick={() => { setFaceStatus('done'); setFaceMessage('Face captured!') }}
-                    style={{ marginTop: '12px' }}
-                  >
-                    <CheckCircle2 size={16} /> Face Captured
-                  </Button>
                 </div>
               ) : faceStatus === 'not_supported' ? (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', padding: '40px 20px' }}>
-                  <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(245,158,11,0.1)', border: '2px solid rgba(245,158,11,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <AlertCircle size={32} style={{ color: '#F59E0B' }} />
+                  <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(16,185,129,0.1)', border: '2px solid rgba(16,185,129,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <CheckCircle2 size={32} style={{ color: '#10B981' }} />
                   </div>
-                  <p style={{ fontSize: '15px', fontWeight: 600, color: 'var(--pz-text)', margin: 0 }}>Automated Face Enrollment Not Available</p>
+                  <p style={{ fontSize: '15px', fontWeight: 600, color: 'var(--pz-text)', margin: 0 }}>Face Enrollment Complete</p>
                   <p style={{ fontSize: '13px', color: 'var(--pz-text-muted)', textAlign: 'center', maxWidth: '420px', lineHeight: 1.5, margin: 0 }}>
-                    {faceMessage}
+                    {faceMessage} — completing enrollment automatically...
                   </p>
-                  <div style={{ marginTop: '8px', padding: '12px 20px', borderRadius: '8px', background: 'rgba(37,99,235,0.08)', border: '1px solid rgba(37,99,235,0.15)', maxWidth: '420px' }}>
-                    <p style={{ fontSize: '12px', color: 'var(--pz-text-muted)', margin: 0, lineHeight: 1.5 }}>
-                      You can still enroll a face later through the device menu: <strong>Menu → User Mgmt → Select User → Enroll Face</strong>
-                    </p>
-                  </div>
                 </div>
               ) : faceStatus === 'error' ? (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', padding: '40px 20px' }}>
