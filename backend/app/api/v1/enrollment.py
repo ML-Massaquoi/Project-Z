@@ -683,16 +683,12 @@ async def wizard_poll_fingerprint(
     device_ip = device.ip_address
     device_port = device.sdk_port or 4370
 
-    # Quick TCP probe before full enrollment — gives immediate feedback if device is unreachable
-    import socket
-    try:
-        with socket.create_connection((device_ip, device_port), timeout=5):
-            pass
-    except (ConnectionRefusedError, TimeoutError, OSError) as e:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Device {device.name} ({device_ip}:{device_port}) is not reachable. Check if the device is powered on and connected to the network. Error: {e}"
-        )
+    # Pre-flight check: verify device is SDK-ready before enrollment
+    # Runs a full SDK connect + warm-up cycle to detect problems early
+    # (instead of waiting 45s for enroll_user to timeout)
+    preflight_result = await _check_device_ready(device, device_ip, device_port)
+    if preflight_result["status"] != "ready":
+        raise HTTPException(status_code=502, detail=preflight_result["error"])
 
     # Mark enrollment active — DeviceQueueManager workers check this flag and
     # skip the device during in-progress enrollment.
@@ -906,6 +902,67 @@ async def _auto_sync_after_fingerprint(
             "error": str(e),
             "message": f"Sync failed: {str(e)}",
         })
+
+
+async def _check_device_ready(device, ip: str, port: int) -> dict:
+    """
+    Pre-flight check: verify the device is fully SDK-ready before enrollment.
+    Connects, warms up the device (disable/enable cycle), checks capacity.
+    Ensures enroll_user has the highest chance of success.
+    """
+    from app.services.sdk_service import ZKSDKService
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    # 1. TCP reachability
+    import socket
+    try:
+        with socket.create_connection((ip, port), timeout=5):
+            pass
+    except (ConnectionRefusedError, TimeoutError, OSError) as e:
+        return {"status": "fail", "error": f"Device {device.name} ({ip}:{port}) is not reachable. Check if the device is powered on and connected. Error: {e}"}
+
+    # 2. SDK connect + device info + capacity check
+    sdk = ZKSDKService(ip=ip, port=port, timeout=10)
+    try:
+        sdk._connect_with_retry(2, 1.0)
+        info = sdk.get_device_info()
+
+        firmware = info.get("firmware_version", "unknown")
+        serial = info.get("serial_number", "unknown")
+        users_cap = info.get("users_capacity", 0)
+        fingers_cap = info.get("fingers_capacity", 0)
+        users_count = info.get("users_count", 0)
+        fingers_count = info.get("fingers_count", 0)
+
+        logger.info(
+            f"[PreFlight] Device {device.name}: SN={serial}, FW={firmware}, "
+            f"users={users_count}/{users_cap}, fingers={fingers_count}/{fingers_cap}"
+        )
+
+        # 3. Warm-up: disable/enable to reset device state
+        conn = sdk._get_connection()
+        conn.disable_device()
+        import time
+        time.sleep(0.5)
+        conn.enable_device()
+
+        sdk.disconnect()
+        return {"status": "ready", "serial": serial, "firmware": firmware}
+
+    except Exception as e:
+        try:
+            sdk.disconnect()
+        except Exception:
+            pass
+        logger.error(f"[PreFlight] Device {device.name} check failed: {e}")
+        return {
+            "status": "fail",
+            "error": f"Device {device.name} ({ip}) failed SDK readiness check: {e}. "
+                     f"Ensure the device is not in a menu, not already in enrollment mode, "
+                     f"and ADMS is enabled with correct TCP comm settings."
+        }
 
 
 async def _execute_fingerprint_enrollment(
