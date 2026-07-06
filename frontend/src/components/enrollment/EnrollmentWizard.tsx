@@ -126,24 +126,11 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
       } catch {
         // keep polling
       }
-      // Schedule next poll 3s after this one completes
       facePollIntervalRef.current = setTimeout(pollFace, 3000)
     }
     facePollIntervalRef.current = setTimeout(pollFace, 3000)
     return () => {
       if (facePollIntervalRef.current) clearTimeout(facePollIntervalRef.current)
-    }
-  }, [faceStatus, sessionId])
-
-  // Auto-complete when face is not_supported (ZMM220_TFT)
-  useEffect(() => {
-    if (faceStatus === 'not_supported' && sessionId) {
-      autoCompleteRef.current = setTimeout(() => {
-        completeMutation.mutate(sessionId)
-      }, 1500)
-    }
-    return () => {
-      if (autoCompleteRef.current) clearTimeout(autoCompleteRef.current)
     }
   }, [faceStatus, sessionId])
 
@@ -280,6 +267,10 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
       } else if (status === 'not_supported') {
         setFaceStatus('not_supported')
         setFaceMessage('Device does not support automated face enrollment. Click "Done" when face is enrolled.')
+        // Auto-complete after brief delay
+        autoCompleteRef.current = setTimeout(() => {
+          completeMutation.mutate(sessionId!)
+        }, 1500)
       } else {
         setFaceStatus('error')
         setFaceMessage(data.data?.message || 'Face enrollment could not be triggered')
