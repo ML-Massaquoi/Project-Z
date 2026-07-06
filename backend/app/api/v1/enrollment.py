@@ -1043,9 +1043,9 @@ def _fingerprint_enrollment_handler(sdk, payload: dict) -> dict:
 
     device_uid = None
 
-    # Phase 1: Connect, find/register user on device
+    # Phase 1: Find/register user on device
+    # (SDK already connected by run_sdk_operations)
     try:
-        sdk._connect_with_retry(3, 1.5)
         existing_users = sdk.get_users()
 
         for u in existing_users:
@@ -1083,22 +1083,6 @@ def _fingerprint_enrollment_handler(sdk, payload: dict) -> dict:
             f"{baseline_count} templates"
         )
 
-        # Disconnect and reconnect fresh before enrollment
-        sdk.disconnect()
-        time.sleep(0.5)
-        sdk._connect_with_retry(2, 1.0)
-
-        # Re-register user on fresh connection
-        sdk.set_user(
-            uid=device_uid,
-            name=employee_name[:8],
-            privilege=0,
-            password="",
-            group_id="",
-            user_id=device_user_id,
-            card=0,
-        )
-
     except Exception as e:
         try:
             sdk.disconnect()
@@ -1120,30 +1104,40 @@ def _fingerprint_enrollment_handler(sdk, payload: dict) -> dict:
     )
 
     # Phase 2: Send enrollment command
-    # ZMM220_TFT requires disable_device before enroll_user
+    # ZMM220_TFT requires disable_device before enroll_user.
+    # Use SAME connection as Phase 1 — no disconnect/reconnect cycle,
+    # which causes TCP session conflicts on ZMM220_TFT firmware.
     enrollment_error = None
 
     try:
         conn = sdk._get_connection()
         conn.disable_device()
-        try:
-            enroll_result = conn.enroll_user(uid=device_uid, temp_id=finger_index, user_id=device_user_id)
-            logger.info(f"[EnrollmentSDK] enroll_user(fid={finger_index}) returned: {enroll_result}")
-        finally:
+        # Give device time to settle after disable_device
+        time.sleep(1.0)
+        # Retry enroll_user once if it fails (intermittent ZMM220_TFT quirk)
+        for retry in range(2):
             try:
-                conn.enable_device()
-            except Exception:
-                pass
+                enroll_result = conn.enroll_user(uid=device_uid, temp_id=finger_index, user_id=device_user_id)
+                logger.info(f"[EnrollmentSDK] enroll_user(fid={finger_index}) returned: {enroll_result}")
+                if enroll_result:
+                    break
+                if retry == 0:
+                    logger.warning(f"[EnrollmentSDK] enroll_user attempt 1 returned False, retrying in 2s...")
+                    time.sleep(2.0)
+            except Exception as e:
+                if retry == 0:
+                    logger.warning(f"[EnrollmentSDK] enroll_user attempt 1 failed: {e}, retrying in 2s...")
+                    time.sleep(2.0)
+                else:
+                    raise
     except Exception as e:
         enrollment_error = str(e)
         logger.error(f"[EnrollmentSDK] Enrollment command error: {e}")
-
-    # Disconnect enrollment connection before verification
-    try:
-        sdk.disconnect()
-    except Exception:
-        pass
-    time.sleep(0.5)
+    finally:
+        try:
+            conn.enable_device()
+        except Exception:
+            pass
 
     if enrollment_error:
         logger.warning(
@@ -1152,55 +1146,63 @@ def _fingerprint_enrollment_handler(sdk, payload: dict) -> dict:
         )
 
     # Phase 3: Verify enrollment by checking templates with retry
+    # Reuse single connection — don't reconnect per attempt
     MAX_VERIFY_RETRIES = 5
     VERIFY_DELAY = 2
 
-    for attempt in range(1, MAX_VERIFY_RETRIES + 1):
-        time.sleep(VERIFY_DELAY)
-        try:
-            sdk._connect_with_retry(2, 1.0)
-            all_templates = sdk.get_templates()
-            user_templates = [t for t in all_templates if t["uid"] == device_uid and t["valid"] and t.get("template")]
+    try:
+        sdk._connect_with_retry(2, 1.0)
+        for attempt in range(1, MAX_VERIFY_RETRIES + 1):
+            time.sleep(VERIFY_DELAY)
+            try:
+                all_templates = sdk.get_templates()
+                user_templates = [
+                    t for t in all_templates
+                    if t["uid"] == device_uid and t["valid"] and t.get("template")
+                ]
 
-            captured = []
-            for t in user_templates:
-                key = (t["uid"], t["fid"])
-                current_hash = hashlib.md5(t["template"]).hexdigest()
-                if key not in baseline_hashes or baseline_hashes[key] != current_hash:
-                    template_bytes = t["template"]
-                    template_b64 = (
-                        base64.b64encode(template_bytes).decode()
-                        if isinstance(template_bytes, bytes)
-                        else str(template_bytes)
+                captured = []
+                for t in user_templates:
+                    key = (t["uid"], t["fid"])
+                    current_hash = hashlib.md5(t["template"]).hexdigest()
+                    if key not in baseline_hashes or baseline_hashes[key] != current_hash:
+                        template_bytes = t["template"]
+                        template_b64 = (
+                            base64.b64encode(template_bytes).decode()
+                            if isinstance(template_bytes, bytes)
+                            else str(template_bytes)
+                        )
+                        captured.append({
+                            "template_data": template_b64,
+                            "finger_index": t["fid"],
+                            "quality": 0,
+                        })
+
+                if captured:
+                    tmpl = captured[0]
+                    logger.info(
+                        f"[EnrollmentSDK] Verified on attempt {attempt}: "
+                        f"uid={device_uid}, fid={tmpl['finger_index']}"
                     )
-                    captured.append({
-                        "template_data": template_b64,
-                        "finger_index": t["fid"],
-                        "quality": 0,
-                    })
+                    return {
+                        "status": "captured",
+                        "template_data": tmpl["template_data"],
+                        "finger_index": tmpl["finger_index"],
+                        "quality": tmpl["quality"],
+                        "device_user_id": device_user_id,
+                        "device_uid": device_uid,
+                    }
 
-            if captured:
-                tmpl = captured[0]
                 logger.info(
-                    f"[EnrollmentSDK] Verified on attempt {attempt}: "
-                    f"uid={device_uid}, fid={tmpl['finger_index']}"
+                    f"[EnrollmentSDK] Verify attempt {attempt}/{MAX_VERIFY_RETRIES}: "
+                    f"no new templates yet"
                 )
-                return {
-                    "status": "captured",
-                    "template_data": tmpl["template_data"],
-                    "finger_index": tmpl["finger_index"],
-                    "quality": tmpl["quality"],
-                    "device_user_id": device_user_id,
-                    "device_uid": device_uid,
-                }
 
-            logger.info(
-                f"[EnrollmentSDK] Verify attempt {attempt}/{MAX_VERIFY_RETRIES}: "
-                f"no new templates yet"
-            )
+            except Exception as e:
+                logger.warning(f"[EnrollmentSDK] Verify attempt {attempt} error: {e}")
 
-        except Exception as e:
-            logger.warning(f"[EnrollmentSDK] Verify attempt {attempt} error: {e}")
+    except Exception as e:
+        logger.error(f"[EnrollmentSDK] Verification connection failed: {e}")
 
     return {
         "status": "timeout",
