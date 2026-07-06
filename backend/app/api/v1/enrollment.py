@@ -422,7 +422,12 @@ async def get_online_devices(
     from app.models.device import Device
     from sqlalchemy import select
     result = await db.execute(
-        select(Device).where(Device.is_online == True, Device.is_active == True)
+        select(Device).where(
+            Device.is_provisioned == True,
+            Device.is_online == True,
+            Device.is_active == True,
+            Device.ip_address.isnot(None),
+        )
     )
     devices = result.scalars().all()
     return {
@@ -666,6 +671,8 @@ async def wizard_poll_fingerprint(
     device = await db.get(Device, session.device_id)
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
+    if not device.is_provisioned or not device.ip_address:
+        raise HTTPException(status_code=400, detail=f"Device '{device.name}' is not fully provisioned. Register it via the Discovery tab first.")
     if not device.is_online:
         raise HTTPException(status_code=400, detail=f"Device '{device.name}' is not online. The dashboard shows it as degraded — check network connectivity and restart the device.")
 
