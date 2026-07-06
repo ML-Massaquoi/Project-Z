@@ -51,30 +51,27 @@ async def _get_device_info_via_sdk(ip: str, port: int = ZKTECO_SDK_PORT) -> Opti
     Connect to a discovered device and pull basic info via pyzk.
     Returns device metadata or None.
     """
+    from app.services.sdk_service import ZKSDKService
+    sdk = ZKSDKService(ip=ip, port=port, timeout=5)
     try:
-        import asyncio
-        from app.services.sdk_service import ZKSDKService
-        sdk = ZKSDKService(ip=ip, port=port, timeout=5)
-        try:
-            loop = asyncio.get_event_loop()
-            info = await loop.run_in_executor(None, sdk.get_device_info)
-            return {
-                "serial_number": info.get("serial_number", ""),
-                "model": info.get("device_name", ""),
-                "platform": info.get("platform", ""),
-                "firmware_version": info.get("firmware_version", ""),
-                "mac_address": info.get("mac_address", ""),
-                "ip_address": ip,
-                "sdk_port": port,
-            }
-        except Exception as e:
-            logger.warning(f"SDK info query failed for {ip}: {e}")
-            return None
-        finally:
-            await loop.run_in_executor(None, sdk.disconnect)
+        info = await asyncio.to_thread(sdk.get_device_info)
+        return {
+            "serial_number": info.get("serial_number", ""),
+            "model": info.get("device_name", ""),
+            "platform": info.get("platform", ""),
+            "firmware_version": info.get("firmware_version", ""),
+            "mac_address": info.get("mac_address", ""),
+            "ip_address": ip,
+            "sdk_port": port,
+        }
     except Exception as e:
-        logger.warning(f"SDK connection failed for {ip}: {e}")
+        logger.warning(f"SDK info query failed for {ip}: {e}")
         return None
+    finally:
+        try:
+            await asyncio.to_thread(sdk.disconnect)
+        except Exception:
+            pass
 
 
 async def scan_network_range(
@@ -198,21 +195,21 @@ async def quick_scan(ip_range: str = "172.16.40.0/24", port: int = ZKTECO_SDK_PO
     tasks = [_check(ip) for ip in ips]
     await asyncio.gather(*tasks, return_exceptions=True)
 
-    discovered_devices = [
-        {
+    discovered_devices = []
+    for ip in sorted(reachable):
+        info = await _get_device_info_via_sdk(ip, port)
+        discovered_devices.append({
             "ip": ip,
             "port": port,
-            "serial_number": f"unknown-{ip.split('.')[-1]}",
-            "model": "Unknown",
-            "firmware_version": "",
-            "platform": "",
-            "mac_address": "",
+            "serial_number": info.get("serial_number", f"unknown-{ip.split('.')[-1]}") if info else f"unknown-{ip.split('.')[-1]}",
+            "model": info.get("model", "Unknown") if info else "Unknown",
+            "firmware_version": info.get("firmware_version", "") if info else "",
+            "platform": info.get("platform", "") if info else "",
+            "mac_address": info.get("mac_address", "") if info else "",
             "is_registered": False,
             "device_id": None,
             "device_name": None,
-        }
-        for ip in sorted(reachable)
-    ]
+        })
 
     duration_ms = int((time.monotonic() - start_time) * 1000)
     return {
