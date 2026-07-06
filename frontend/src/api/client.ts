@@ -589,9 +589,11 @@ export const enrollmentAPI = {
     return api.post(
       `/enrollment/wizard/poll-fingerprint/${sessionId}?timeout=${seconds}`,
       null,
-      { timeout: (seconds + 120) * 1000 }, // axios timeout must exceed backend timeout (lock 30s + enroll timeout+60 + verify ~15s)
+      { timeout: (seconds + 120) * 1000 },
     )
   },
+  checkDeviceReadiness: (deviceId: string) =>
+    api.get(`/enrollment/devices/${deviceId}/readiness`, { timeout: 20000 }),
 }
 
 /* ── Employee Status API ────────────────────────────────── */

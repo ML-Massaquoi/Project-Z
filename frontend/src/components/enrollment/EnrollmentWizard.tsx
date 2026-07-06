@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   User, Monitor, Fingerprint, CheckCircle2, ArrowRight,
-  ArrowLeft, Loader2, WifiOff, AlertCircle, Send, Clock,
+  ArrowLeft, Loader2, WifiOff, AlertCircle, Send, Clock, Info,
 } from 'lucide-react'
 import { enrollmentAPI, departmentsAPI, shiftTemplatesAPI } from '@/api/client'
 import { Button } from '@/components/ui/button'
@@ -54,6 +54,10 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
   const [enrollmentMessage, setEnrollmentMessage] = useState<string>('')
   const [faceStatus, setFaceStatus] = useState<'idle' | 'triggering' | 'triggered' | 'not_supported' | 'error' | 'done'>('idle')
   const [faceMessage, setFaceMessage] = useState<string>('')
+
+  const [deviceReadiness, setDeviceReadiness] = useState<'idle' | 'checking' | 'ready' | 'failed'>('idle')
+  const [deviceInfo, setDeviceInfo] = useState<any>(null)
+  const [readinessError, setReadinessError] = useState<string>('')
 
   const { lastEvent } = useWebSocket(null)
 
@@ -237,7 +241,11 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
           toast.error('Please select a device')
           return
         }
-        if (!sessionId) {
+        if (!sessionId && deviceReadiness === 'idle') {
+          checkDevice()
+          return
+        }
+        if (!sessionId && deviceReadiness === 'ready') {
           createMutation.mutate({
             employee_code: employeeCode.trim(),
             full_name: fullName.trim(),
@@ -316,11 +324,33 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
     setEnrollmentMessage('')
     setFaceStatus('idle')
     setFaceMessage('')
+    setDeviceReadiness('idle')
+    setDeviceInfo(null)
+    setReadinessError('')
     setSyncStatus('idle')
     setSyncMessage('')
     setSyncedDevices(0)
     setTotalDevices(0)
   }
+
+  const checkDevice = useCallback(async () => {
+    if (!selectedDeviceId) return
+    setDeviceReadiness('checking')
+    setReadinessError('')
+    try {
+      const res = await enrollmentAPI.checkDeviceReadiness(selectedDeviceId)
+      if (res.data.status === 'ready') {
+        setDeviceInfo(res.data)
+        setDeviceReadiness('ready')
+      } else {
+        setReadinessError(res.data.error || res.data.hint || 'Device not reachable')
+        setDeviceReadiness('failed')
+      }
+    } catch (err: any) {
+      setReadinessError(err.response?.data?.detail || err.message || 'Failed to check device')
+      setDeviceReadiness('failed')
+    }
+  }, [selectedDeviceId])
 
   const selectedDevice = devicesData?.devices?.find((d: any) => d.id === selectedDeviceId)
   const isPending = createMutation.isPending || sendFingerprintMutation.isPending || triggerFaceMutation.isPending || completeMutation.isPending
@@ -341,7 +371,7 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
             </Button>
             <Button
               variant="default" size="lg" onClick={handleNext}
-              disabled={isPending || (step === 'fingerprint' && !selectedDeviceId) || (step === 'fingerprint' && !!sessionId && !fingerprintCaptured) || (step === 'face' && faceStatus !== 'done' && faceStatus !== 'not_supported' && faceStatus !== 'error')}
+              disabled={isPending || (step === 'fingerprint' && !selectedDeviceId) || (step === 'fingerprint' && deviceReadiness === 'checking') || (step === 'fingerprint' && !!sessionId && !fingerprintCaptured) || (step === 'face' && faceStatus !== 'done' && faceStatus !== 'not_supported' && faceStatus !== 'error')}
             >
               {createMutation.isPending ? (
                 <><Loader2 size={16} className="animate-spin" /> Creating Employee...</>
@@ -351,10 +381,14 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
                 <><Loader2 size={16} className="animate-spin" /> Starting Face Enrollment...</>
               ) : completeMutation.isPending ? (
                 <><Loader2 size={16} className="animate-spin" /> Completing...</>
+              ) : step === 'fingerprint' && deviceReadiness === 'checking' ? (
+                <><Loader2 size={16} className="animate-spin" /> Checking Device...</>
+              ) : step === 'fingerprint' && deviceReadiness === 'idle' ? (
+                <><Info size={16} /> Check Device First</>
+              ) : step === 'fingerprint' && deviceReadiness === 'ready' && !sessionId ? (
+                <><Send size={16} /> Send Enrollment Command</>
               ) : step === 'fingerprint' && sessionId && fingerprintCaptured ? (
                 <><Monitor size={16} /> Next: Face Enrollment</>
-              ) : step === 'fingerprint' && !sessionId ? (
-                <><Send size={16} /> Send Enrollment Command</>
               ) : step === 'fingerprint' && sessionId && !fingerprintCaptured ? (
                 <><Loader2 size={16} className="animate-spin" /> Enrolling...</>
               ) : step === 'face' && (faceStatus === 'triggered' || faceStatus === 'done') ? (
@@ -630,7 +664,7 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
             </div>
 
             {/* Enrollment Command Panel */}
-            {selectedDeviceId && !sessionId && (
+            {selectedDeviceId && !sessionId && deviceReadiness === 'idle' && (
               <div style={{ padding: '20px 24px', borderRadius: '12px', border: '1px solid #2563EB', background: 'rgba(37,99,235,0.06)', display: 'flex', alignItems: 'center', gap: '14px' }}>
                 <div style={{ width: '44px', height: '44px', borderRadius: '10px', background: 'rgba(37,99,235,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <Send size={18} color="#2563EB" />
@@ -638,9 +672,79 @@ export default function EnrollmentWizard({ open, onClose }: Props) {
                 <div style={{ flex: 1 }}>
                   <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--pz-text)', margin: 0 }}>Ready to Enroll</p>
                   <p style={{ fontSize: '12px', color: 'var(--pz-text-muted)', marginTop: '3px', marginBottom: 0 }}>
-                    Click "Next" to create employee and send enrollment command to <strong style={{ color: 'var(--pz-text-secondary)' }}>{selectedDevice?.name}</strong>
+                    Click <strong>Check Device</strong> below to verify readiness, then proceed with enrollment
                   </p>
                 </div>
+              </div>
+            )}
+
+            {/* Device Readiness Check */}
+            {selectedDeviceId && !sessionId && deviceReadiness !== 'idle' && (
+              <div style={{ padding: '20px 24px', borderRadius: '12px', border: deviceReadiness === 'ready' ? '1px solid #10B981' : deviceReadiness === 'failed' ? '1px solid #EF4444' : '1px solid #2563EB', background: deviceReadiness === 'ready' ? 'rgba(16,185,129,0.06)' : deviceReadiness === 'failed' ? 'rgba(239,68,68,0.06)' : 'rgba(37,99,235,0.06)' }}>
+                {deviceReadiness === 'checking' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <Loader2 size={20} className="animate-spin" style={{ color: '#2563EB' }} />
+                    <div>
+                      <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--pz-text)', margin: 0 }}>Checking Device Readiness...</p>
+                      <p style={{ fontSize: '12px', color: 'var(--pz-text-muted)', marginTop: '3px', marginBottom: 0 }}>
+                        Connecting to {selectedDevice?.name} via SDK port 4370
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {deviceReadiness === 'failed' && (
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                      <AlertCircle size={20} style={{ color: '#EF4444', marginTop: '2px', flexShrink: 0 }} />
+                      <div style={{ flex: 1 }}>
+                        <p style={{ fontSize: '14px', fontWeight: 600, color: '#EF4444', margin: 0 }}>Device Not Ready</p>
+                        <p style={{ fontSize: '12px', color: 'var(--pz-text-muted)', marginTop: '4px', marginBottom: 0, lineHeight: 1.5 }}>
+                          {readinessError}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={checkDevice}
+                      style={{ marginTop: '12px', padding: '8px 16px', borderRadius: '8px', border: '1px solid var(--pz-border)', background: 'var(--pz-surface-1)', cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: 'var(--pz-text)' }}
+                    >
+                      <ArrowRight size={14} style={{ marginRight: '6px' }} /> Retry Check
+                    </button>
+                  </div>
+                )}
+                {deviceReadiness === 'ready' && deviceInfo && (
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' }}>
+                      <CheckCircle2 size={20} style={{ color: '#10B981', flexShrink: 0 }} />
+                      <p style={{ fontSize: '14px', fontWeight: 600, color: '#10B981', margin: 0 }}>Device Ready</p>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', padding: '12px', borderRadius: '8px', background: 'rgba(0,0,0,0.04)' }}>
+                      {deviceInfo.serial_number && (
+                        <div>
+                          <p style={{ fontSize: '10px', fontWeight: 700, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Serial</p>
+                          <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--pz-text)', fontFamily: 'monospace', margin: '3px 0 0 0' }}>{deviceInfo.serial_number}</p>
+                        </div>
+                      )}
+                      {deviceInfo.firmware_version && (
+                        <div>
+                          <p style={{ fontSize: '10px', fontWeight: 700, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Firmware</p>
+                          <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--pz-text)', margin: '3px 0 0 0' }}>{deviceInfo.firmware_version}</p>
+                        </div>
+                      )}
+                      {deviceInfo.users !== null && (
+                        <div>
+                          <p style={{ fontSize: '10px', fontWeight: 700, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Users</p>
+                          <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--pz-text)', margin: '3px 0 0 0' }}>{deviceInfo.users} / {deviceInfo.users_capacity || '?'}</p>
+                        </div>
+                      )}
+                      {deviceInfo.fingers !== null && (
+                        <div>
+                          <p style={{ fontSize: '10px', fontWeight: 700, color: 'var(--pz-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Templates</p>
+                          <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--pz-text)', margin: '3px 0 0 0' }}>{deviceInfo.fingers} / {deviceInfo.fingers_capacity || '?'}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

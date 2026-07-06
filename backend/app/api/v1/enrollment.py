@@ -446,6 +446,87 @@ async def get_online_devices(
     }
 
 
+@router.get("/devices/{device_id}/readiness")
+async def check_device_readiness(
+    device_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    _user=Depends(get_current_user),
+):
+    """
+    Check if a device is SDK-ready before enrollment.
+    Connects, reads info, warms up, disconnects.
+    Returns device status, serial, firmware, capacity.
+    """
+    from app.models.device import Device
+    from app.services.sdk_service import ZKSDKService
+    import socket
+
+    device = await db.get(Device, device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    if not device.ip_address:
+        raise HTTPException(status_code=400, detail="Device has no IP address")
+
+    ip = device.ip_address
+    port = device.sdk_port or 4370
+
+    # TCP check
+    try:
+        with socket.create_connection((ip, port), timeout=5):
+            pass
+    except Exception as e:
+        return {"status": "unreachable", "error": str(e), "ip": ip, "port": port}
+
+    # SDK check
+    sdk = ZKSDKService(ip=ip, port=port, timeout=10)
+    try:
+        sdk._connect_with_retry(2, 1.0)
+        conn = sdk._get_connection()
+        serial = conn.get_serialnumber()
+        firmware = conn.get_firmware_version()
+        platform = conn.get_platform()
+        device_name = conn.get_device_name()
+        try:
+            conn.read_sizes()
+            users = conn.users
+            users_cap = conn.users_cap
+            fingers = conn.fingers
+            fingers_cap = conn.fingers_cap
+        except Exception:
+            users = users_cap = fingers = fingers_cap = None
+        # Warm-up: reset device state on this connection
+        conn.disable_device()
+        import time
+        time.sleep(0.3)
+        conn.enable_device()
+        sdk.disconnect()
+        return {
+            "status": "ready",
+            "ip": ip,
+            "port": port,
+            "serial_number": serial,
+            "firmware_version": firmware,
+            "platform": platform,
+            "device_name": device_name,
+            "users": users,
+            "users_capacity": users_cap,
+            "fingers": fingers,
+            "fingers_capacity": fingers_cap,
+        }
+    except Exception as e:
+        try:
+            sdk.disconnect()
+        except Exception:
+            pass
+        return {
+            "status": "error",
+            "error": str(e),
+            "ip": ip,
+            "port": port,
+            "hint": "Ensure device is not in a menu, not already in enrollment mode, and ADMS TCP comm is enabled."
+        }
+
+
 @router.post("/wizard/create-and-enroll")
 async def wizard_create_and_enroll(
     body: WizardCreateRequest,
