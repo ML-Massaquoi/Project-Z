@@ -982,8 +982,8 @@ function CreateDeptRuleForm({
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '16px', paddingTop: '16px', borderTop: '1px solid var(--pz-border)', marginTop: '20px' }}>
         <Button variant="outline" size="md" onClick={onCancel}>Cancel</Button>
-        <Button variant="default" size="md" loading={updateMutation.isPending} disabled={!form.employee_id || !form.shift_template_id || updateMutation.isPending} onClick={() => updateMutation.mutate(form)}>
-          {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+        <Button variant="default" size="md" loading={createMutation.isPending} disabled={!form.department_id || !form.shift_template_id || createMutation.isPending} onClick={() => createMutation.mutate(form)}>
+          {createMutation.isPending ? 'Saving...' : 'Save Changes'}
         </Button>
       </div>
     </div>
