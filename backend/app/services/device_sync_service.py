@@ -577,12 +577,10 @@ class DeviceSyncService:
 
             for emp in employees:
                 try:
-                    if emp.id in existing_users:
-                        continue
-
                     device_user_id = emp.employee_code
-                    if device_user_id in existing_uids:
-                        device_user_id = emp.employee_code
+
+                    if emp.id in existing_users or device_user_id in existing_uids:
+                        continue
 
                     # Determine UID: reuse existing or allocate next
                     device_uid = user_id_to_uid.get(device_user_id, next_uid)
@@ -726,12 +724,14 @@ class DeviceSyncService:
 
         results = []
         for device in devices:
+            did = str(device.id)
+            dname = device.name
             try:
                 user_log = await self.push_users_to_device(device.id, initiated_by=initiated_by)
                 template_log = await self.push_templates_to_device(device.id, initiated_by=initiated_by)
                 results.append({
-                    "device_id": str(device.id),
-                    "device_name": device.name,
+                    "device_id": did,
+                    "device_name": dname,
                     "status": "completed",
                     "users_synced": user_log.users_affected,
                     "templates_synced": template_log.templates_affected,
@@ -746,8 +746,8 @@ class DeviceSyncService:
                 )
             except Exception as e:
                 results.append({
-                    "device_id": str(device.id),
-                    "device_name": device.name,
+                    "device_id": did,
+                    "device_name": dname,
                     "status": "failed",
                     "error": str(e),
                 })
@@ -785,6 +785,8 @@ class DeviceSyncService:
 
         results = []
         for device in devices:
+            did = str(device.id)
+            dname = device.name
             try:
                 user_log = await self.push_users_to_device(
                     device.id, employee_ids=employee_ids, initiated_by=initiated_by,
@@ -793,16 +795,16 @@ class DeviceSyncService:
                     device.id, employee_ids=employee_ids, initiated_by=initiated_by,
                 )
                 results.append({
-                    "device_id": str(device.id),
-                    "device_name": device.name,
+                    "device_id": did,
+                    "device_name": dname,
                     "status": "completed",
                     "users_synced": user_log.users_affected,
                     "templates_synced": template_log.templates_affected,
                 })
             except Exception as e:
                 results.append({
-                    "device_id": str(device.id),
-                    "device_name": device.name,
+                    "device_id": did,
+                    "device_name": dname,
                     "status": "failed",
                     "error": str(e),
                 })
@@ -834,6 +836,8 @@ class DeviceSyncService:
 
         results = []
         for device in devices:
+            did = str(device.id)
+            dname = device.name
             try:
                 user_log = await self.push_users_to_device(
                     device.id, employee_ids=employee_ids, initiated_by=initiated_by,
@@ -842,16 +846,16 @@ class DeviceSyncService:
                     device.id, employee_ids=employee_ids, initiated_by=initiated_by,
                 )
                 results.append({
-                    "device_id": str(device.id),
-                    "device_name": device.name,
+                    "device_id": did,
+                    "device_name": dname,
                     "status": "completed",
                     "users_synced": user_log.users_affected,
                     "templates_synced": template_log.templates_affected,
                 })
             except Exception as e:
                 results.append({
-                    "device_id": str(device.id),
-                    "device_name": device.name,
+                    "device_id": did,
+                    "device_name": dname,
                     "status": "failed",
                     "error": str(e),
                 })
