@@ -972,6 +972,17 @@ class DeviceSyncService:
                 emp_device_map[du.employee_id] = set()
             emp_device_map[du.employee_id].add(du.device_id)
 
+        # Also include devices where template was enrolled (e.g. before DeviceUser was created)
+        template_devices = await self.session.execute(
+            select(FingerprintTemplate.device_id, FingerprintTemplate.employee_id)
+            .where(FingerprintTemplate.is_active == True)
+            .distinct()
+        )
+        for device_id, emp_id in template_devices:
+            if emp_id not in emp_device_map:
+                emp_device_map[emp_id] = set()
+            emp_device_map[emp_id].add(device_id)
+
         # Count total templates per employee (any device)
         template_result = await self.session.execute(
             select(FingerprintTemplate.employee_id, func.count(FingerprintTemplate.id).label("count"))

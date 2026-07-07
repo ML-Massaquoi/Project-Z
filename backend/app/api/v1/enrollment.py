@@ -1226,6 +1226,7 @@ async def _execute_fingerprint_enrollment(
 
         # Create employee-device mapping so ADMS scans can resolve the employee
         from app.models.employee_device_mapping import EmployeeDeviceMapping
+        from app.models.device_user import DeviceUser
         from sqlalchemy import and_
         existing_map = await db.execute(
             select(EmployeeDeviceMapping).where(
@@ -1249,6 +1250,29 @@ async def _execute_fingerprint_enrollment(
                 f"employee={employee.employee_code} -> device={device.name} "
                 f"(user_id={device_user_id})"
             )
+
+        # Also create/update DeviceUser record so the sync matrix shows this device as synced
+        existing_du = await db.execute(
+            select(DeviceUser).where(
+                and_(
+                    DeviceUser.device_id == device.id,
+                    DeviceUser.employee_id == employee.id,
+                )
+            ).limit(1)
+        )
+        device_user = existing_du.scalar_one_or_none()
+        if not device_user:
+            device_user = DeviceUser(
+                device_id=device.id,
+                device_user_id=device_user_id,
+                name=employee.full_name,
+                privilege=0,
+                employee_id=employee.id,
+                last_synced_at=datetime.now(timezone.utc).replace(tzinfo=None),
+                first_seen_at=datetime.now(timezone.utc).replace(tzinfo=None),
+            )
+            db.add(device_user)
+            await db.flush()
 
         await ws_manager.broadcast("enrollment.fingerprint.started", {
             "session_id": str(session.id),
