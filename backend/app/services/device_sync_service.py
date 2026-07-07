@@ -392,6 +392,11 @@ class DeviceSyncService:
 
             sdk = ZKSDKService(ip=ip, port=port, timeout=SDK_TIMEOUT_SECONDS)
 
+            # Resolve device UIDs so templates are associated with the correct user
+            device_users_on_device = await loop.run_in_executor(None, sdk.get_users)
+            user_id_to_uid = {u["user_id"]: u["uid"] for u in device_users_on_device}
+            next_uid = max(user_id_to_uid.values()) + 1 if user_id_to_uid else 1
+
             logger.info(
                 f"[Sync] Pushing {len(templates)} templates to "
                 f"{device.name} ({device.serial_number})"
@@ -436,9 +441,17 @@ class DeviceSyncService:
                     else:
                         device_user_id = device_user.device_user_id
 
-                    device_uid = None
-                    if device_user_id.isdigit():
-                        device_uid = int(device_user_id)
+                    # Resolve the device's internal UID for this user
+                    device_uid = user_id_to_uid.get(device_user_id)
+                    if device_uid is None:
+                        # User not on device yet — register with next available UID
+                        device_uid = next_uid
+                        next_uid += 1
+                        await loop.run_in_executor(
+                            None,
+                            sdk.set_user,
+                            device_uid, employee.full_name, 0, "", "", device_user_id,
+                        )
 
                     finger_list = []
                     for t in emp_templates:
@@ -450,12 +463,6 @@ class DeviceSyncService:
 
                     if not finger_list:
                         continue
-
-                    await loop.run_in_executor(
-                        None,
-                        sdk.set_user,
-                        device_uid, employee.full_name, 0, "", "", device_user_id,
-                    )
 
                     await loop.run_in_executor(
                         None,
@@ -557,6 +564,11 @@ class DeviceSyncService:
 
             sdk = ZKSDKService(ip=ip, port=port, timeout=SDK_TIMEOUT_SECONDS)
 
+            # Resolve device user UIDs so template sync can use the correct UID
+            device_users_on_device = await loop.run_in_executor(None, sdk.get_users)
+            user_id_to_uid = {u["user_id"]: u["uid"] for u in device_users_on_device}
+            next_uid = max(user_id_to_uid.values()) + 1 if user_id_to_uid else 1
+
             existing_result = await self.session.execute(
                 select(DeviceUser).where(DeviceUser.device_id == device_id)
             )
@@ -571,6 +583,11 @@ class DeviceSyncService:
                     device_user_id = emp.employee_code
                     if device_user_id in existing_uids:
                         device_user_id = emp.employee_code
+
+                    # Determine UID: reuse existing or allocate next
+                    device_uid = user_id_to_uid.get(device_user_id, next_uid)
+                    if device_uid == next_uid:
+                        next_uid += 1
 
                     new_du = DeviceUser(
                         device_id=device_id,
@@ -588,7 +605,7 @@ class DeviceSyncService:
                     await loop.run_in_executor(
                         None,
                         sdk.set_user,
-                        None, emp.full_name, 0, "", "", device_user_id,
+                        device_uid, emp.full_name, 0, "", "", device_user_id,
                     )
 
                     mapping = EmployeeDeviceMapping(

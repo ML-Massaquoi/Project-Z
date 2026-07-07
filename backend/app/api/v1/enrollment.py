@@ -1082,14 +1082,15 @@ async def _auto_sync_after_fingerprint(
             from app.models.device import Device
             from sqlalchemy import select, and_
 
+            conditions = [
+                Device.is_active == True,
+                Device.is_online == True,
+                Device.ip_address.isnot(None),
+            ]
+            if source_device_id:
+                conditions.append(Device.id != source_device_id)
             result = await bg_db.execute(
-                select(Device).where(
-                    and_(
-                        Device.is_active == True,
-                        Device.is_online == True,
-                        Device.id != source_device_id if source_device_id else True,
-                    )
-                )
+                select(Device).where(and_(*conditions))
             )
             devices = result.scalars().all()
 
