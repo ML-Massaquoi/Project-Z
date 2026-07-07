@@ -1032,6 +1032,7 @@ function ShiftProtocolsTab() {
   const { data, isLoading } = useQuery({
     queryKey: ['shift-protocols'],
     queryFn: () => shiftProtocolsAPI.list(),
+    select: (d: any) => d.data ?? d,
   })
 
   const seedMut = useMutation({
