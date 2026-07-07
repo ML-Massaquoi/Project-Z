@@ -572,8 +572,9 @@ class DeviceSyncService:
             existing_result = await self.session.execute(
                 select(DeviceUser).where(DeviceUser.device_id == device_id)
             )
-            existing_users = {du.employee_id: du for du in existing_result.scalars().all() if du.employee_id}
-            existing_uids = {du.device_user_id for du in existing_result.scalars().all()}
+            all_device_users = existing_result.scalars().all()
+            existing_users = {du.employee_id: du for du in all_device_users if du.employee_id}
+            existing_uids = {du.device_user_id for du in all_device_users}
 
             for emp in employees:
                 try:
