@@ -727,8 +727,9 @@ class DeviceSyncService:
             did = str(device.id)
             dname = device.name
             try:
-                user_log = await self.push_users_to_device(device.id, initiated_by=initiated_by)
-                template_log = await self.push_templates_to_device(device.id, initiated_by=initiated_by)
+                async with self.session.begin_nested():
+                    user_log = await self.push_users_to_device(device.id, initiated_by=initiated_by)
+                    template_log = await self.push_templates_to_device(device.id, initiated_by=initiated_by)
                 results.append({
                     "device_id": did,
                     "device_name": dname,
@@ -788,12 +789,13 @@ class DeviceSyncService:
             did = str(device.id)
             dname = device.name
             try:
-                user_log = await self.push_users_to_device(
-                    device.id, employee_ids=employee_ids, initiated_by=initiated_by,
-                )
-                template_log = await self.push_templates_to_device(
-                    device.id, employee_ids=employee_ids, initiated_by=initiated_by,
-                )
+                async with self.session.begin_nested():
+                    user_log = await self.push_users_to_device(
+                        device.id, employee_ids=employee_ids, initiated_by=initiated_by,
+                    )
+                    template_log = await self.push_templates_to_device(
+                        device.id, employee_ids=employee_ids, initiated_by=initiated_by,
+                    )
                 results.append({
                     "device_id": did,
                     "device_name": dname,
@@ -839,12 +841,13 @@ class DeviceSyncService:
             did = str(device.id)
             dname = device.name
             try:
-                user_log = await self.push_users_to_device(
-                    device.id, employee_ids=employee_ids, initiated_by=initiated_by,
-                )
-                template_log = await self.push_templates_to_device(
-                    device.id, employee_ids=employee_ids, initiated_by=initiated_by,
-                )
+                async with self.session.begin_nested():
+                    user_log = await self.push_users_to_device(
+                        device.id, employee_ids=employee_ids, initiated_by=initiated_by,
+                    )
+                    template_log = await self.push_templates_to_device(
+                        device.id, employee_ids=employee_ids, initiated_by=initiated_by,
+                    )
                 results.append({
                     "device_id": did,
                     "device_name": dname,
