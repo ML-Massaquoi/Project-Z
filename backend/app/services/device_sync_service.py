@@ -427,7 +427,7 @@ class DeviceSyncService:
 
                     if not device_user:
                         device_user_id = employee.employee_code
-                        new_du = DeviceUser(
+                        device_user = DeviceUser(
                             device_id=device_id,
                             device_user_id=device_user_id,
                             name=employee.full_name,
@@ -436,7 +436,7 @@ class DeviceSyncService:
                             last_synced_at=datetime.now(timezone.utc).replace(tzinfo=None),
                             first_seen_at=datetime.now(timezone.utc).replace(tzinfo=None),
                         )
-                        self.session.add(new_du)
+                        self.session.add(device_user)
                         await self.session.flush()
                     else:
                         device_user_id = device_user.device_user_id
@@ -474,6 +474,10 @@ class DeviceSyncService:
                         t.sync_status = SyncStatus.SYNCED.value
                         t.last_synced_at = datetime.now(timezone.utc).replace(tzinfo=None)
                         templates_affected += 1
+
+                    # Update fingerprint count on DeviceUser
+                    if device_user.fingerprint_count != len(emp_templates):
+                        device_user.fingerprint_count = len(emp_templates)
 
                 except Exception as e:
                     errors.append(f"Employee {emp_id}: {str(e)}")
@@ -955,18 +959,26 @@ class DeviceSyncService:
         )
         devices = device_result.scalars().all()
 
-        # Get all templates grouped by employee
-        template_result = await self.session.execute(
-            select(FingerprintTemplate).where(FingerprintTemplate.is_active == True)
+        # Get all device users (employees synced to devices)
+        du_result = await self.session.execute(
+            select(DeviceUser).where(DeviceUser.employee_id.isnot(None))
         )
-        all_templates = template_result.scalars().all()
+        all_device_users = du_result.scalars().all()
 
-        # Build matrix: employee_id -> set of device_ids with templates
+        # Build matrix: employee_id -> set of device_ids synced to
         emp_device_map: dict[UUID, set[UUID]] = {}
-        for t in all_templates:
-            if t.employee_id not in emp_device_map:
-                emp_device_map[t.employee_id] = set()
-            emp_device_map[t.employee_id].add(t.device_id)
+        for du in all_device_users:
+            if du.employee_id not in emp_device_map:
+                emp_device_map[du.employee_id] = set()
+            emp_device_map[du.employee_id].add(du.device_id)
+
+        # Count total templates per employee (any device)
+        template_result = await self.session.execute(
+            select(FingerprintTemplate.employee_id, func.count(FingerprintTemplate.id).label("count"))
+            .where(FingerprintTemplate.is_active == True)
+            .group_by(FingerprintTemplate.employee_id)
+        )
+        template_counts = dict(template_result.all())
 
         matrix = []
         for emp in employees:
@@ -988,9 +1000,7 @@ class DeviceSyncService:
 
             synced_count = len(emp_devices)
             total_devices = len(devices)
-            template_count = sum(
-                1 for t in all_templates if t.employee_id == emp.id
-            )
+            template_count = template_counts.get(emp.id, 0)
 
             matrix.append({
                 "employee_id": str(emp.id),
