@@ -317,6 +317,7 @@ class IngestionService:
         return result.scalar_one_or_none()
 
     async def _resolve_employee(self, device_user_id: str, device_id: UUID) -> Optional[Employee]:
+        # First: resolve via explicit device mapping
         result = await self.session.execute(
             select(Employee)
             .join(EmployeeDeviceMapping, EmployeeDeviceMapping.employee_id == Employee.id)
@@ -328,7 +329,23 @@ class IngestionService:
             )
             .limit(1)
         )
-        return result.scalar_one_or_none()
+        employee = result.scalar_one_or_none()
+        if employee:
+            return employee
+
+        # Fallback: try matching directly by employee_code
+        result = await self.session.execute(
+            select(Employee).where(Employee.employee_code == device_user_id).limit(1)
+        )
+        employee = result.scalar_one_or_none()
+        if employee:
+            logger.info(
+                f"[Ingestion] Resolved employee {employee.employee_code} "
+                f"via employee_code fallback (no mapping for device_id={device_id})"
+            )
+            return employee
+
+        return None
 
     async def _broadcast_scan_event(self, scan: ScanEvent, employee: Optional[Employee], device: Optional[Device]) -> None:
         from app.services.websocket_service import ws_manager

@@ -1217,10 +1217,38 @@ async def _execute_fingerprint_enrollment(
     # Handle user_registered — template must be enrolled manually on device LCD
     if result.get("status") == "user_registered":
         device_uid = result.get("device_uid")
+        device_user_id = result.get("device_user_id")
         logger.info(
             f"[EnrollmentWizard] User registered on device. "
             f"uid={device_uid} — waiting for manual enrollment on LCD"
         )
+
+        # Create employee-device mapping so ADMS scans can resolve the employee
+        from app.models.employee_device_mapping import EmployeeDeviceMapping
+        from sqlalchemy import and_
+        existing_map = await db.execute(
+            select(EmployeeDeviceMapping).where(
+                and_(
+                    EmployeeDeviceMapping.employee_id == employee.id,
+                    EmployeeDeviceMapping.device_id == device.id,
+                    EmployeeDeviceMapping.device_user_id == device_user_id,
+                )
+            )
+        )
+        if not existing_map.scalar_one_or_none():
+            mapping = EmployeeDeviceMapping(
+                employee_id=employee.id,
+                device_id=device.id,
+                device_user_id=device_user_id,
+            )
+            db.add(mapping)
+            await db.flush()
+            logger.info(
+                f"[EnrollmentWizard] Created device mapping: "
+                f"employee={employee.employee_code} -> device={device.name} "
+                f"(user_id={device_user_id})"
+            )
+
         await ws_manager.broadcast("enrollment.fingerprint.started", {
             "session_id": str(session.id),
             "employee_id": str(session.employee_id),
@@ -1231,7 +1259,7 @@ async def _execute_fingerprint_enrollment(
         return {
             "status": "user_registered",
             "device_uid": device_uid,
-            "device_user_id": result.get("device_user_id"),
+            "device_user_id": device_user_id,
             "message": result.get("message"),
         }
 
