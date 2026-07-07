@@ -90,6 +90,7 @@ async def api_quick_scan(
 @router.post("/register", status_code=201, dependencies=[Depends(PermissionChecker("device:manage"))])
 async def register_discovered_device(
     req: RegisterDeviceRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     _user=Depends(get_current_user),
 ):
@@ -123,6 +124,7 @@ async def register_discovered_device(
         await db.flush()
         await db.refresh(existing)
         logger.info(f"Device provisioned: {existing.name} ({existing.serial_number}) at {existing.ip_address}")
+        background_tasks.add_task(sync_device_after_provisioning_background, device_id=existing.id, device_name=existing.name)
         return {
             "id": str(existing.id),
             "serial_number": existing.serial_number,
@@ -154,6 +156,7 @@ async def register_discovered_device(
     await db.refresh(device)
 
     logger.info(f"Device registered: {device.name} ({device.serial_number}) at {device.ip_address}")
+    background_tasks.add_task(sync_device_after_provisioning_background, device_id=device.id, device_name=device.name)
 
     return {
         "id": str(device.id),
@@ -262,3 +265,37 @@ async def delete_device(
 
     logger.info(f"Device removed: {name}")
     return {"deleted": True, "name": name}
+
+
+# ── Background: Sync Employees to Newly Provisioned Device ──────
+
+async def sync_device_after_provisioning_background(device_id: UUID, device_name: str):
+    """Push all active employees and templates to a newly provisioned device."""
+    from app.database.session import async_session_factory
+    from app.models.employee import Employee
+    from app.services.device_sync_service import DeviceSyncService
+
+    logger.info(f"[Post-Provision] Starting sync to {device_name} ({device_id})")
+    async with async_session_factory() as db:
+        try:
+            result = await db.execute(select(Employee.id).where(Employee.status == "active"))
+            employee_ids = [row[0] for row in result.all()]
+            if not employee_ids:
+                logger.info(f"[Post-Provision] No active employees to sync to {device_name}")
+                return
+
+            sync_service = DeviceSyncService(db)
+            user_log = await sync_service.push_users_to_device(
+                device_id, employee_ids=employee_ids, initiated_by="provisioning",
+            )
+            template_log = await sync_service.push_templates_to_device(
+                device_id, employee_ids=employee_ids, initiated_by="provisioning",
+            )
+            await db.commit()
+            logger.info(
+                f"[Post-Provision] Sync to {device_name} complete — "
+                f"{user_log.users_affected} users, {template_log.templates_affected} templates"
+            )
+        except Exception as e:
+            logger.error(f"[Post-Provision] Sync to {device_name} failed: {e}")
+            await db.rollback()

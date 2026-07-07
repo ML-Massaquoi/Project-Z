@@ -365,6 +365,17 @@ class DeviceSyncService:
         errors = []
 
         try:
+            # Get templates to push
+            templates = await self._get_templates_to_push(device_id, employee_ids)
+            if not templates:
+                logger.info(f"[Sync] No templates to push to {device.name}")
+                log.status = SyncStatusValue.COMPLETED
+                log.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                log.duration_ms = 0
+                log.templates_affected = 0
+                await self.session.flush()
+                return log
+
             from app.services.sdk_service import ZKSDKService
 
             # Pre-check: is the SDK port reachable?
@@ -381,8 +392,6 @@ class DeviceSyncService:
 
             sdk = ZKSDKService(ip=ip, port=port, timeout=SDK_TIMEOUT_SECONDS)
 
-            # Get templates to push
-            templates = await self._get_templates_to_push(device_id, employee_ids)
             logger.info(
                 f"[Sync] Pushing {len(templates)} templates to "
                 f"{device.name} ({device.serial_number})"
@@ -523,6 +532,16 @@ class DeviceSyncService:
         errors = []
 
         try:
+            employees = await self._get_employees_to_push(device_id, employee_ids)
+            if not employees:
+                logger.info(f"[Sync] No employees to push to {device.name}")
+                log.status = SyncStatusValue.COMPLETED
+                log.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                log.duration_ms = 0
+                log.users_affected = 0
+                await self.session.flush()
+                return log
+
             from app.services.sdk_service import ZKSDKService
 
             ip = device.ip_address
@@ -543,8 +562,6 @@ class DeviceSyncService:
             )
             existing_users = {du.employee_id: du for du in existing_result.scalars().all() if du.employee_id}
             existing_uids = {du.device_user_id for du in existing_result.scalars().all()}
-
-            employees = await self._get_employees_to_push(device_id, employee_ids)
 
             for emp in employees:
                 try:
@@ -682,7 +699,11 @@ class DeviceSyncService:
         Returns per-device results.
         """
         device_result = await self.session.execute(
-            select(Device).where(and_(Device.is_active == True, Device.is_online == True))
+            select(Device).where(and_(
+                Device.is_active == True,
+                Device.is_online == True,
+                Device.ip_address.isnot(None),
+            ))
         )
         devices = device_result.scalars().all()
 
@@ -737,7 +758,11 @@ class DeviceSyncService:
         employee_ids = [e.id for e in employees]
 
         device_result = await self.session.execute(
-            select(Device).where(and_(Device.is_active == True, Device.is_online == True))
+            select(Device).where(and_(
+                Device.is_active == True,
+                Device.is_online == True,
+                Device.ip_address.isnot(None),
+            ))
         )
         devices = device_result.scalars().all()
 
@@ -782,7 +807,11 @@ class DeviceSyncService:
     ) -> dict:
         """Push selected employees to all active devices."""
         device_result = await self.session.execute(
-            select(Device).where(and_(Device.is_active == True, Device.is_online == True))
+            select(Device).where(and_(
+                Device.is_active == True,
+                Device.is_online == True,
+                Device.ip_address.isnot(None),
+            ))
         )
         devices = device_result.scalars().all()
 
