@@ -339,7 +339,7 @@ export const shiftProtocolsAPI = {
   create: (data: Record<string, unknown>) => api.post('/shift-protocols', data),
   update: (id: string, data: Record<string, unknown>) => api.put(`/shift-protocols/${id}`, data),
   delete: (id: string) => api.delete(`/shift-protocols/${id}`),
-  seedPresets: () => api.post('/shift-protocols/seed'),
+  seedPresets: () => api.post('/shift-protocols/presets/seed'),
   // Phase 5: Protocol Steps
   listSteps: (protocolId: string) => api.get(`/scheduling/protocols/${protocolId}/steps`),
   createStep: (protocolId: string, data: Record<string, unknown>) => api.post(`/scheduling/protocols/${protocolId}/steps`, data),
