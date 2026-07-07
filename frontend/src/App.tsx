@@ -26,7 +26,6 @@ const DepartmentWorkforceView = lazy(() => import('@/pages/DepartmentWorkforceVi
 const EmployeeWorkforceProfile = lazy(() => import('@/pages/EmployeeWorkforceProfile'))
 const NotFound = lazy(() => import('@/pages/NotFound'))
 const LeaveManagement = lazy(() => import('@/pages/LeaveManagement'))
-const ShiftProtocols = lazy(() => import('@/pages/ShiftProtocols'))
 const Schedules = lazy(() => import('@/pages/Schedules'))
 const RosterManagement = lazy(() => import('@/pages/RosterManagement'))
 const HolidayCalendar = lazy(() => import('@/pages/HolidayCalendar'))
@@ -119,7 +118,6 @@ export default function App() {
               <Route path="/enrollment" element={withPageBoundary(EnrollmentMonitor)} />
               <Route path="/departments" element={withPageBoundary(Departments)} />
               <Route path="/shifts" element={withPageBoundary(Shifts)} />
-              <Route path="/shift-protocols" element={withPageBoundary(ShiftProtocols)} />
               <Route path="/schedules" element={withPageBoundary(Schedules)} />
               <Route path="/roster" element={withPageBoundary(RosterManagement)} />
               <Route path="/holidays" element={withPageBoundary(HolidayCalendar)} />
